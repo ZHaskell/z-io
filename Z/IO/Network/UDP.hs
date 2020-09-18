@@ -20,12 +20,14 @@ This module provides an API for creating UDP sender and receiver.
 
 module Z.IO.Network.UDP (
   -- * TCP Client
-    UDP(..)
+    UDP
   , initUDP
   , UDPConfig(..)
   , defaultUDPConfig
   , UVUDPFlag(UV_UDP_DEFAULT, UV_UDP_IPV6ONLY, UV_UDP_REUSEADDR)
   , sendUDP
+  , UDPRecvConfig(..)
+  , defaultUDPRecvConfig
   , recvUDPLoop
   , recvUDP
   , getUDPSockName
@@ -179,10 +181,10 @@ setMulticastInterface udp@(UDP handle _ _ _ _) iaddr = do
     withCBytes iaddr $ \ iaddrp ->
         throwUVIfMinus_ (uv_udp_set_multicast_interface handle iaddrp)
 
-setBroadcast :: HasCallStack => UDP -> Bool -> IO ()
+setBroadcast :: HasCallStack => UDP -> CInt -> IO ()
 setBroadcast udp@(UDP handle _ _ _ _) b = do
     checkUDPClosed udp
-    throwUVIfMinus_ (uv_udp_set_broadcast handle (if b then 1 else 0))
+    throwUVIfMinus_ (uv_udp_set_broadcast handle b)
 
 setTTL :: HasCallStack
        => UDP
@@ -228,6 +230,9 @@ data UDPRecvConfig = UDPRecvConfig
                                                 --   increase this number can improve receiving performance,
                                                 --   at the cost of memory and potential GHC thread starving.
     }
+
+defaultUDPRecvConfig :: UDPRecvConfig
+defaultUDPRecvConfig = UDPRecvConfig 512 6
 
 
 -- The buffer passing of UDP is a litte complicated here, to get maximum performance,
