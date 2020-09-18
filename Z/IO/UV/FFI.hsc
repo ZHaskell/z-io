@@ -177,10 +177,14 @@ pattern UV_UDP_REUSEADDR = UVUDPFlag #{const UV_UDP_REUSEADDR}
 pattern UV_UDP_PARTIAL :: Int32
 pattern UV_UDP_PARTIAL = #{const UV_UDP_PARTIAL}
 
+foreign import ccall unsafe uv_udp_connect
+    :: Ptr UVHandle -> Ptr SocketAddr -> IO CInt
+
 foreign import ccall unsafe uv_udp_set_membership ::
     Ptr UVHandle -> CString -> CString -> UVMembership -> IO CInt
 foreign import ccall unsafe uv_udp_set_source_membership ::
     Ptr UVHandle -> CString -> CString -> CString -> UVMembership -> IO CInt
+
 foreign import ccall unsafe uv_udp_set_multicast_loop :: Ptr UVHandle -> CInt -> IO CInt
 foreign import ccall unsafe uv_udp_set_multicast_ttl :: Ptr UVHandle -> CInt -> IO CInt
 foreign import ccall unsafe uv_udp_set_multicast_interface :: Ptr UVHandle -> CString -> IO CInt
@@ -192,6 +196,8 @@ foreign import ccall unsafe uv_udp_recv_stop :: Ptr UVHandle -> IO CInt
 foreign import ccall unsafe hs_uv_udp_send 
     :: Ptr UVHandle -> Ptr SocketAddr -> Ptr Word8 -> Int -> IO UVSlotUnSafe
 foreign import ccall unsafe uv_udp_getsockname 
+    :: Ptr UVHandle -> Ptr SocketAddr -> MBA## CInt -> IO CInt
+foreign import ccall unsafe uv_udp_getpeername
     :: Ptr UVHandle -> Ptr SocketAddr -> MBA## CInt -> IO CInt
 
 --------------------------------------------------------------------------------

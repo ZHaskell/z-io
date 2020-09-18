@@ -16,10 +16,24 @@ Portability : non-portable
 
 This module provides an API for creating UDP sender and receiver.
 
+* Socket FD is created lazily if no local address is provided, that means various functions
+  that need FD will throw bad FD exception if you 'initUDP' with no local address e.g. 'setTTL'.
+
+* If you want to create socket FD but still don't care about which port or interface you're using,
+  use 'Just' 'SocketAddrInet' 'portAny' 'inetAny' when 'initUDP'.
+
+* 'recvUDPLoop' is faster because it can reuse receive buffer, while 'recvUDP' create new buffer
+  every time.
+
+@
+--
+
+@
+
 -}
 
 module Z.IO.Network.UDP (
-  -- * TCP Client
+  -- * UDP Client
     UDP(..)
   , initUDP
   , UDPConfig(..)
@@ -29,6 +43,12 @@ module Z.IO.Network.UDP (
   , recvUDPLoop
   , recvUDP
   , getUDPSockName
+  -- * Connected UDP Client
+  , ConnectedUDP
+  , connectUDP
+  , disconnectUDP
+  , getPeerName
+  , sendConnectedUDP
   -- * multicast and broadcast
   , UVMembership(UV_JOIN_GROUP, UV_LEAVE_GROUP)
   , setMembership
@@ -95,8 +115,8 @@ defaultUDPConfig = UDPConfig 512 Nothing
 -- | Initialize a UDP socket.
 --
 initUDP :: HasCallStack
-              => UDPConfig
-              -> Resource UDP
+        => UDPConfig
+        -> Resource UDP
 initUDP (UDPConfig sbsiz maddr) = initResource
     (do uvm <- getUVManager
         (handle, slot) <- withUVManager uvm $ \ loop -> do
@@ -129,12 +149,65 @@ checkUDPClosed udp = do
     c <- readIORef (udpClosed udp)
     when c throwECLOSED
 
-getUDPSockName :: HasCallStack => UDP -> IO SocketAddr
-getUDPSockName udp@(UDP handle _ _ _ _) = do
+-- | Get the local IP and port of the 'UDP'.
+getSockName :: HasCallStack => UDP -> IO SocketAddr
+getSockName udp@(UDP handle _ _ _ _) = do
     checkUDPClosed udp
     withSocketAddrStorage $ \ paddr ->
         void $ withPrimUnsafe (fromIntegral sizeOfSocketAddrStorage :: CInt) $ \ plen ->
             throwUVIfMinus_ (uv_udp_getsockname handle paddr plen)
+
+-- | Wrapper for a connected 'UDP'.
+newtype ConnectedUDP = ConnectedUDP UDP
+
+-- | Associate the UDP handle to a remote address and port,
+-- so every message sent by this handle is automatically sent to that destination
+connectUDP :: HasCallStack => UDP -> SocketAddr -> IO ConnectedUDP
+connectUDP udp@(UDP handle _ _ _ _) addr = do
+    checkUDPClosed udp
+    withSocketAddr addr $ \ paddr ->
+        throwUVIfMinus_ (uv_udp_connect handle paddr)
+    return (ConnectedUDP udp)
+
+-- | Disconnect the UDP handle from a remote address and port.
+disconnectUDP :: HasCallStack => ConnectedUDP -> IO UDP
+disconnectUDP (ConnectedUDP udp@(UDP handle _ _ _ _)) =
+    checkUDPClosed udp
+    throwUVIfMinus_ (uv_udp_connect handle nullPtr)
+    return udp
+
+-- | Get the remote IP and port on 'ConnectedUDP'.
+getPeerName :: HasCallStack => UDP -> IO SocketAddr
+getPeerName (ConnectedUDP udp@(UDP handle _ _ _ _)) = do
+    checkUDPClosed udp
+    withSocketAddrStorage $ \ paddr ->
+        void $ withPrimUnsafe (fromIntegral sizeOfSocketAddrStorage :: CInt) $ \ plen ->
+            throwUVIfMinus_ (uv_udp_getpeername handle paddr plen)
+
+-- | Send a UDP message with a connected UDP.
+--
+-- WARNING: A 'InvalidArgument' with errno 'UV_EMSGSIZE' will be thrown
+-- if message is larger than 'sendMsgSize'.
+sendUDPConnected :: HasCallStack => ConnectedUDP -> V.Bytes -> IO ()
+sendUDPConnected (ConnectedUDP udp@(UDP handle slot uvm sbuf closed)) (V.PrimVector ba s la) = mask_ $ do
+    checkUDPClosed udp
+    -- copy message to pinned buffer
+    lb <- getSizeofMutablePrimArray sbuf
+    when (la > lb) (throwUVIfMinus_ (return UV_EMSGSIZE))
+    copyPrimArray sbuf 0 ba s la
+    withMutablePrimArrayContents sbuf $ \ pbuf -> do
+        (slot, m) <- withUVManager' uvm $ do
+            slot <- getUVSlot uvm (hs_uv_udp_send handle nullPtr pbuf la)
+            m <- getBlockMVar uvm slot
+            tryTakeMVar m
+            return (slot, m)
+        -- we can't cancel uv_udp_send_t in current libuv
+        -- and disaster will happen if buffer got collected.
+        -- so we have to turn to uninterruptibleMask_'s help.
+        -- i.e. sendUDP is an uninterruptible operation.
+        -- OS will guarantee writing a socket will not
+        -- hang forever anyway.
+        throwUVIfMinus_  (uninterruptibleMask_ $ takeMVar m)
 
 -- | Send a UDP message to target address.
 --
@@ -162,6 +235,7 @@ sendUDP udp@(UDP handle slot uvm sbuf closed) addr (V.PrimVector ba s la) = mask
             -- hang forever anyway.
             throwUVIfMinus_  (uninterruptibleMask_ $ takeMVar m)
 
+-- | Set IP multicast loop flag. Makes multicast packets loop back to local sockets.
 setMulticastLoop :: HasCallStack => UDP -> Bool -> IO ()
 setMulticastLoop udp@(UDP handle _ _ _ _) loop = do
     checkUDPClosed udp
@@ -182,7 +256,7 @@ setMulticastInterface udp@(UDP handle _ _ _ _) iaddr = do
 setBroadcast :: HasCallStack => UDP -> Bool -> IO ()
 setBroadcast udp@(UDP handle _ _ _ _) b = do
     checkUDPClosed udp
-    throwUVIfMinus_ (uv_udp_set_broadcast handle (if b then 1 else 0))
+    throwUVIfMinus_ (uv_udp_set_broadcast handle (if b then 49 else 0))
 
 setTTL :: HasCallStack
        => UDP
