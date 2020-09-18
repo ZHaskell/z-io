@@ -21,7 +21,7 @@ module Z.IO.Buffered
   ( -- * Input & Output device
     Input(..), Output(..)
     -- * Buffered Input
-  , BufferedInput(..)
+  , BufferedInput
   , newBufferedInput
   , readBuffer
   , unReadBuffer
@@ -31,7 +31,7 @@ module Z.IO.Buffered
   , readLine, readLine'
   , readAll, readAll'
     -- * Buffered Output
-  , BufferedOutput(..)
+  , BufferedOutput
   , newBufferedOutput
   , writeBuffer
   , writeBuilder
@@ -67,26 +67,35 @@ import           Z.IO.Exception
 --
 -- Laws: 'readInput' should return 0 on EOF.
 --
--- Note: 'readInput' is considered not thread-safe, e.g. A 'Input' device
--- can only be used with a single 'BufferedInput', If multiple 'BufferedInput' s
--- are opened on a same 'Input' device, the behaviour will be undefined.
+-- Note: 'readInput' is considered not thread-safe,
 --
 class Input i where
     readInput :: HasCallStack => i -> Ptr Word8 -> Int -> IO Int
 
 -- | Output device
 --
--- Laws: 'writeOutput' should not return until all data are written (may not
+-- 'writeOutput' should not return until all data are written (may not
 -- necessarily flushed to hardware, that should be done in device specific way).
 
--- Note: 'writeOutput' is considered not thread-safe, e.g. A 'Output' device
--- can only be used with a single 'BufferedOutput', If multiple 'BufferedOutput' s
--- are opened on a same 'Input' device, the behaviour will be undefined.
+-- Note: 'writeOutput' is considered not thread-safe,
+--
+-- * A 'BufferedOutput' should not be used in multiple threads, there's no locking mechanism to protect
+--   buffering state.
+--
+-- * A 'Output' device should only be used with a single 'BufferedOutput', If multiple 'BufferedOutput' s
+--   are opened on a same 'BufferedOutput' device, the output will be interleaved.
 --
 class Output o where
     writeOutput :: HasCallStack => o -> Ptr Word8 -> Int -> IO ()
 
 -- | Input device with buffer, NOT THREAD SAFE!
+--
+-- * A 'BufferedInput' should not be used in multiple threads, there's no locking mechanism to protect
+--   buffering state.
+--
+-- * A 'Input' device should only be used with a single 'BufferedInput', If multiple 'BufferedInput' s
+--   are opened on a same 'Input' device, the behaviour is undefined.
+--
 data BufferedInput i = BufferedInput
     { bufInput    :: i
     , bufPushBack :: {-# UNPACK #-} !(IORef V.Bytes)
@@ -99,7 +108,6 @@ data BufferedOutput o = BufferedOutput
     , bufIndex      :: {-# UNPACK #-} !Counter
     , outputBuffer  :: {-# UNPACK #-} !(MutablePrimArray RealWorld Word8)
     }
-
 
 newBufferedInput :: input
                  -> Int     -- ^ Input buffer size

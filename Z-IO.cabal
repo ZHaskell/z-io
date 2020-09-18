@@ -105,7 +105,7 @@ library
                             Z.IO.Network.DNS
                             Z.IO.Network.SocketAddr
                             Z.IO.Network.TCP
-                            -- Z.IO.Network.UDP
+                            Z.IO.Network.UDP
                             Z.IO.Buffered
                             Z.IO.Exception
                             Z.IO.LowResTimer

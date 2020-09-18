@@ -65,6 +65,7 @@ import           Control.Monad
 import           Control.Monad.STM
 import           Data.Word
 import           Data.Int
+import           Data.IORef
 import           Z.Data.CBytes                 as CBytes
 import           Foreign.Ptr
 import           Foreign.Storable               (peekElemOff)
@@ -89,12 +90,18 @@ import           Z.IO.UV.Manager
 -- Implict offset interface is provided by 'Input' \/ 'Output' instances.
 -- Explict offset interface is provided by 'readFileT' \/ 'writeFileT'.
 --
-newtype FileT =  FileT (MVar UVFD)
+-- File and its operations are NOT thread safe, use 'MVar' 'FileT' in multiple threads.
+--
+data FileT =  FileT
+    { uvFileT       :: {-# UNPACK #-} UVFD
+    , uvFileTClosed :: {-# UNPACK #-} IORef Bool
+    }
 
 -- | take 'UVFD' from MVar, if fd is -1 (closed), throw 'ResourceVanished' ECLOSED.
 withFileT :: HasCallStack => FileT -> (UVFD -> IO a) -> IO a
-withFileT (FileT fdM) f =
-    withMVar fdM $ \ fd -> if fd >= 0 then f fd else throwECLOSED
+withFileT (FileT fd closedRef) f = do
+    closed <- readIORef closedRef
+    if closed then throwECLOSED else f fd
 
 instance Input FileT where
     readInput f buf bufSiz = readFileT f buf bufSiz (-1)
@@ -167,12 +174,12 @@ initFileT path flags mode =
         (do uvm <- getUVManager
             fd <- withCBytes path $ \ p ->
                 withUVRequest uvm (hs_uv_fs_open_threaded p flags mode)
-            FileT <$> newMVar (fromIntegral fd))
-        (\ (FileT fdM) -> do
-            fd <- swapMVar fdM (-1)
-            when (fd >= 0) (do
-                uvm <- getUVManager
-                withUVRequest_ uvm $ hs_uv_fs_close_threaded fd))
+            FileT (fromIntegral fd) <$> newIORef False)
+        (\ (FileT fd closedRef) -> do
+            closed <- readIORef closedRef
+            unless closed $ do
+                throwUVIfMinus_ (hs_uv_fs_close fd)
+                writeIORef closedRef True)
 
 --------------------------------------------------------------------------------
 

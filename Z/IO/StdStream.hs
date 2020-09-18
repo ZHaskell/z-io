@@ -122,30 +122,43 @@ instance Output StdStream where
             when (written < bufSiz)
                 (go (buf `plusPtr` written) (bufSiz-written))
 
+-- | The global stdin stream.
 stdin :: StdStream
 {-# NOINLINE stdin #-}
 stdin = unsafePerformIO (makeStdStream 0)
 
+-- | The global stdout stream.
+--
+-- | If you want to write logs, don't use 'stdout' directly, use 'Z.IO.Logger' instead.
 stdout :: StdStream
 {-# NOINLINE stdout #-}
 stdout = unsafePerformIO (makeStdStream 1)
 
--- | Don't use 'stderr' directly, use 'Z.IO.Logger' instead.
+-- | The global stderr stream.
+--
+-- | If you want to write logs, don't use 'stderr' directly, use 'Z.IO.Logger' instead.
 stderr :: StdStream
 {-# NOINLINE stderr #-}
 stderr = unsafePerformIO (makeStdStream 2)
 
-stdinBuf :: BufferedInput StdStream
+-- |  A global buffered stdin stream protected by 'MVar'.
+stdinBuf :: MVar (BufferedInput StdStream)
 {-# NOINLINE stdinBuf #-}
-stdinBuf = unsafePerformIO (newBufferedInput stdin defaultChunkSize)
+stdinBuf = unsafePerformIO (newBufferedInput stdin defaultChunkSize >>= newMVar)
 
-stdoutBuf :: BufferedOutput StdStream
+-- |  A global buffered stdout stream protected by 'MVar'.
+--
+-- | If you want to write logs, don't use 'stdoutBuf' directly, use 'Z.IO.Logger' instead.
+stdoutBuf :: MVar (BufferedOutput StdStream)
 {-# NOINLINE stdoutBuf #-}
-stdoutBuf = unsafePerformIO (newBufferedOutput stdout defaultChunkSize)
+stdoutBuf = unsafePerformIO (newBufferedOutput stdout defaultChunkSize >>= newMVar)
 
-stderrBuf :: BufferedOutput StdStream
+-- |  A global buffered stderr stream protected by 'MVar'.
+--
+-- | If you want to write logs, don't use 'stderrBuf' directly, use 'Z.IO.Logger' instead.
+stderrBuf :: MVar (BufferedOutput StdStream)
 {-# NOINLINE stderrBuf #-}
-stderrBuf = unsafePerformIO (newBufferedOutput stderr defaultChunkSize)
+stderrBuf = unsafePerformIO (newBufferedOutput stderr defaultChunkSize >>= newMVar)
 
 makeStdStream :: UVFD -> IO StdStream
 makeStdStream fd = do
@@ -184,22 +197,20 @@ getStdoutWinSize = case stdout of
 
 -- | print a 'ToText' and flush to stdout.
 printStd :: ToText a => a -> IO ()
-printStd s = do
-    writeBuilder stdoutBuf (toBuilder  $ s)
-    flushBuffer stdoutBuf
+printStd s = putStd (toBuilder s)
 
 -- | print a 'Builder' and flush to stdout.
 putStd :: Builder a -> IO ()
-putStd b = do
-    writeBuilder stdoutBuf b
-    flushBuffer stdoutBuf
+putStd b = withMVar stdoutBuf $ \ o -> do
+    writeBuilder o b
+    flushBuffer o
 
 -- | print a 'Builder' and flush to stdout, with a linefeed.
 putLineStd :: Builder a -> IO ()
-putLineStd b = do
-    writeBuilder stdoutBuf (b >> B.char8 '\n')
-    flushBuffer stdoutBuf
+putLineStd b = withMVar stdoutBuf $ \ o -> do
+    writeBuilder o (b >> B.char8 '\n')
+    flushBuffer o
 
 -- | read a line from stdin
 readLineStd :: IO V.Bytes
-readLineStd = readLine stdinBuf
+readLineStd = withMVar stdinBuf readLine

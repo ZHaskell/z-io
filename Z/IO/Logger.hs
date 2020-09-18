@@ -115,11 +115,10 @@ flushLog oLock bList =
 -- | Make a new logger
 newLogger :: Output o
           => LoggerConfig
-          -> BufferedOutput o
+          -> MVar (BufferedOutput o)
           -> IO Logger
-newLogger config o = do
+newLogger config oLock = do
     bList <- newIORef []
-    oLock <- newMVar o
     let flush = flushLog oLock bList
     throttledFlush <- throttleTrailing_ (loggerMinFlushInterval config) flush
     return $ Logger flush throttledFlush bList config

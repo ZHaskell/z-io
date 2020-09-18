@@ -33,8 +33,8 @@ import           Foreign.C.Types
 import           Foreign.Marshal.Alloc (alloca, allocaBytes)
 import           Foreign.Marshal.Utils
 import           Foreign.Ptr
-import           Foreign.Storable
-import           Z.Data.CBytes
+import           Foreign.Storable 
+import           Z.Data.CBytes  as CBytes
 import           Z.IO.Exception
 import           Z.IO.Network.SocketAddr
 import           Z.IO.UV.Win
@@ -120,15 +120,16 @@ addrInfoFlagMapping =
 addrInfoFlagImplemented :: AddrInfoFlag -> Bool
 addrInfoFlagImplemented f = packBits addrInfoFlagMapping [f] /= 0
 
--- | 
+-- | Address info
 data AddrInfo = AddrInfo {
     addrFlags :: [AddrInfoFlag]
   , addrFamily :: SocketFamily
   , addrSocketType :: SocketType
-  , addrProtocol :: SocketProtocol
+  , addrProtocol :: ProtocolNumber
   , addrAddress :: SocketAddr
   , addrCanonName :: CBytes
   } deriving (Eq, Show)
+
 
 instance Storable AddrInfo where
     sizeOf    _ = #const sizeof(struct addrinfo)
@@ -278,7 +279,7 @@ getAddrInfo hints host service = withUVInitDo $
     -- segfault on OS X 10.8.2. This code removes AI_NUMERICSERV
     -- (which has no effect) in that case.
     toHints h = h { addrFlags = delete AI_NUMERICSERV (addrFlags h) }
-    filteredHints = if null service then toHints <$> hints else hints
+    filteredHints = if CBytes.null service then toHints <$> hints else hints
 #else
     filteredHints = hints
 #endif

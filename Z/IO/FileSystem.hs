@@ -20,8 +20,7 @@ This module provide IO operations related to filesystem, operations are implemen
 
 module Z.IO.FileSystem
   ( -- * regular file devices
-    File, withFile
-  , initFile, readFile, writeFile
+    File, initFile, readFile, writeFile
     -- * opening constant
   , FileMode(DEFAULT_MODE, S_IRWXU, S_IRUSR, S_IWUSR
       , S_IXUSR, S_IRWXG, S_IRGRP, S_IWGRP, S_IXGRP, S_IRWXO, S_IROTH
@@ -58,6 +57,7 @@ import           Control.Concurrent.MVar
 import           Control.Monad
 import           Data.Word
 import           Data.Int
+import           Data.IORef
 import           Z.Data.CBytes                 as CBytes
 import           Foreign.Ptr
 import           Foreign.Storable               (peekElemOff)
@@ -79,13 +79,18 @@ import           Prelude hiding (writeFile, readFile)
 -- Implict offset interface is provided by 'Input' \/ 'Output' instances.
 -- Explict offset interface is provided by 'readFile' \/ 'writeFile'.
 --
-newtype File = File (MVar UVFD)
+-- File and its operations are NOT thread safe, use 'MVar' 'File' in multiple threads
+--
+data File = File
+    { uvFile       :: {-# UNPACK #-} UVFD
+    , uvFileClosed :: {-# UNPACK #-} IORef Bool
+    }
 
--- | take 'UVFD' from MVar, if fd is -1 (closed), throw 'ResourceVanished' ECLOSED.
-withFile :: HasCallStack => File -> (UVFD -> IO a) -> IO a
-withFile (File fdM) f =
-    withMVar fdM $ \ fd -> if fd >= 0 then f fd else throwECLOSED
-
+-- | If fd is -1 (closed), throw 'ResourceVanished' ECLOSED.
+checkFileClosed :: HasCallStack => File -> (UVFD -> IO a) -> IO a
+checkFileClosed (File fd closedRef) f = do
+    closed <- readIORef closedRef
+    if closed then throwECLOSED else f fd
 
 instance Input File where
     -- readInput :: HasCallStack => File -> Ptr Word8 -> Int -> IO Int
@@ -102,7 +107,7 @@ readFile :: HasCallStack
            -> Int64     -- ^ file offset, pass -1 to use default(system) offset
            -> IO Int    -- ^ read length
 readFile uvf buf bufSiz off =
-    withFile uvf $ \ fd -> throwUVIfMinus $ hs_uv_fs_read fd buf bufSiz off
+    checkFileClosed uvf $ \ fd -> throwUVIfMinus $ hs_uv_fs_read fd buf bufSiz off
 
 instance Output File where
     writeOutput f buf bufSiz = writeFile f buf bufSiz (-1)
@@ -117,7 +122,7 @@ writeFile :: HasCallStack
             -> Int64     -- ^ file offset, pass -1 to use default(system) offset
             -> IO ()
 writeFile uvf buf bufSiz off =
-    withFile uvf $ \fd ->  if off == -1 then go fd buf bufSiz
+    checkFileClosed uvf $ \fd ->  if off == -1 then go fd buf bufSiz
                                       else go' fd buf bufSiz off
   where
     go fd !buf !bufSiz = do
@@ -148,10 +153,12 @@ initFile path flags mode =
     initResource
         (do !fd <- withCBytes path $ \ p ->
                 throwUVIfMinus $ hs_uv_fs_open p flags mode
-            File <$> newMVar fd)
-        (\ (File fdM) -> do
-            fd <- swapMVar fdM (-1)
-            when (fd >= 0) (throwUVIfMinus_ $ hs_uv_fs_close fd))
+            File fd <$> newIORef False)
+        (\ (File fd closedRef) -> do
+            closed <- readIORef closedRef
+            unless closed $ do
+                throwUVIfMinus_ (hs_uv_fs_close fd)
+                writeIORef closedRef True)
 
 --------------------------------------------------------------------------------
 
@@ -227,7 +234,7 @@ lstat path = withCBytes path $ \ p ->
 
 -- | Equivalent to <http://linux.die.net/man/2/fstat fstat(2)>
 fstat :: HasCallStack => File -> IO UVStat
-fstat uvf = withFile uvf $ \ fd ->
+fstat uvf = checkFileClosed uvf $ \ fd ->
     allocaBytes uvStatSize $ \ stat -> do
         throwUVIfMinus_ (hs_uv_fs_fstat fd stat)
         peekUVStat stat
@@ -243,15 +250,15 @@ rename path path' = throwUVIfMinus_ . withCBytes path $ \ p ->
 
 -- | Equivalent to <http://linux.die.net/man/2/fsync fsync(2)>.
 fsync :: HasCallStack => File -> IO ()
-fsync uvf = withFile uvf $ \ fd -> throwUVIfMinus_ $ hs_uv_fs_fsync fd
+fsync uvf = checkFileClosed uvf $ \ fd -> throwUVIfMinus_ $ hs_uv_fs_fsync fd
 
 -- | Equivalent to <http://linux.die.net/man/2/fdatasync fdatasync(2)>.
 fdatasync :: HasCallStack => File -> IO ()
-fdatasync uvf = withFile uvf $ \ fd -> throwUVIfMinus_ $ hs_uv_fs_fdatasync fd
+fdatasync uvf = checkFileClosed uvf $ \ fd -> throwUVIfMinus_ $ hs_uv_fs_fdatasync fd
 
 -- | Equivalent to <http://linux.die.net/man/2/ftruncate ftruncate(2)>.
 ftruncate :: HasCallStack => File -> Int64 -> IO ()
-ftruncate uvf off = withFile uvf $ \ fd -> throwUVIfMinus_ $ hs_uv_fs_ftruncate fd off
+ftruncate uvf off = checkFileClosed uvf $ \ fd -> throwUVIfMinus_ $ hs_uv_fs_ftruncate fd off
 
 -- | Copies a file from path to new_path.
 --
@@ -279,7 +286,7 @@ chmod path mode = throwUVIfMinus_ . withCBytes path $ \ p -> hs_uv_fs_chmod p mo
 
 -- | Equivalent to <http://linux.die.net/man/2/fchmod fchmod(2)>.
 fchmod :: HasCallStack => File -> FileMode -> IO ()
-fchmod uvf mode = withFile uvf $ \ fd -> throwUVIfMinus_ $ hs_uv_fs_fchmod fd mode
+fchmod uvf mode = checkFileClosed uvf $ \ fd -> throwUVIfMinus_ $ hs_uv_fs_fchmod fd mode
 
 -- | Equivalent to <http://linux.die.net/man/2/utime utime(2)>.
 --
@@ -303,7 +310,7 @@ utime path atime mtime = throwUVIfMinus_ . withCBytes path $ \ p -> hs_uv_fs_uti
 --
 -- Same precision notes with 'utime'.
 futime :: HasCallStack => File -> Double -> Double -> IO ()
-futime uvf atime mtime = withFile uvf $ \ fd ->
+futime uvf atime mtime = checkFileClosed uvf $ \ fd ->
     throwUVIfMinus_ (hs_uv_fs_futime fd atime mtime)
 
 -- | Equivalent to <http://linux.die.net/man/2/link link(2)>.

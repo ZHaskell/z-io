@@ -422,6 +422,7 @@ initUVStream init uvm = initResource
 closeUVStream :: UVStream -> IO ()
 closeUVStream (UVStream handle _ uvm closed) = withUVManager' uvm $ do
     c <- readIORef closed
+    -- hs_uv_handle_close won't return error
     unless c $ writeIORef closed True >> hs_uv_handle_close handle
 
 instance Input UVStream where

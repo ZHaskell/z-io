@@ -61,13 +61,14 @@ module Z.IO.Network.SocketAddr
   , pattern SOCK_RAW
   , pattern SOCK_RDM
   , pattern SOCK_ANY
-  , SocketProtocol(..)
+  , ProtocolNumber(..)
   , pattern IPPROTO_DEFAULT
   , pattern IPPROTO_IP
   , pattern IPPROTO_TCP
   , pattern IPPROTO_UDP
   ) where
 
+import           Control.Monad
 import           Control.Monad.IO.Class
 import           Control.Monad.Primitive
 import           Data.Bits
@@ -77,18 +78,16 @@ import           Data.Ratio
 import           Data.Typeable
 import           Foreign
 import           Foreign.C
-import           Numeric               (showHex)
+import           Numeric                  (showHex)
 import           Z.Data.CBytes
-import qualified Z.Data.Vector       as V
+import qualified Z.Data.Parser            as P
+import qualified Z.Data.Text.Builder      as T
+import qualified Z.Data.Vector            as V
 import           Z.Foreign
 import           Z.IO.Exception
 import           Z.IO.UV.Errno
 
 #include "hs_uv.h" 
-
-#if __GLASGOW_HASKELL__ < 800
-#let alignment t = "%lu", (unsigned long)offsetof(struct {char x__; t (y__); }, y__)
-#endif
 
 #if defined(i386_HOST_ARCH) && defined(mingw32_HOST_OS)
 #let CALLCONV = "stdcall"
@@ -140,6 +139,7 @@ sockAddrFamily (SocketAddrInet6 _ _ _ _) = AF_INET6
 type FlowInfo = Word32
 type ScopeID = Word32
 
+
 --------------------------------------------------------------------------------
 
 -- | Independent of endianness. For example @127.0.0.1@ is stored as @(127, 0, 0, 1)@.
@@ -151,6 +151,29 @@ instance Show InetAddr where
     showsPrec _ ia = 
         let (a,b,c,d) = inetAddrToTuple ia
         in shows a . ('.':) . shows b . ('.':) . shows c . ('.':) . shows d 
+{-
+-- | Parse IPv4 address in format "a.b.c.d"
+parseInetAddr:: V.Bytes -> Either P.ParseError InetAddr
+parseInetAddr = P.parse_ inetAddrParser
+
+-- | Parse IPv4 address in format "a.b.c.d", octets must be between 0 and 255. 
+inetAddrParser :: P.Parser InetAddr
+inetAddrParser = do
+    a <- oct
+    P.char8 '.'
+    b <- oct
+    P.char8 '.'
+    c <- oct
+    P.char8 '.'
+    d <- oct
+    return $! tupleToInetAddr (a,b,c,d)
+  where
+    oct = do
+        x <- P.uint :: P.Parser Integer
+        if (x > 255) 
+        then fail "all octets in an IPv4 address must be between 0 and 255"
+        else return $! fromIntegral x
+-}
         
 -- | @0.0.0.0@
 inetAny             :: InetAddr
@@ -211,6 +234,7 @@ data Inet6Addr = Inet6Addr {-# UNPACK #-}!Word32
                            {-# UNPACK #-}!Word32
                            {-# UNPACK #-}!Word32 deriving (Eq, Ord)
 
+
 instance Show Inet6Addr where
     showsPrec _ ia6@(Inet6Addr a1 a2 a3 a4)
         -- IPv4-Mapped IPv6 Address
@@ -234,6 +258,33 @@ instance Show Inet6Addr where
         begin = end + diff          -- the longest run of zeros
         (diff, end) = minimum $
             scanl (\c i -> if i == 0 then c - 1 else 0) 0 fields `zip` [0..]
+
+{-
+-- | Parse IPv6 address in format "a.b.c.d"
+parseInet6Addr:: V.Bytes -> Either P.ParseError Inet6Addr
+parseInet6Addr = P.parse_ inet6AddrParser
+
+-- | Parse IPv6 address in format "a.b.c.d"
+--
+-- Octets must be between 0 and 255. 
+-- Note: if octets exceed (maxBound :: Int), parser will overflow.
+inet6AddrParser :: P.Parser Inet6Addr
+inet6AddrParser = do
+    a <- oct
+    P.char8 '.'
+    b <- oct
+    P.char8 '.'
+    c <- oct
+    P.char8 '.'
+    d <- oct
+    return $! tupleToInetAddr (a,b,c,d)
+  where
+    oct = do
+        x <- P.uint :: P.Parser Int
+        if (x > 255) 
+        then fail "all octets in an IPv4 address must be between 0 and 255"
+        else return $! fromIntegral x
+-}
 
 -- | @::@
 inet6Any      :: Inet6Addr
@@ -284,13 +335,13 @@ peekSocketAddr p = do
         (#const AF_INET) -> do
             addr <- (#peek struct sockaddr_in, sin_addr) p
             port <- (#peek struct sockaddr_in, sin_port) p
-            return (SocketAddrInet (PortNum port) addr)
+            return (SocketAddrInet (PortNumber port) addr)
         (#const AF_INET6) -> do
             port <- (#peek struct sockaddr_in6, sin6_port) p
             flow <- (#peek struct sockaddr_in6, sin6_flowinfo) p
             addr <- (#peek struct sockaddr_in6, sin6_addr) p
             scope <- (#peek struct sockaddr_in6, sin6_scope_id) p
-            return (SocketAddrInet6 (PortNum port) flow addr scope)
+            return (SocketAddrInet6 (PortNumber port) flow addr scope)
 
         _ -> do let errno = UV_EAI_ADDRFAMILY
                 name <- uvErrName errno
@@ -298,7 +349,7 @@ peekSocketAddr p = do
                 throwUVError errno (IOEInfo name desc callStack)
 
 pokeSocketAddr :: HasCallStack => Ptr SocketAddr -> SocketAddr -> IO ()
-pokeSocketAddr p (SocketAddrInet (PortNum port) addr) =  do
+pokeSocketAddr p (SocketAddrInet (PortNumber port) addr) =  do
 #if defined(darwin_HOST_OS)
     clearPtr p (#size struct sockaddr_in)
 #endif
@@ -308,7 +359,7 @@ pokeSocketAddr p (SocketAddrInet (PortNum port) addr) =  do
     (#poke struct sockaddr_in, sin_family) p ((#const AF_INET) :: CSaFamily)
     (#poke struct sockaddr_in, sin_port) p port
     (#poke struct sockaddr_in, sin_addr) p addr
-pokeSocketAddr p (SocketAddrInet6 (PortNum port) flow addr scope) =  do
+pokeSocketAddr p (SocketAddrInet6 (PortNumber port) flow addr scope) =  do
 #if defined(darwin_HOST_OS)
     clearPtr p (#size struct sockaddr_in6)
 #endif
@@ -383,7 +434,7 @@ poke32 p i0 a = do
 -- 1
 -- >>> read "1" :: PortNumber
 -- 1
-newtype PortNumber = PortNum Word16 deriving (Eq, Ord, Typeable)
+newtype PortNumber = PortNumber Word16 deriving (Eq, Ord, Typeable)
 -- newtyped to prevent accidental use of sane-looking
 -- port numbers that haven't actually been converted to
 -- network-byte-order first.
@@ -398,10 +449,10 @@ instance Read PortNumber where
   readsPrec n = map (\(x,y) -> (intToPortNumber x, y)) . readsPrec n
 
 intToPortNumber :: Int -> PortNumber
-intToPortNumber v = PortNum (htons (fromIntegral v))
+intToPortNumber v = PortNumber (htons (fromIntegral v))
 
 portNumberToInt :: PortNumber -> Int
-portNumberToInt (PortNum po) = fromIntegral (ntohs po)
+portNumberToInt (PortNumber po) = fromIntegral (ntohs po)
 
 foreign import #{CALLCONV} unsafe "ntohs" ntohs :: Word16 -> Word16
 foreign import #{CALLCONV} unsafe "htons" htons :: Word16 -> Word16
@@ -433,14 +484,14 @@ instance Integral PortNumber where
 instance Storable PortNumber where
    sizeOf    _ = sizeOf    (undefined :: Word16)
    alignment _ = alignment (undefined :: Word16)
-   poke p (PortNum po) = poke (castPtr p) po
-   peek p = PortNum `fmap` peek (castPtr p)
+   poke p (PortNumber po) = poke (castPtr p) po
+   peek p = PortNumber `fmap` peek (castPtr p)
     
 --------------------------------------------------------------------------------
 
 newtype SocketFamily = SocketFamily CInt deriving (Show, Read, Eq, Ord, Typeable)
 newtype SocketType = SocketType CInt deriving (Show, Read, Eq, Ord, Typeable)
-newtype SocketProtocol = SocketProtocol CInt deriving (Show, Read, Eq, Ord, Typeable)
+newtype ProtocolNumber = ProtocolNumber CInt deriving (Show, Read, Eq, Ord, Typeable)
 
 instance Storable SocketFamily where                      
     sizeOf _ = sizeOf (undefined :: CInt)       
@@ -454,11 +505,11 @@ instance Storable SocketType where
     peek ptr = SocketType `fmap` peek (castPtr ptr)             
     poke ptr (SocketType v) = poke (castPtr ptr) v
 
-instance Storable SocketProtocol where                      
+instance Storable ProtocolNumber where                      
     sizeOf _ = sizeOf (undefined :: CInt)       
     alignment _ = alignment (undefined :: CInt) 
-    peek ptr = SocketProtocol `fmap` peek (castPtr ptr)             
-    poke ptr (SocketProtocol v) = poke (castPtr ptr) v
+    peek ptr = ProtocolNumber `fmap` peek (castPtr ptr)             
+    poke ptr (ProtocolNumber v) = poke (castPtr ptr) v
 
 -- | unspecified
 pattern AF_UNSPEC :: SocketFamily
@@ -484,11 +535,11 @@ pattern SOCK_SEQPACKET = SocketType (#const SOCK_SEQPACKET)
 pattern SOCK_ANY :: SocketType
 pattern SOCK_ANY = SocketType 0
 
-pattern IPPROTO_DEFAULT :: SocketProtocol
-pattern IPPROTO_DEFAULT = SocketProtocol 0
-pattern IPPROTO_IP :: SocketProtocol
-pattern IPPROTO_IP = SocketProtocol (#const IPPROTO_IP)
-pattern IPPROTO_TCP :: SocketProtocol
-pattern IPPROTO_TCP = SocketProtocol (#const IPPROTO_TCP)
-pattern IPPROTO_UDP :: SocketProtocol
-pattern IPPROTO_UDP = SocketProtocol (#const IPPROTO_UDP)
+pattern IPPROTO_DEFAULT :: ProtocolNumber
+pattern IPPROTO_DEFAULT = ProtocolNumber 0
+pattern IPPROTO_IP :: ProtocolNumber
+pattern IPPROTO_IP = ProtocolNumber (#const IPPROTO_IP)
+pattern IPPROTO_TCP :: ProtocolNumber
+pattern IPPROTO_TCP = ProtocolNumber (#const IPPROTO_TCP)
+pattern IPPROTO_UDP :: ProtocolNumber
+pattern IPPROTO_UDP = ProtocolNumber (#const IPPROTO_UDP)
