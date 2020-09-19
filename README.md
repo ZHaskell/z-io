@@ -71,7 +71,7 @@ AddrInfo {addrFlags = [AI_ADDRCONFIG,AI_V4MAPPED], addrFamily = SocketFamily 2, 
 ```bash
 # get code
 git clone --recursive git@github.com:haskell-Z/z-io.git 
-cd z-data
+cd z-io
 # build
 cabal build
 # test
