@@ -390,9 +390,9 @@ data UVStream = UVStream
 
 instance Show UVStream where
     show (UVStream handle slot uvm _) =
-        "UVStream{uvsHandle = " ++ show handle ++
-                ",uvsSlot = " ++ show slot ++
-                ",uvsManager =" ++ show uvm ++ "}"
+        "UVStream{uvsHandle=" ++ show handle ++
+                ",uvsSlot=" ++ show slot ++
+                ",uvsManager=" ++ show uvm ++ "}"
 
 -- | Safely lock an uv manager and perform uv_handle initialization.
 --

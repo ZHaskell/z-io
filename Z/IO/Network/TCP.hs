@@ -87,9 +87,9 @@ initTCPClient TCPClientConfig{..} = do
 data TCPServerConfig = TCPServerConfig
     { tcpListenAddr       :: SocketAddr      -- ^ listening address
     , tcpListenBacklog    :: Int           -- ^ listening socket's backlog size, should be large enough(>128)
+    , tcpServerWorkerNoDelay :: Bool       -- ^ if we want to use @TCP_NODELAY@
     , tcpServerWorker     :: UVStream -> IO ()  -- ^ worker which get an accepted TCP stream,
                                             -- the socket will be closed upon exception or worker finishes.
-    , tcpServerWorkerNoDelay :: Bool       -- ^ if we want to use @TCP_NODELAY@
     }
 
 -- | A default hello world server on localhost:8888
@@ -100,8 +100,8 @@ defaultTCPServerConfig :: TCPServerConfig
 defaultTCPServerConfig = TCPServerConfig
     (SocketAddrInet 8888 inetAny)
     256
-    (\ uvs -> writeOutput uvs (Ptr "hello world"#) 11)
     True
+    (\ uvs -> writeOutput uvs (Ptr "hello world"#) 11)
 
 -- | Start a server
 --
@@ -161,7 +161,6 @@ startTCPServer TCPServerConfig{..} = do
 
                             -- copy accepted FDs
                             let acceptCount = backLog - 1 - acceptCountDown
-                            print acceptCount
                             acceptBuf' <- newPrimArray acceptCount
                             copyMutablePrimArray acceptBuf' 0 acceptBuf (acceptCountDown+1) acceptCount
                             unsafeFreezePrimArray acceptBuf'

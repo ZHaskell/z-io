@@ -73,13 +73,11 @@ import           Prelude hiding (writeFile, readFile)
 --------------------------------------------------------------------------------
 -- File
 
--- | 'File' is a 'UVFD' wrapped in 'MVar', -1 when closed.
+-- | 'File' and its operations are NOT thread safe, use 'MVar' 'File' in multiple threads
 --
 -- libuv implements read and write method with both implict and explict offset capable.
 -- Implict offset interface is provided by 'Input' \/ 'Output' instances.
 -- Explict offset interface is provided by 'readFile' \/ 'writeFile'.
---
--- File and its operations are NOT thread safe, use 'MVar' 'File' in multiple threads
 --
 data File = File
     { uvFile       :: {-# UNPACK #-} UVFD

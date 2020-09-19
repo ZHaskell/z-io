@@ -30,11 +30,11 @@ import           Data.Bits
 import           Data.List as List
 import           Foreign.C.String
 import           Foreign.C.Types
-import           Foreign.Marshal.Alloc (alloca, allocaBytes)
 import           Foreign.Marshal.Utils
 import           Foreign.Ptr
 import           Foreign.Storable 
 import           Z.Data.CBytes  as CBytes
+import           Z.Foreign
 import           Z.IO.Exception
 import           Z.IO.Network.SocketAddr
 import           Z.IO.UV.Win
@@ -264,15 +264,14 @@ getAddrInfo
     -> ServiceName -- ^ service name to look up
     -> IO [AddrInfo] -- ^ resolved addresses, with "best" first
 getAddrInfo hints host service = withUVInitDo $
-    withCBytes host $ \ ptr_h ->
-    withCBytes service $ \ ptr_s ->
-    maybeWith with filteredHints $ \ ptr_hints ->
-    alloca $ \ ptr_ptr_addrs -> do
-        throwUVIfMinus_ $ hs_getaddrinfo ptr_h ptr_s ptr_hints ptr_ptr_addrs
-        ptr_addrs <- peek ptr_ptr_addrs
-        ais       <- followAddrInfo ptr_addrs
-        freeaddrinfo ptr_addrs
-        return ais
+    bracket
+        (do withCBytes host $ \ ptr_h ->
+                withCBytes service $ \ ptr_s ->
+                maybeWith with filteredHints $ \ ptr_hints ->
+                fst <$> allocPrimSafe (\ ptr_ptr_addrs -> do
+                    throwUVIfMinus_ $ hs_getaddrinfo ptr_h ptr_s ptr_hints ptr_ptr_addrs))
+        freeaddrinfo
+        followAddrInfo
   where
 #if defined(darwin_HOST_OS)
     -- Leaving out the service and using AI_NUMERICSERV causes a
@@ -293,13 +292,6 @@ followAddrInfo ptr_ai
         !a  <- peek ptr_ai
         as <- (# peek struct addrinfo, ai_next) ptr_ai >>= followAddrInfo
         return (a : as)
-
-foreign import ccall safe "getaddrinfo"
-    c_getaddrinfo :: CString -> CString -> Ptr AddrInfo -> Ptr (Ptr AddrInfo)
-                  -> IO CInt
-
-foreign import ccall safe "freeaddrinfo"
-    c_freeaddrinfo :: Ptr AddrInfo -> IO ()
 
 -----------------------------------------------------------------------------
 
@@ -348,10 +340,10 @@ getNameInfo flags doHost doService addr = withUVInitDo $ do
 
 packBits :: (Eq a, Num b, Bits b) => [(a, b)] -> [a] -> b
 {-# INLINE packBits #-}
-packBits mapping xs = List.foldl' pack 0 mapping
+packBits mapping xs = List.foldl' go 0 mapping
   where
-    pack acc (k, v) | k `elem` xs = acc .|. v
-                    | otherwise   = acc
+    go acc (k, v) | k `elem` xs = acc .|. v
+                  | otherwise   = acc
 
 -- | Unpack a bitmask into a list of values.
 unpackBits :: (Num b, Bits b) => [(a, b)] -> b -> [a]

@@ -144,21 +144,21 @@ stderr = unsafePerformIO (makeStdStream 2)
 -- |  A global buffered stdin stream protected by 'MVar'.
 stdinBuf :: MVar (BufferedInput StdStream)
 {-# NOINLINE stdinBuf #-}
-stdinBuf = unsafePerformIO (newBufferedInput stdin defaultChunkSize >>= newMVar)
+stdinBuf = unsafePerformIO (newBufferedInput defaultChunkSize stdin >>= newMVar)
 
 -- |  A global buffered stdout stream protected by 'MVar'.
 --
 -- | If you want to write logs, don't use 'stdoutBuf' directly, use 'Z.IO.Logger' instead.
 stdoutBuf :: MVar (BufferedOutput StdStream)
 {-# NOINLINE stdoutBuf #-}
-stdoutBuf = unsafePerformIO (newBufferedOutput stdout defaultChunkSize >>= newMVar)
+stdoutBuf = unsafePerformIO (newBufferedOutput defaultChunkSize stdout >>= newMVar)
 
 -- |  A global buffered stderr stream protected by 'MVar'.
 --
 -- | If you want to write logs, don't use 'stderrBuf' directly, use 'Z.IO.Logger' instead.
 stderrBuf :: MVar (BufferedOutput StdStream)
 {-# NOINLINE stderrBuf #-}
-stderrBuf = unsafePerformIO (newBufferedOutput stderr defaultChunkSize >>= newMVar)
+stderrBuf = unsafePerformIO (newBufferedOutput defaultChunkSize stderr >>= newMVar)
 
 makeStdStream :: UVFD -> IO StdStream
 makeStdStream fd = do

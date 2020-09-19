@@ -10,7 +10,7 @@ Maintainer  : drkoster@qq.com
 Stability   : experimental
 Portability : non-portable
 
-This module provides necessary types and constant for low level socket operation.
+This module provides necessary types and constant for low level socket address manipulating.
 
 -}
 

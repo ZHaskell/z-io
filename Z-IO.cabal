@@ -107,6 +107,7 @@ library
                             Z.IO.Network.TCP
                             Z.IO.Network.UDP
                             Z.IO.Network.IPC
+                            Z.IO.Network
                             Z.IO.Buffered
                             Z.IO.Exception
                             Z.IO.LowResTimer

@@ -81,7 +81,7 @@ import           Z.IO.UV.Manager
 --------------------------------------------------------------------------------
 -- File
 
--- | 'FileT' is a 'UVFD' wrapped in 'MVar', -1 when closed.
+-- | 'FileT' and its operations are NOT thread safe, use 'MVar' 'FileT' in multiple threads.
 --
 -- Note this is a differet data type from "Z.IO.FileSystem" \'s one, the 'Input'
 -- and 'Output' instance use thread pool version functions.
@@ -89,8 +89,6 @@ import           Z.IO.UV.Manager
 -- libuv implements read and write method with both implict and explict offset capable.
 -- Implict offset interface is provided by 'Input' \/ 'Output' instances.
 -- Explict offset interface is provided by 'readFileT' \/ 'writeFileT'.
---
--- File and its operations are NOT thread safe, use 'MVar' 'FileT' in multiple threads.
 --
 data FileT =  FileT
     { uvFileT       :: {-# UNPACK #-} UVFD
@@ -407,10 +405,10 @@ readlink path = do
                 withUVRequestEx uvm
                     (hs_uv_fs_readlink_threaded p p')
                     (\ _ -> hs_uv_fs_readlink_extra_cleanup p'))
-        (\ (path, _) -> hs_uv_fs_readlink_cleanup path)
-        (\ (path, _) -> do
-            !path' <- fromCString path
-            return path')
+        (\ (p, _) -> hs_uv_fs_readlink_cleanup p)
+        (\ (p, _) -> do
+            !p' <- fromCString p
+            return p')
 
 -- | Equivalent to <http://linux.die.net/man/3/realpath realpath(3)> on Unix. Windows uses <https://msdn.microsoft.com/en-us/library/windows/desktop/aa364962(v=vs.85).aspx GetFinalPathNameByHandle>.
 --

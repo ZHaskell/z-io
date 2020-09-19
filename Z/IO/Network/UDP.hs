@@ -25,11 +25,6 @@ This module provides an API for creating UDP sender and receiver.
 * 'recvUDPLoop' is faster because it can reuse receive buffer, while 'recvUDP' create new buffer
   every time.
 
-@
---
-
-@
-
 -}
 
 module Z.IO.Network.UDP (

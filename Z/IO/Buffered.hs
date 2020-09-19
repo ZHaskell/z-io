@@ -109,19 +109,19 @@ data BufferedOutput o = BufferedOutput
     , outputBuffer  :: {-# UNPACK #-} !(MutablePrimArray RealWorld Word8)
     }
 
-newBufferedInput :: input
-                 -> Int     -- ^ Input buffer size
+newBufferedInput :: Int     -- ^ Input buffer size
+                 -> input
                  -> IO (BufferedInput input)
-newBufferedInput i bufSiz = do
+newBufferedInput bufSiz i = do
     pb <- newIORef V.empty
     buf <- newPinnedPrimArray (max bufSiz 0)
     inputBuffer <- newIORef buf
     return (BufferedInput i pb inputBuffer)
 
-newBufferedOutput :: output
-                  -> Int    -- ^ Output buffer size
+newBufferedOutput :: Int    -- ^ Output buffer size
+                  -> output
                   -> IO (BufferedOutput output)
-newBufferedOutput o bufSiz = do
+newBufferedOutput bufSiz o = do
     index <- newPrimIORef 0
     buf <- newPinnedPrimArray (max bufSiz 0)
     return (BufferedOutput o index buf)
