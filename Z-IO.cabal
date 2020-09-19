@@ -15,9 +15,9 @@ cabal-version:              >=1.10
 homepage:                   https://github.com/haskell-stdio/stdio
 bug-reports:                https://github.com/haskell-stdio/stdio/issues
 
-extra-source-files:         ../ChangeLog.md
-                            ../README.md
-                            ../LICENSE
+extra-source-files:         ChangeLog.md
+                            README.md
+                            LICENSE
 
                             include/hs_uv.h
                             cbits/hs_uv_base.c
