@@ -62,9 +62,7 @@ import           Z.IO.Exception
 
 -- | Input device
 --
--- Laws: 'readInput' should return 0 on EOF.
---
--- Note: 'readInput' is considered not thread-safe,
+-- 'readInput' should return 0 on EOF.
 --
 class Input i where
     readInput :: HasCallStack => i -> Ptr Word8 -> Int -> IO Int
@@ -73,14 +71,6 @@ class Input i where
 --
 -- 'writeOutput' should not return until all data are written (may not
 -- necessarily flushed to hardware, that should be done in device specific way).
-
--- Note: 'writeOutput' is considered not thread-safe,
---
--- * A 'BufferedOutput' should not be used in multiple threads, there's no locking mechanism to protect
---   buffering state.
---
--- * A 'Output' device should only be used with a single 'BufferedOutput', If multiple 'BufferedOutput' s
---   are opened on a same 'BufferedOutput' device, the output will be interleaved.
 --
 class Output o where
     writeOutput :: HasCallStack => o -> Ptr Word8 -> Int -> IO ()
@@ -100,12 +90,20 @@ data BufferedInput i = BufferedInput
     }
 
 -- | Output device with buffer, NOT THREAD SAFE!
+--
+-- * A 'BufferedOutput' should not be used in multiple threads, there's no locking mechanism to protect
+--   buffering state.
+--
+-- * A 'Output' device should only be used with a single 'BufferedOutput', If multiple 'BufferedOutput' s
+--   are opened on a same 'BufferedOutput' device, the output will be interleaved.
+--
 data BufferedOutput o = BufferedOutput
     { bufOutput     :: o
     , bufIndex      :: {-# UNPACK #-} !Counter
     , outputBuffer  :: {-# UNPACK #-} !(MutablePrimArray RealWorld Word8)
     }
 
+-- | Open a new buffered input with given buffer size, e.g. 'V.defaultChunkSize'.
 newBufferedInput :: Int     -- ^ Input buffer size
                  -> input
                  -> IO (BufferedInput input)
@@ -115,6 +113,7 @@ newBufferedInput bufSiz i = do
     inputBuffer <- newIORef buf
     return (BufferedInput i pb inputBuffer)
 
+-- | Open a new buffered output with given buffer size, e.g. 'V.defaultChunkSize'.
 newBufferedOutput :: Int    -- ^ Output buffer size
                   -> output
                   -> IO (BufferedOutput output)
@@ -194,14 +193,13 @@ readAll i = loop []
 readAll' :: (HasCallStack, Input i) => BufferedInput i -> IO V.Bytes
 readAll' i = V.concat <$> readAll i
 
-
 data ShortReadException = ShortReadException IOEInfo deriving (Show, Typeable)
 
 instance Exception ShortReadException where
     toException = ioExceptionToException
     fromException = ioExceptionFromException
 
--- | Push bytes back into buffer
+-- | Push bytes back into buffer.
 --
 unReadBuffer :: (HasCallStack, Input i) => V.Bytes -> BufferedInput i -> IO ()
 unReadBuffer pb' BufferedInput{..} = do
@@ -209,6 +207,7 @@ unReadBuffer pb' BufferedInput{..} = do
 
 -- | Read buffer and parse with 'Parser'.
 --
+-- This function will continuously draw data from input before parsing finish.
 readParser :: (HasCallStack, Input i) => P.Parser a -> BufferedInput i -> IO (V.Bytes, Either P.ParseError a)
 readParser p i = do
     bs <- readBuffer i
@@ -336,7 +335,7 @@ writeBuilder BufferedOutput{..} (B.Builder b) = do
             writePrimIORef bufIndex offset
             return [] -- to match 'BuildStep' return type
 
--- | Flush the buffer(if not empty).
+-- | Flush the buffer into output device(if not empty).
 --
 flushBuffer :: Output f => BufferedOutput f -> IO ()
 flushBuffer BufferedOutput{..} = do

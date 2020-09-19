@@ -220,8 +220,7 @@ defaultHints = AddrInfo {
 -----------------------------------------------------------------------------
 -- | Resolve a host or service name to one or more addresses.
 -- The 'AddrInfo' values that this function returns contain 'SocketAddr'
--- values that you can pass directly to 'connect' or
--- 'bind'.
+-- values that you can use to init TCP connection.
 --
 -- This function is protocol independent.  It can return both IPv4 and
 -- IPv6 address information.
@@ -233,7 +232,7 @@ defaultHints = AddrInfo {
 --
 -- >>> let hints = defaultHints { addrFlags = [AI_NUMERICHOST], addrSocketType = Stream }
 --
--- You must provide a 'Just' value for at least one of the 'HostName'
+-- You must provide non empty value for at least one of the 'HostName'
 -- or 'ServiceName' arguments.  'HostName' can be either a numeric
 -- network address (dotted quad for IPv4, colon-separated hex for
 -- IPv6) or a hostname.  In the latter case, its addresses will be
@@ -257,7 +256,7 @@ defaultHints = AddrInfo {
 -- >>> addr:_ <- getAddrInfo (Just hints) "127.0.0.1" "http"
 -- >>> addrAddress addr
 -- 127.0.0.1:80
-
+--
 getAddrInfo
     :: Maybe AddrInfo -- ^ preferred socket type or protocol
     -> HostName -- ^ host name to look up
@@ -305,12 +304,12 @@ followAddrInfo ptr_ai
 --
 -- If the query fails, this function throws an IO exception.
 --
--- >>> addr:_ <- getAddrInfo (Just defaultHints) (Just "127.0.0.1") (Just "http")
+-- >>> addr:_ <- getAddrInfo (Just defaultHints) "127.0.0.1" "http"
 -- >>> getNameInfo [NI_NUMERICHOST, NI_NUMERICSERV] True True $ addrAddress addr
--- (Just "127.0.0.1",Just "80")
+-- ("127.0.0.1", "80")
 {-
 -- >>> getNameInfo [] True True $ addrAddress addr
--- (Just "localhost",Just "http")
+-- ("localhost", "http")
 -}
 getNameInfo
     :: [NameInfoFlag] -- ^ flags to control lookup behaviour
@@ -331,13 +330,12 @@ getNameInfo flags doHost doService addr = withUVInitDo $ do
     cflag = packBits nameInfoFlagMapping flags
 
 
+-----------------------------------------------------------------------------
 -- | Pack a list of values into a bitmask.  The possible mappings from
 -- value to bit-to-set are given as the first argument.  We assume
 -- that each value can cause exactly one bit to be set; unpackBits will
 -- break if this property is not true.
-
------------------------------------------------------------------------------
-
+--
 packBits :: (Eq a, Num b, Bits b) => [(a, b)] -> [a] -> b
 {-# INLINE packBits #-}
 packBits mapping xs = List.foldl' go 0 mapping

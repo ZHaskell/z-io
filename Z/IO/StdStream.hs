@@ -15,18 +15,28 @@ Portability : non-portable
 This module provides stdin\/stderr\/stdout reading and writings. Usually you don't have to use 'stderr' or 'stderrBuf' directly, 'Z.IO.Logger' provides more logging utilities through @stderr@. While 'stdinBuf' and 'stdoutBuf' is useful when you write interactive programs, 'Z.IO.Buffered' module provide many reading and writing operations. Example:
 
 @
+import Control.Concurrent.MVar
 import Z.IO.LowResTimer
 import Z.IO.Buffered
 import Z.IO.StdStream
-
+import qualified Z.Data.Vector as V
+import qualified Z.Data.Builder as B
 main = do
     -- read by '\n'
     b1 <- readLineStd
     -- read whatever user input in 3s, otherwise get Nothing
-    b2 <- timeoutLowRes 30 $ readBuffered stdinBuf
+    b2 <- timeoutLowRes 30 $ withMVar stdinBuf readBuffer
     ...
     putStd "hello world!"
 
+    -- Raw mode
+    setStdinTTYMode UV_TTY_MODE_RAW
+    forever $ do
+        withMVar stdinBuf $ \ i -> withMVar stdoutBuf $ \ o -> do
+            bs <- readBuffer i
+            let Just key = V.headMaybe bs
+            writeBuilder o (B.hex key)
+            flushBuffer o
 @
 
 -}

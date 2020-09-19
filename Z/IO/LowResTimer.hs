@@ -206,7 +206,7 @@ cancelLowResTimer_ = void . cancelLowResTimer
 -- | similar to 'System.Timeout.timeout', this function put a limit on time which an IO can consume.
 --
 -- Note timeoutLowRes is also implemented with 'Exception' underhood, which can have some surprising
--- effects on some devices, e.g. use 'timeoutLowRes' with reading or writing on 'UVStream's will close
+-- effects on some devices, e.g. use 'timeoutLowRes' with reading or writing on 'UVStream's may close
 -- the 'UVStream' once a reading or writing is not able to be done in time.
 timeoutLowRes :: Int    -- ^ timeout in unit of 0.1s
               -> IO a
@@ -222,8 +222,8 @@ timeoutLowRes timeo io = do
   where
     timeoutAThread tid = void . forkIO $ throwTo tid (TimeOutException tid undefined)
 
--- | similar to 'timeoutLowRes', but raise a 'TimeOutException' instead of return 'Nothing'
--- if timeout.
+-- | Similar to 'timeoutLowRes', but raise a 'TimeOutException' to current thread
+-- instead of return 'Nothing' if timeout.
 timeoutLowResEx :: HasCallStack
                 => Int    -- ^ timeout in unit of 0.1s
                 -> IO a

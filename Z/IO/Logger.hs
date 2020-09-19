@@ -14,14 +14,15 @@ Portability : non-portable
 Simple, high performance logger. The design choice of this logger is biased towards simplicity instead of generlization:
 
     * All log functions lives in 'IO'.
-    * A logger connected to stderr, 'setStdLogger' are always available.
-    * Each logging thread are responsible for building log 'Builder's into a small 'V.Bytes' with line buffer
-      instead of leaving all 'Builder's to the flushing thread so that:
-        * We won't keep garbage for too long simply because they're referenced by log's 'Builder'.
-        * Each logging thread only need perform a CAS to prepend log 'V.Bytes' into a list, which reduces contention.
-        * Each log is atomic, Logging order is preserved under concurrent settings.
+    * By default this logger is connected to stderr, use 'setStdLogger' to customize.
+    * When logging each thread will build log 'Builder's into a small 'V.Bytes' with line buffer
+      instead of leaving all 'Builder's to the flushing thread:
+        * Logger won't keep heap data for too long simply because they're referenced by log's 'Builder'.
+        * Each logging thread only need perform a CAS to prepend log 'V.Bytes' into a list,
+          which reduces contention.
+        * Each log call is atomic, Logging order is preserved under concurrent settings.
 
-Flushing is automatic and throttled for 'debug', 'info', 'warn' to boost performance, while a 'fatal' log always flush logger's buffer, This also lead to a problem that if main thread exits too early logs may missed, to add a flushing when program exits, use 'withLogger' like:
+Flushing is automatic and throttled for 'debug', 'info', 'warn' to boost performance, but a 'fatal' log will always flush logger's buffer.  This could lead to a problem that if main thread exits too early logs may missed, to add a flushing when program exits, use 'withStdLogger' like:
 
 @
 import Z.IO.Logger
@@ -29,6 +30,8 @@ import Z.IO.Logger
 main :: IO ()
 main = withStdLogger $ do
     ....
+    debug "..."   -- So that this log won't be missed
+    ...
 @
 -}
 
@@ -74,7 +77,6 @@ data Logger = Logger
     , loggerConfig          :: {-# UNPACK #-} !LoggerConfig
     }
 
--- | Logger configuration.
 data LoggerConfig = LoggerConfig
     { loggerMinFlushInterval :: {-# UNPACK #-} !Int -- ^ Minimal flush interval, see Notes on 'debug'
     , loggerTsCache          :: IO (B.Builder ())   -- ^ A IO action return a formatted date/time string
@@ -127,10 +129,11 @@ globalLogger :: IORef Logger
 globalLogger = unsafePerformIO $
     newIORef =<< newLogger defaultLoggerConfig stderrBuf
 
--- | Change stderr logger.
+-- | Change the global logger.
 setStdLogger :: Logger -> IO ()
 setStdLogger !logger = atomicWriteIORef globalLogger logger
 
+-- | Get the global logger.
 getStdLogger :: IO Logger
 getStdLogger = readIORef globalLogger
 
