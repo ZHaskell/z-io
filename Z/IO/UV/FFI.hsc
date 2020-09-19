@@ -145,7 +145,7 @@ foreign import ccall unsafe hs_uv_accept_check_init :: Ptr UVHandle -> IO CInt
 foreign import ccall unsafe hs_uv_accept_check_close :: Ptr UVHandle -> IO ()
 
 --------------------------------------------------------------------------------
--- tcp
+-- tcp & pipe
 foreign import ccall unsafe hs_uv_tcp_open :: Ptr UVHandle -> UVFD -> IO CInt
 foreign import ccall unsafe uv_tcp_init :: Ptr UVLoop -> Ptr UVHandle -> IO CInt
 foreign import ccall unsafe uv_tcp_init_ex :: Ptr UVLoop -> Ptr UVHandle -> CUInt -> IO CInt
@@ -154,9 +154,15 @@ foreign import ccall unsafe uv_tcp_keepalive :: Ptr UVHandle -> CInt -> CUInt ->
 
 uV_TCP_IPV6ONLY :: CUInt
 uV_TCP_IPV6ONLY = #{const UV_TCP_IPV6ONLY}
+
 foreign import ccall unsafe uv_tcp_bind :: Ptr UVHandle -> Ptr SocketAddr -> CUInt -> IO CInt
 foreign import ccall unsafe hs_uv_tcp_connect :: Ptr UVHandle -> Ptr SocketAddr -> IO UVSlotUnSafe
 foreign import ccall unsafe hs_set_socket_reuse :: Ptr UVHandle -> IO CInt
+
+foreign import ccall unsafe hs_uv_pipe_open :: Ptr UVHandle -> UVFD -> IO CInt
+foreign import ccall unsafe uv_pipe_init :: Ptr UVLoop -> Ptr UVHandle -> CInt -> IO CInt
+foreign import ccall unsafe uv_pipe_bind :: Ptr UVHandle -> CString -> IO CInt
+foreign import ccall unsafe hs_uv_pipe_connect :: Ptr UVHandle -> CString -> IO UVSlotUnSafe
 
 --------------------------------------------------------------------------------
 -- udp
@@ -200,9 +206,6 @@ foreign import ccall unsafe uv_udp_getsockname
 foreign import ccall unsafe uv_udp_getpeername
     :: Ptr UVHandle -> Ptr SocketAddr -> MBA## CInt -> IO CInt
 
---------------------------------------------------------------------------------
--- pipe
-foreign import ccall unsafe uv_pipe_init :: Ptr UVLoop -> Ptr UVHandle -> CInt -> IO CInt
 
 --------------------------------------------------------------------------------
 -- tty

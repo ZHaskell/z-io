@@ -33,16 +33,18 @@ This module provides an API for creating UDP sender and receiver.
 -}
 
 module Z.IO.Network.UDP (
-  -- * UDP Client
-    UDP(..)
+  -- * TCP Client
+    UDP
   , initUDP
   , UDPConfig(..)
   , defaultUDPConfig
   , UVUDPFlag(UV_UDP_DEFAULT, UV_UDP_IPV6ONLY, UV_UDP_REUSEADDR)
   , sendUDP
+  , UDPRecvConfig(..)
+  , defaultUDPRecvConfig
   , recvUDPLoop
   , recvUDP
-  , getUDPSockName
+  , getSockName
   -- * Connected UDP Client
   , ConnectedUDP
   , connectUDP
@@ -102,14 +104,15 @@ data UDP = UDP
 -- | UDP options.
 --
 -- Though technically message length field in the UDP header is a max of 65535, but large packets
--- could be more likely dropped by routers, usually a packet(IPV4) with a payload <= 508 bytes is considered safe.
+-- could be more likely dropped by routers,
+-- usually a packet(IPV4) with a payload <= 508 bytes is considered safe.
 data UDPConfig = UDPConfig
-    { updSendMsgSize :: {-# UNPACK #-} !Int           -- ^ maximum size of sending buffer
+    { udpSendMsgSize :: {-# UNPACK #-} !Int           -- ^ maximum size of sending buffer
     , udpLocalAddr :: Maybe (SocketAddr, UVUDPFlag) -- ^ do we want bind a local address before receiving & sending?
                                                    --   set to Nothing to let OS pick a random one.
     } deriving (Show, Eq, Ord)
 
--- | default 'UDPConfig', @defaultUDPConfig = UDPConfig 512 6 512 Nothing@
+-- | @UDPConfig 512 Nothing@
 defaultUDPConfig = UDPConfig 512 Nothing
 
 -- | Initialize a UDP socket.
@@ -136,13 +139,10 @@ initUDP (UDPConfig sbsiz maddr) = initResource
         sbuf <- A.newPinnedPrimArray (max 0 sbsiz)
         closed <- newIORef False
         return (UDP handle slot uvm sbuf closed))
-    closeUDP
-
-closeUDP :: UDP -> IO ()
-closeUDP (UDP handle _ uvm _  closed) = withUVManager' uvm $ do
-    c <- readIORef closed
-    -- hs_uv_handle_close won't return error
-    unless c $ writeIORef closed True >> hs_uv_handle_close handle
+    (\ (UDP handle _ uvm _  closed) -> withUVManager' uvm $ do
+        c <- readIORef closed
+        -- hs_uv_handle_close won't return error
+        unless c $ writeIORef closed True >> hs_uv_handle_close handle)
 
 checkUDPClosed :: HasCallStack => UDP -> IO ()
 checkUDPClosed udp = do
@@ -171,13 +171,13 @@ connectUDP udp@(UDP handle _ _ _ _) addr = do
 
 -- | Disconnect the UDP handle from a remote address and port.
 disconnectUDP :: HasCallStack => ConnectedUDP -> IO UDP
-disconnectUDP (ConnectedUDP udp@(UDP handle _ _ _ _)) =
+disconnectUDP (ConnectedUDP udp@(UDP handle _ _ _ _)) = do
     checkUDPClosed udp
     throwUVIfMinus_ (uv_udp_connect handle nullPtr)
     return udp
 
 -- | Get the remote IP and port on 'ConnectedUDP'.
-getPeerName :: HasCallStack => UDP -> IO SocketAddr
+getPeerName :: HasCallStack => ConnectedUDP -> IO SocketAddr
 getPeerName (ConnectedUDP udp@(UDP handle _ _ _ _)) = do
     checkUDPClosed udp
     withSocketAddrStorage $ \ paddr ->
@@ -188,8 +188,8 @@ getPeerName (ConnectedUDP udp@(UDP handle _ _ _ _)) = do
 --
 -- WARNING: A 'InvalidArgument' with errno 'UV_EMSGSIZE' will be thrown
 -- if message is larger than 'sendMsgSize'.
-sendUDPConnected :: HasCallStack => ConnectedUDP -> V.Bytes -> IO ()
-sendUDPConnected (ConnectedUDP udp@(UDP handle slot uvm sbuf closed)) (V.PrimVector ba s la) = mask_ $ do
+sendConnectedUDP :: HasCallStack => ConnectedUDP -> V.Bytes -> IO ()
+sendConnectedUDP (ConnectedUDP udp@(UDP handle slot uvm sbuf closed)) (V.PrimVector ba s la) = mask_ $ do
     checkUDPClosed udp
     -- copy message to pinned buffer
     lb <- getSizeofMutablePrimArray sbuf
@@ -241,23 +241,27 @@ setMulticastLoop udp@(UDP handle _ _ _ _) loop = do
     checkUDPClosed udp
     throwUVIfMinus_ (uv_udp_set_multicast_loop handle (if loop then 1 else 0))
 
+-- | Set the multicast ttl.
 setMulticastTTL :: HasCallStack => UDP -> Int -> IO ()
 setMulticastTTL udp@(UDP handle _ _ _ _) ttl = do
     checkUDPClosed udp
     throwUVIfMinus_ (uv_udp_set_multicast_ttl handle (fromIntegral ttl'))
   where ttl' = V.rangeCut ttl 1 255
 
+-- | Set the multicast interface to send or receive data on.
 setMulticastInterface :: HasCallStack => UDP -> CBytes ->IO ()
 setMulticastInterface udp@(UDP handle _ _ _ _) iaddr = do
     checkUDPClosed udp
     withCBytes iaddr $ \ iaddrp ->
         throwUVIfMinus_ (uv_udp_set_multicast_interface handle iaddrp)
 
+-- | Set broadcast on or off.
 setBroadcast :: HasCallStack => UDP -> Bool -> IO ()
 setBroadcast udp@(UDP handle _ _ _ _) b = do
     checkUDPClosed udp
-    throwUVIfMinus_ (uv_udp_set_broadcast handle (if b then 49 else 0))
+    throwUVIfMinus_ (uv_udp_set_broadcast handle (if b then 1 else 0))
 
+-- | Set the time to live.
 setTTL :: HasCallStack
        => UDP
        -> Int       -- ^ 1 ~ 255
@@ -266,7 +270,7 @@ setTTL udp@(UDP handle _ _ _ _) ttl = do
     checkUDPClosed udp
     throwUVIfMinus_ (uv_udp_set_ttl handle (fromIntegral ttl))
 
-
+-- | Set membership for a multicast group.
 setMembership :: HasCallStack
               => UDP
               -> CBytes             -- ^ Multicast address to set membership for.
@@ -279,6 +283,7 @@ setMembership udp@(UDP handle _ _ _ _) gaddr iaddr member = do
         withCBytes iaddr $ \ iaddrp ->
             throwUVIfMinus_ (uv_udp_set_membership handle gaddrp iaddrp member)
 
+-- | Set membership for a source-specific multicast group.
 setSourceMembership :: HasCallStack
                     => UDP
                     -> CBytes           -- ^ Multicast address to set membership for.
@@ -295,6 +300,8 @@ setSourceMembership udp@(UDP handle _ _ _ _) gaddr iaddr source member = do
 
 --------------------------------------------------------------------------------
 
+-- | Receiving buffering config.
+--
 data UDPRecvConfig = UDPRecvConfig
     { recvMsgSize :: {-# UNPACK #-} !Int32      -- ^ maximum size of a received message
     , recvBatchSize :: {-# UNPACK #-} !Int      -- ^ how many messages we want to receive per uv loop,
@@ -302,6 +309,10 @@ data UDPRecvConfig = UDPRecvConfig
                                                 --   increase this number can improve receiving performance,
                                                 --   at the cost of memory and potential GHC thread starving.
     }
+
+-- | @UDPRecvConfig 512 6@
+defaultUDPRecvConfig :: UDPRecvConfig
+defaultUDPRecvConfig = UDPRecvConfig 512 6
 
 
 -- The buffer passing of UDP is a litte complicated here, to get maximum performance,
@@ -348,13 +359,15 @@ newRecvBuf bufSiz bufArrSiz = do
     bufsiz' = 140 + (max 0 bufSiz)
     bufArrSiz' = max 1 bufArrSiz
 
-
+-- | Recv UDP message within a loop
+--
+-- Loop receiving can be faster since it can reuse receiving buffer.
 recvUDPLoop :: HasCallStack
-            => UDP
-            -> UDPRecvConfig
+            => UDPRecvConfig
+            -> UDP
             -> ((Maybe SocketAddr, Bool, V.Bytes) -> IO a)
             -> IO ()
-recvUDPLoop udp (UDPRecvConfig bufSiz bufArrSiz) worker = do
+recvUDPLoop (UDPRecvConfig bufSiz bufArrSiz) udp worker = do
     buf <- newRecvBuf bufSiz bufArrSiz
     forever $ do
         msgs <- recvUDPWith udp buf bufSiz
@@ -362,8 +375,9 @@ recvUDPLoop udp (UDPRecvConfig bufSiz bufArrSiz) worker = do
 
 -- | Recv messages from UDP socket, return source address if available, and a `Bool`
 -- to indicate if the message is partial (larger than receive buffer size).
-recvUDP :: HasCallStack => UDP -> UDPRecvConfig -> IO [(Maybe SocketAddr, Bool, V.Bytes)]
-recvUDP udp (UDPRecvConfig bufSiz bufArrSiz)  = do
+--
+recvUDP :: HasCallStack => UDPRecvConfig -> UDP -> IO [(Maybe SocketAddr, Bool, V.Bytes)]
+recvUDP (UDPRecvConfig bufSiz bufArrSiz) udp = do
     buf <- newRecvBuf bufSiz bufArrSiz
     recvUDPWith udp buf bufSiz
 

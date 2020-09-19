@@ -261,9 +261,12 @@ int hs_uv_accept_check_init(uv_check_t* check);
 void hs_uv_accept_check_close(uv_check_t* check);
 
 ////////////////////////////////////////////////////////////////////////////////
-// tcp
+// tcp and pipe
 int hs_uv_tcp_open(uv_tcp_t* handle, int32_t sock);
 HsInt hs_uv_tcp_connect(uv_tcp_t* handle, const struct sockaddr* addr);
+
+int hs_uv_pipe_open(uv_pipe_t* handle, int32_t sock);
+HsInt hs_uv_pipe_connect(uv_pipe_t* handle, const char* name);
 
 #if defined(_WIN32)
 #define UV_HANDLE_READING                       0x00000100

@@ -2,10 +2,10 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 {-|
-Module      : Z.IO.Pipe
+Module      : Z.IO.IPC
 Description : Named pipe/Unix domain servers and clients
 Copyright   : (c) Dong Han, 2018
 License     : BSD
@@ -24,7 +24,7 @@ net.createServer().listen(
 
 -}
 
-module Z.IO.Network.Pipe (
+module Z.IO.Network.IPC (
   -- * IPC Client
     IPCClientConfig(..)
   , defaultIPCClientConfig
@@ -46,8 +46,9 @@ import           Foreign.Ptr
 import           GHC.Ptr
 import           Z.Foreign
 import           Z.Data.Array
+import           Z.Data.CBytes
 import           Z.IO.Buffered
-import           Z.IO.Exception
+import           Z.IO.Exception            hiding (handle)
 import           Z.IO.Network.SocketAddr
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
@@ -60,27 +61,27 @@ import           Data.Coerce
 -- | A IPC client configuration
 --
 data IPCClientConfig = IPCClientConfig
-    { tcpClientAddr :: Maybe SocketAddr -- ^ assign a local address, or let OS pick one
-    , tcpRemoteAddr :: SocketAddr      -- ^ remote target address
-    , tcpNoDelay :: Bool             -- ^ if we want to use @IPC_NODELAY@
+    { ipcClientName :: Maybe CBytes -- ^ bind to a local file path (Unix) or name (Windows),
+                                    -- won't bind if 'Nothing'.
+    , ipcTargetName :: CBytes       -- ^ target path (Unix) or a name (Windows).
     }
 
+-- | Default config, connect to "./ipc".
+--
 defaultIPCClientConfig :: IPCClientConfig
-defaultIPCClientConfig = IPCClientConfig Nothing (SocketAddrInet 8888 inetLoopback) True
+defaultIPCClientConfig = IPCClientConfig Nothing "./ipc"
 
 initIPCClient :: HasCallStack => IPCClientConfig -> Resource UVStream
-initIPCClient IPCClientConfig{..} = do
+initIPCClient (IPCClientConfig cname tname) = do
     uvm <- liftIO getUVManager
     client <- initIPCStream uvm
     let handle = uvsHandle client
-    liftIO . withSocketAddr tcpRemoteAddr $ \ targetPtr -> do
-        forM_ tcpClientAddr $ \ tcpClientAddr' ->
-            withSocketAddr tcpClientAddr' $ \ localPtr ->
+    liftIO . withCBytes tname $ \ tname_p -> do
+        forM_ cname $ \ cname' ->
+            withCBytes cname' $ \ cname_p ->
                 -- bind is safe without withUVManager
-                throwUVIfMinus_ (uv_tcp_bind handle localPtr 0)
-        -- nodelay is safe without withUVManager
-        when tcpNoDelay $ throwUVIfMinus_ (uv_tcp_nodelay handle 1)
-        withUVRequest uvm $ \ _ -> hs_uv_tcp_connect handle targetPtr
+                throwUVIfMinus_ (uv_pipe_bind handle cname_p)
+        withUVRequest uvm $ \ _ -> hs_uv_pipe_connect handle tname_p
     return client
 
 --------------------------------------------------------------------------------
@@ -88,23 +89,21 @@ initIPCClient IPCClientConfig{..} = do
 -- | A IPC server configuration
 --
 data IPCServerConfig = IPCServerConfig
-    { tcpListenAddr       :: SocketAddr      -- ^ listening address
-    , tcpListenBacklog    :: Int           -- ^ listening socket's backlog size, must be large enough(>128)
-    , tcpServerWorker     :: UVStream -> IO ()  -- ^ worker which get an accepted IPC stream,
-                                            -- the socket will be closed upon exception or worker finishes.
-    , tcpServerWorkerNoDelay :: Bool       -- ^ if we want to use @IPC_NODELAY@
+    { ipcListenName       :: CBytes      -- ^ listening path (Unix) or a name (Windows).
+    , ipcListenBacklog    :: Int           -- ^ listening pipe's backlog size, should be large enough(>128)
+    , ipcServerWorker     :: UVStream -> IO ()  -- ^ worker which get an accepted IPC stream,
+                                                -- the socket will be closed upon exception or worker finishes.
     }
 
--- | A default hello world server on localhost:8888
+-- | A default hello world server on @./ipc@
 --
--- Test it with @main = startIPCServer defaultIPCServerConfig@, now try @nc -v 127.0.0.1 8888@
+-- Test it with @main = startIPCServer defaultIPCServerConfig@
 --
 defaultIPCServerConfig :: IPCServerConfig
 defaultIPCServerConfig = IPCServerConfig
-    (SocketAddrInet 8888 inetAny)
+    "./ipc"
     256
     (\ uvs -> writeOutput uvs (Ptr "hello world"#) 11)
-    True
 
 -- | Start a server
 --
@@ -112,6 +111,7 @@ defaultIPCServerConfig = IPCServerConfig
 --
 startIPCServer :: HasCallStack => IPCServerConfig -> IO ()
 startIPCServer IPCServerConfig{..} = do
+    let backLog = max ipcListenBacklog 128
     serverUVManager <- getUVManager
     withResource (initIPCStream serverUVManager) $ \ (UVStream serverHandle serverSlot _ _) ->
         bracket
@@ -121,50 +121,50 @@ startIPCServer IPCServerConfig{..} = do
 -- The buffer passing of accept is a litte complicated here, to get maximum performance,
 -- we do batch accepting. i.e. recv multiple client inside libuv's event loop:
 --
--- we poke uvmanager's buffer table as a Ptr Word8, with byte size (tcpListenBacklog*sizeof(UVFD))
+-- we poke uvmanager's buffer table as a Ptr Word8, with byte size (backLog*sizeof(UVFD))
 -- inside libuv event loop, we cast the buffer back to int32_t* pointer.
 -- each accept callback push a new socket fd to the buffer, and increase a counter(buffer_size_table).
--- tcpListenBacklog should be large enough(>128), so under windows we can't possibly filled it up within one
--- uv_run, under unix we hacked uv internal to provide a stop and resume function, when tcpListenBacklog is
+-- backLog should be large enough(>128), so under windows we can't possibly filled it up within one
+-- uv_run, under unix we hacked uv internal to provide a stop and resume function, when backLog is
 -- reached, we will stop receiving.
 --
 -- once back to haskell side, we read all accepted sockets and fork worker threads.
--- if tcpListenBacklog is reached, we resume receiving from haskell side.
+-- if backLog is reached, we resume receiving from haskell side.
 --
 -- Step 1.
 -- we allocate a new uv_check_t for given uv_stream_t, with predefined checking callback
 -- see hs_accept_check_cb in hs_uv_stream.c
                 throwUVIfMinus_ $ hs_uv_accept_check_init check
-                withSocketAddr tcpListenAddr $ \ addrPtr -> do
+                withCBytes ipcListenName $ \ name_p -> do
                     m <- getBlockMVar serverUVManager serverSlot
-                    acceptBuf <- newPinnedPrimArray tcpListenBacklog
+                    acceptBuf <- newPinnedPrimArray backLog
                     let acceptBufPtr = coerce (mutablePrimArrayContents acceptBuf :: Ptr UVFD)
 -- Step 2.
 -- we allocate a buffer to hold accepted FDs, pass it just like a normal reading buffer.
                     withUVManager' serverUVManager $ do
                         -- We use buffersize as accepted fd counter, so we write 0 here
-                        pokeBufferTable serverUVManager serverSlot acceptBufPtr (tcpListenBacklog-1)
-                        throwUVIfMinus_ (uv_tcp_bind serverHandle addrPtr 0)
-                        throwUVIfMinus_ (hs_uv_listen serverHandle (max 4 (fromIntegral tcpListenBacklog)))
+                        pokeBufferTable serverUVManager serverSlot acceptBufPtr (backLog-1)
+                        throwUVIfMinus_ (uv_pipe_bind serverHandle name_p)
+                        throwUVIfMinus_ (hs_uv_listen serverHandle (max 4 (fromIntegral backLog)))
 
                     forever $ do
-                        -- cleaning
-                        tryTakeMVar m
-
+                        -- wait until accept some FDs
+                        !acceptCountDown <- takeMVar m
 -- Step 3.
 -- Copy buffer, fetch accepted FDs and fork worker threads.
 
                         -- we lock uv manager here in case of next uv_run overwrite current accept buffer
                         acceptBufCopy <- withUVManager' serverUVManager $ do
                             tryTakeMVar m
-                            accepted_down_counter <- peekBufferTable serverUVManager serverSlot
-                            -- if accepted_down_counter count to -1, we should resume on haskell side
-                            when (accepted_down_counter == -1) (hs_uv_listen_resume serverHandle)
+                            pokeBufferTable serverUVManager serverSlot acceptBufPtr (backLog-1)
+
+                            -- if acceptCountDown count to -1, we should resume on haskell side
+                            when (acceptCountDown == -1) (hs_uv_listen_resume serverHandle)
+
                             -- copy accepted FDs
-                            let accepted_count = tcpListenBacklog- accepted_down_counter
-                            acceptBuf' <- newPrimArray tcpListenBacklog
-                            copyMutablePrimArray acceptBuf' 0 acceptBuf (accepted_down_counter+1) accepted_count
-                            pokeBufferTable serverUVManager serverSlot acceptBufPtr (tcpListenBacklog-1)
+                            let acceptCount = backLog - 1 - acceptCountDown
+                            acceptBuf' <- newPrimArray acceptCount
+                            copyMutablePrimArray acceptBuf' 0 acceptBuf (acceptCountDown+1) acceptCount
                             unsafeFreezePrimArray acceptBuf'
 
                         -- fork worker thread
@@ -177,20 +177,12 @@ startIPCServer IPCServerConfig{..} = do
                             else void . forkBa $ do
                                 uvm <- getUVManager
                                 withResource (initUVStream (\ loop handle -> do
-                                    throwUVIfMinus_ (uv_tcp_init loop handle)
-                                    throwUVIfMinus_ (hs_uv_tcp_open handle fd)) uvm) $ \ uvs -> do
-                                    when tcpServerWorkerNoDelay . throwUVIfMinus_ $
-                                        -- safe without withUVManager
-                                        uv_tcp_nodelay (uvsHandle uvs) 1
-                                    tcpServerWorker uvs
+                                    throwUVIfMinus_ (uv_pipe_init loop handle 0)
+                                    throwUVIfMinus_ (hs_uv_pipe_open handle fd)) uvm) $ \ uvs -> do
+                                    ipcServerWorker uvs
 
 --------------------------------------------------------------------------------
 
 initIPCStream :: HasCallStack => UVManager -> Resource UVStream
 initIPCStream = initUVStream (\ loop handle ->
-    throwUVIfMinus_ (uv_tcp_init loop handle))
-
-initIPCExStream :: HasCallStack => CUInt -> UVManager -> Resource UVStream
-initIPCExStream family = initUVStream (\ loop handle ->
-    throwUVIfMinus_ (uv_tcp_init_ex loop handle family))
-
+    throwUVIfMinus_ (uv_pipe_init loop handle 0))

@@ -59,9 +59,12 @@ data TCPClientConfig = TCPClientConfig
     , tcpNoDelay :: Bool             -- ^ if we want to use @TCP_NODELAY@
     }
 
+-- | Default config, connect to @localhost:8888@.
 defaultTCPClientConfig :: TCPClientConfig
 defaultTCPClientConfig = TCPClientConfig Nothing (SocketAddrInet 8888 inetLoopback) True
 
+-- | init a TCP client 'Resource', which open a new connect when used.
+--
 initTCPClient :: HasCallStack => TCPClientConfig -> Resource UVStream
 initTCPClient TCPClientConfig{..} = do
     uvm <- liftIO getUVManager
@@ -83,7 +86,7 @@ initTCPClient TCPClientConfig{..} = do
 --
 data TCPServerConfig = TCPServerConfig
     { tcpListenAddr       :: SocketAddr      -- ^ listening address
-    , tcpListenBacklog    :: Int           -- ^ listening socket's backlog size, must be large enough(>128)
+    , tcpListenBacklog    :: Int           -- ^ listening socket's backlog size, should be large enough(>128)
     , tcpServerWorker     :: UVStream -> IO ()  -- ^ worker which get an accepted TCP stream,
                                             -- the socket will be closed upon exception or worker finishes.
     , tcpServerWorkerNoDelay :: Bool       -- ^ if we want to use @TCP_NODELAY@
@@ -106,6 +109,7 @@ defaultTCPServerConfig = TCPServerConfig
 --
 startTCPServer :: HasCallStack => TCPServerConfig -> IO ()
 startTCPServer TCPServerConfig{..} = do
+    let backLog = max tcpListenBacklog 128
     serverUVManager <- getUVManager
     withResource (initTCPStream serverUVManager) $ \ (UVStream serverHandle serverSlot _ _) ->
         bracket
@@ -115,15 +119,15 @@ startTCPServer TCPServerConfig{..} = do
 -- The buffer passing of accept is a litte complicated here, to get maximum performance,
 -- we do batch accepting. i.e. recv multiple client inside libuv's event loop:
 --
--- we poke uvmanager's buffer table as a Ptr Word8, with byte size (tcpListenBacklog*sizeof(UVFD))
+-- we poke uvmanager's buffer table as a Ptr Word8, with byte size (backLog*sizeof(UVFD))
 -- inside libuv event loop, we cast the buffer back to int32_t* pointer.
 -- each accept callback push a new socket fd to the buffer, and increase a counter(buffer_size_table).
--- tcpListenBacklog should be large enough(>128), so under windows we can't possibly filled it up within one
--- uv_run, under unix we hacked uv internal to provide a stop and resume function, when tcpListenBacklog is
+-- backLog should be large enough(>128), so under windows we can't possibly filled it up within one
+-- uv_run, under unix we hacked uv internal to provide a stop and resume function, when backLog is
 -- reached, we will stop receiving.
 --
 -- once back to haskell side, we read all accepted sockets and fork worker threads.
--- if tcpListenBacklog is reached, we resume receiving from haskell side.
+-- if backLog is reached, we resume receiving from haskell side.
 --
 -- Step 1.
 -- we allocate a new uv_check_t for given uv_stream_t, with predefined checking callback
@@ -131,34 +135,35 @@ startTCPServer TCPServerConfig{..} = do
                 throwUVIfMinus_ $ hs_uv_accept_check_init check
                 withSocketAddr tcpListenAddr $ \ addrPtr -> do
                     m <- getBlockMVar serverUVManager serverSlot
-                    acceptBuf <- newPinnedPrimArray tcpListenBacklog
+                    acceptBuf <- newPinnedPrimArray backLog
                     let acceptBufPtr = coerce (mutablePrimArrayContents acceptBuf :: Ptr UVFD)
 -- Step 2.
 -- we allocate a buffer to hold accepted FDs, pass it just like a normal reading buffer.
                     withUVManager' serverUVManager $ do
-                        -- We use buffersize as accepted fd counter, so we write 0 here
-                        pokeBufferTable serverUVManager serverSlot acceptBufPtr (tcpListenBacklog-1)
+                        -- We use buffersize as accepted fd count(count backwards)
+                        pokeBufferTable serverUVManager serverSlot acceptBufPtr (backLog-1)
                         throwUVIfMinus_ (uv_tcp_bind serverHandle addrPtr 0)
-                        throwUVIfMinus_ (hs_uv_listen serverHandle (max 4 (fromIntegral tcpListenBacklog)))
+                        throwUVIfMinus_ (hs_uv_listen serverHandle (max 4 (fromIntegral backLog)))
 
                     forever $ do
-                        -- cleaning
-                        tryTakeMVar m
-
+                        -- wait until accept some FDs
+                        !acceptCountDown <- takeMVar m
 -- Step 3.
 -- Copy buffer, fetch accepted FDs and fork worker threads.
 
                         -- we lock uv manager here in case of next uv_run overwrite current accept buffer
                         acceptBufCopy <- withUVManager' serverUVManager $ do
                             tryTakeMVar m
-                            accepted_down_counter <- peekBufferTable serverUVManager serverSlot
-                            -- if accepted_down_counter count to -1, we should resume on haskell side
-                            when (accepted_down_counter == -1) (hs_uv_listen_resume serverHandle)
+                            pokeBufferTable serverUVManager serverSlot acceptBufPtr (backLog-1)
+
+                            -- if acceptCountDown count to -1, we should resume on haskell side
+                            when (acceptCountDown == -1) (hs_uv_listen_resume serverHandle)
+
                             -- copy accepted FDs
-                            let accepted_count = tcpListenBacklog- accepted_down_counter
-                            acceptBuf' <- newPrimArray tcpListenBacklog
-                            copyMutablePrimArray acceptBuf' 0 acceptBuf (accepted_down_counter+1) accepted_count
-                            pokeBufferTable serverUVManager serverSlot acceptBufPtr (tcpListenBacklog-1)
+                            let acceptCount = backLog - 1 - acceptCountDown
+                            print acceptCount
+                            acceptBuf' <- newPrimArray acceptCount
+                            copyMutablePrimArray acceptBuf' 0 acceptBuf (acceptCountDown+1) acceptCount
                             unsafeFreezePrimArray acceptBuf'
 
                         -- fork worker thread
@@ -183,8 +188,3 @@ startTCPServer TCPServerConfig{..} = do
 initTCPStream :: HasCallStack => UVManager -> Resource UVStream
 initTCPStream = initUVStream (\ loop handle ->
     throwUVIfMinus_ (uv_tcp_init loop handle))
-
-initTCPExStream :: HasCallStack => CUInt -> UVManager -> Resource UVStream
-initTCPExStream family = initUVStream (\ loop handle ->
-    throwUVIfMinus_ (uv_tcp_init_ex loop handle family))
-

@@ -124,9 +124,21 @@ int hs_uv_tcp_open(uv_tcp_t* handle, int32_t sock) {
   }
   return r;
 }
+
+int hs_uv_pipe_open(uv_pipe_t* handle, int32_t file) {
+  int r = uv_pipe_open(handle, (uv_file_t)file);
+  if (r == 0) {
+    hs_uv_connection_init((uv_stream_t*)handle);
+    handle->flags |= UV_HANDLE_BOUND | UV_HANDLE_READABLE | UV_HANDLE_WRITABLE;
+  }
+  return r;
+}
 #else
 int hs_uv_tcp_open(uv_tcp_t* handle, int32_t sock) {
   return uv_tcp_open(handle, (uv_os_sock_t)sock);
+}
+int hs_uv_pipe_open(uv_pipe_t* handle, int32_t sock) {
+  return uv_pipe_open(handle, (uv_os_sock_t)sock);
 }
 #endif
 
@@ -153,6 +165,18 @@ HsInt hs_uv_tcp_connect(uv_tcp_t* handle, const struct sockaddr* addr){
         free_slot(loop_data, slot);  // free the uv_req_t, the callback won't fired
         return r;
     } else return slot;
+}
+
+HsInt hs_uv_pipe_connect(uv_pipe_t* handle, const char* name){
+    uv_loop_t* loop = handle->loop;
+    hs_loop_data* loop_data = loop->data;
+    HsInt slot = alloc_slot(loop_data);
+    if (slot < 0) return UV_ENOMEM;
+    uv_connect_t* req = 
+        (uv_connect_t*)fetch_uv_struct(loop_data, slot);
+    req->data = (void*)slot;
+    uv_pipe_connect(req, handle, name, hs_connect_cb);
+    return slot;
 }
 
 // When libuv listen's callback is called, client is actually already accepted, 
@@ -257,44 +281,41 @@ void hs_listen_cb(uv_stream_t* server, int status){
     // fetch accept buffer from buffer_table table
     int32_t* accept_buf = (int32_t*)loop_data->buffer_table[slot];     
     HsInt accepted_number = loop_data->buffer_size_table[slot];
+    loop_data->buffer_size_table[slot] = accepted_number - 1;
 
     if (status == 0) {
-        if (accepted_number >= 0) {
-            accept_buf[accepted_number] = hs_uv_accept(server);       
-            loop_data->buffer_size_table[slot] = accepted_number - 1;
-        } else {
-#if defined(_WIN32)
-            // we have no way to deal with this situation on windows, since 
-            // we can't stop accepting after request has been inserted
-            // but this should not happen on windows anyway,
-            // since on windows simultaneous_accepts is small, e.g. pending accept
-            // requests' number is small.
-            // It must takes many uv_run without copying accept buffer on haskell side
-            // which is very unlikely to happen.
-            closesocket(hs_uv_accept(server)); 
-#else
-            // on unix, we can stop accepting using uv__io_stop, this is
-            // important because libuv will loop accepting until EAGAIN/EWOULDBLOCK,
-            // If we return to accept thread too slow in haskell side, the 
-            // accept buffer may not be able to hold all the clients queued in backlog.
-            // And this is very likely to happen under high load. Thus we
-            // must stop accepting when the buffer is full.
-            //
-            // Limit this number may also be good for stop a non-block uv_run from
-            // running too long, which will affect haskell's GC.
-            //
-            // do last accept without clearing server->accepted_fd
-            // libuv will take this as a no accepting, thus call uv__io_stop for us.
-            accept_buf[accepted_number] = hs_uv_accept(server);       
-            // set back accepted_fd so that libuv break from accept loop
-            // upon next resuming, we clear this accepted_fd with -1 and call uv__io_start
-            server->accepted_fd = accept_buf[accepted_number];
-            loop_data->buffer_size_table[slot] = accepted_number - 1;
-#endif
-        }
+        accept_buf[accepted_number] = hs_uv_accept(server);       
     } else {
         accept_buf[accepted_number] = (int32_t)status;
-        loop_data->buffer_size_table[slot] = accepted_number - 1;
+    } 
+
+    if (accepted_number == 0) {
+#if defined(_WIN32)
+        // we have no way to deal with this situation on windows, since 
+        // we can't stop accepting after request has been inserted
+        // but this should not happen on windows anyway,
+        // since on windows simultaneous_accepts is small, e.g. pending accept
+        // requests' number is small.
+        // It must takes many uv_run without copying accept buffer on haskell side
+        // which is very unlikely to happen.
+        closesocket(hs_uv_accept(server)); 
+#else
+        // on unix, we can stop accepting using uv__io_stop, this is
+        // important because libuv will loop accepting until EAGAIN/EWOULDBLOCK,
+        // If we return to accept thread too slow in haskell side, the 
+        // accept buffer may not be able to hold all the clients queued in backlog.
+        // And this is very likely to happen under high load. Thus we
+        // must stop accepting when the buffer is full.
+        //
+        // Limit this number may also be good for stop a non-block uv_run from
+        // running too long, which will affect haskell's GC.
+        //
+        // do last accept without clearing server->accepted_fd
+        // libuv will take this as a no accepting, thus call uv__io_stop for us.
+        // set back accepted_fd so that libuv break from accept loop
+        // upon next resuming, we clear this accepted_fd with -1 and call uv__io_start
+        server->accepted_fd = accept_buf[accepted_number];
+#endif
     }
 
 }
@@ -311,14 +332,18 @@ void hs_uv_listen_resume(uv_stream_t* server){
 #endif
 }
 
-// Check if the socket's accept buffer is still filled, if so, unlock the accept thread
+// Check if the socket's accept buffer is filled with FDs, if so, unlock the accept thread
 //
 void hs_accept_check_cb(uv_check_t* check){
     uv_stream_t* server=(uv_stream_t*)check->data;
     HsInt slot = (HsInt)server->data;
     hs_loop_data* loop_data = server->loop->data;
+    // This relays on GHC ByteArray# memory layout
+    HsInt* buffer_ptr = (HsInt*)loop_data->buffer_table[slot];
+    HsInt backlog = *(buffer_ptr-1);
+    backlog = backlog / 4; // int32_t fd
 
-    if (loop_data->buffer_size_table[slot] > 0){
+    if (loop_data->buffer_size_table[slot] < backlog-1){
         loop_data->event_queue[loop_data->event_counter] = slot; // push the slot to event queue
         loop_data->event_counter += 1;
     }

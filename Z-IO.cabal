@@ -102,10 +102,11 @@ flag integer-simple
 library
     exposed-modules:        Z.IO.FileSystem
                             Z.IO.FileSystem.Threaded
-                            Z.IO.Network.DNS
                             Z.IO.Network.SocketAddr
+                            Z.IO.Network.DNS
                             Z.IO.Network.TCP
                             Z.IO.Network.UDP
+                            Z.IO.Network.IPC
                             Z.IO.Buffered
                             Z.IO.Exception
                             Z.IO.LowResTimer
