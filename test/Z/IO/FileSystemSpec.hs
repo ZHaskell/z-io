@@ -40,12 +40,12 @@ spec = describe "filesystem operations" $ do
 
         it "Opens and writes a file" $ do
             withResource (initFile filename flags mode) $ \ file -> do
-                o <- newBufferedOutput file 4096
+                o <- newBufferedOutput 4096 file
                 writeBuffer o content
                 flushBuffer o
 
             withResource (initFile filename flags mode) $ \ file -> do
-                i <- newBufferedInput file 4096
+                i <- newBufferedInput 4096 file
                 written <- readExactly size i
                 written @=? content
 
@@ -54,17 +54,17 @@ spec = describe "filesystem operations" $ do
 
         it "Opens and writes a file II" $ do
             withResource (initFile filename flags mode) $ \ file -> do
-                o <- newBufferedOutput file 4096
+                o <- newBufferedOutput 4096 file
                 writeBuffer o content2
                 flushBuffer o
 
             withResource (initFile filename flags mode) $ \ file -> do
-                i <- newBufferedInput file 4096
+                i <- newBufferedInput 4096 file
                 written <- readExactly size2 i
                 written @=? content2
 
             withResource (initFile filename flags mode) $ \ file -> do
-                i <- newBufferedInput file 4096
+                i <- newBufferedInput 4096 file
                 firstLine <- readLine i
                 firstLine  @=? fst (V.break (== V.c2w '\n') content2)
 
