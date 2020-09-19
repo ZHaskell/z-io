@@ -17,7 +17,7 @@ This package provides basic IO operations:
 
 ## Dependencies
 
-On *nix system, libuv >= 1.27 are required to build this library, e.g.
+On *nix system, libuv >= 1.32 are required to build this library, e.g.
 
 ```base
 # on ubuntu
