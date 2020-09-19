@@ -65,7 +65,6 @@ import Z.IO.Exception
 import Data.IORef
 import Control.Concurrent.MVar
 import qualified Z.Data.Builder.Base as B
-import qualified Z.Data.Builder.Numeric as B
 import qualified Data.Time as Time
 
 data Logger = Logger

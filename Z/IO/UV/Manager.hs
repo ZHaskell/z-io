@@ -50,18 +50,15 @@ module Z.IO.UV.Manager
   ) where
 
 import           Control.Concurrent
-import           Control.Concurrent.MVar
 import           Control.Monad
 import           Control.Monad.IO.Class
-import           Control.Monad.Primitive (touch)
 import           Data.IORef
 import           Data.Bits (shiftL)
-import           Data.Primitive.PrimArray
 import           Data.Word
-import           Foreign.C
 import           Foreign.Ptr
 import           Foreign.Storable
 import           GHC.Conc.Sync            (labelThread)
+import           System.IO.Unsafe
 import           Z.Data.Array
 import           Z.Data.PrimRef.PrimIORef
 import           Z.IO.Buffered
@@ -69,7 +66,6 @@ import           Z.IO.Exception
 import           Z.IO.UV.Errno
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
-import           System.IO.Unsafe
 
 #define IDLE_LIMIT 20
 
@@ -159,35 +155,32 @@ pokeBufferTable uvm slot buf bufSiz = do
 peekBufferTable :: UVManager -> UVSlot -> IO Int
 {-# INLINABLE peekBufferTable #-}
 peekBufferTable uvm slot = do
-    (bufTable, bufSizTable) <- peekUVBufferTable (uvmLoopData uvm)
+    (_, bufSizTable) <- peekUVBufferTable (uvmLoopData uvm)
     fromIntegral <$> peekElemOff bufSizTable slot
 
 initUVManager :: HasCallStack => Int -> Int -> Resource UVManager
 initUVManager siz cap = do
-    loop  <- initUVLoop (fromIntegral siz)
+    loop  <- initResource
+                (throwOOMIfNull $ hs_uv_loop_init (fromIntegral siz))
+                hs_uv_loop_close
     liftIO $ do
         mblockTable <- newArr siz
         forM_ [0..siz-1] $ \ i -> writeArr mblockTable i =<< newEmptyMVar
         blockTable <- unsafeFreezeArr mblockTable
         blockTableRef <- newIORef blockTable
         loopData <- peekUVLoopData loop
-        running <- newMVar False
-        return (UVManager blockTableRef loop loopData running cap)
-  where
-    initUVLoop :: HasCallStack => Int -> Resource (Ptr UVLoop)
-    initUVLoop siz = initResource
-        (throwOOMIfNull $ hs_uv_loop_init siz
-        ) hs_uv_loop_close
+        runningLock <- newMVar False
+        return (UVManager blockTableRef loop loopData runningLock cap)
 
 -- | Lock an uv mananger, so that we can safely mutate its uv_loop's state.
 --
 -- libuv is not thread safe, use this function to perform any action which will mutate uv_loop's state.
 --
 withUVManager :: HasCallStack => UVManager -> (Ptr UVLoop -> IO a) -> IO a
-withUVManager (UVManager _ loop loopData running _) f = go
+withUVManager (UVManager _ loop loopData runningLock _) f = go
   where
     go = do
-        r <- withMVar running $ \ running ->
+        r <- withMVar runningLock $ \ running ->
             if running
             then do
                 -- if uv_run is running, it will stop
@@ -214,23 +207,24 @@ withUVManager' uvm f = withUVManager uvm (\ _ -> f)
 -- | Start the uv loop
 --
 startUVManager :: HasCallStack => UVManager -> IO ()
-startUVManager uvm@(UVManager _ _ _ running _) = loop -- use a closure capture uvm in case of stack memory leaking
+startUVManager uvm@(UVManager _ _ _ runningLock _) = poll -- use a closure capture uvm in case of stack memory leaking
   where
-    loop = do
-        e <- withMVar running $ \ _ -> step uvm False   -- we borrow mio's non-blocking/blocking poll strategy here
+    -- we borrow mio's non-blocking/blocking poll strategy here
+    poll = do
+        e <- withMVar runningLock $ \ _ -> step uvm False
         if e > 0                                        -- first we do a non-blocking poll, if we got events
-        then yield >> loop                              -- we yield here, to let other threads do actual work
+        then yield >> poll                              -- we yield here, to let other threads do actual work
         else do                                         -- otherwise we still yield once
             yield                                       -- in case other threads can still progress
-            e <- withMVar running $ \ _ -> step uvm False   -- now we do another non-blocking poll to make sure
-            if e > 0 then yield >> loop             -- if we got events somehow, we yield and go back
+            e' <- withMVar runningLock $ \ _ -> step uvm False   -- now we do another non-blocking poll to make sure
+            if e' > 0 then yield >> poll             -- if we got events somehow, we yield and go back
             else do                                 -- if there's still no events, we directly jump to safe blocking poll
-                _ <- swapMVar running True          -- after swap this lock, other thread can wake up us
-                e <- step uvm True                  -- by send async handler, and it's thread safe
-                _ <- swapMVar running False
+                _ <- swapMVar runningLock True          -- after swap this lock, other thread can wake up us
+                _ <- step uvm True                  -- by send async handler, and it's thread safe
+                _ <- swapMVar runningLock False
 
                 yield                               -- we yield here, to let other threads do actual work
-                loop
+                poll
 
     -- call uv_run, return the event number
     step :: UVManager -> Bool -> IO Int
@@ -312,7 +306,7 @@ withUVRequest uvm f = do
     (slot, m) <- withUVManager uvm $ \ loop -> mask_ $ do
         slot <- getUVSlot uvm (f loop)
         m <- getBlockMVar uvm slot
-        tryTakeMVar m
+        _ <- tryTakeMVar m
         return (slot, m)
     throwUVIfMinus (takeMVar m `onException` cancelUVReq uvm slot no_extra_cleanup)
   where no_extra_cleanup = const $ return ()
@@ -336,7 +330,7 @@ withUVRequest' uvm f g = do
     (slot, m) <- withUVManager uvm $ \ loop -> mask_ $ do
         slot <- getUVSlot uvm (f loop)
         m <- getBlockMVar uvm slot
-        tryTakeMVar m
+        _ <- tryTakeMVar m
         return (slot, m)
     g =<< (takeMVar m `onException` cancelUVReq uvm slot no_extra_cleanup)
   where no_extra_cleanup = const $ return ()
@@ -350,7 +344,7 @@ withUVRequestEx uvm f extra_cleanup = do
     (slot, m) <- withUVManager uvm $ \ loop -> mask_ $ do
         slot <- getUVSlot uvm (f loop)
         m <- getBlockMVar uvm slot
-        tryTakeMVar m
+        _ <- tryTakeMVar m
         return (slot, m)
     throwUVIfMinus (takeMVar m `onException` cancelUVReq uvm slot extra_cleanup)
 
@@ -389,8 +383,8 @@ data UVStream = UVStream
     }
 
 instance Show UVStream where
-    show (UVStream handle slot uvm _) =
-        "UVStream{uvsHandle=" ++ show handle ++
+    show (UVStream hdl slot uvm _) =
+        "UVStream{uvsHandle=" ++ show hdl ++
                 ",uvsSlot=" ++ show slot ++
                 ",uvsManager=" ++ show uvm ++ "}"
 
@@ -409,41 +403,41 @@ initUVStream :: HasCallStack
              => (Ptr UVLoop -> Ptr UVHandle -> IO ())
              -> UVManager
              -> Resource UVStream
-initUVStream init uvm = initResource
+initUVStream f uvm = initResource
     (withUVManager uvm $ \ loop -> do
-        handle <- hs_uv_handle_alloc loop
-        slot <- getUVSlot uvm (peekUVHandleData handle)
-        tryTakeMVar =<< getBlockMVar uvm slot   -- clear the parking spot
-        init loop handle `onException` hs_uv_handle_free handle
+        hdl <- hs_uv_handle_alloc loop
+        slot <- getUVSlot uvm (peekUVHandleData hdl)
+        _ <- tryTakeMVar =<< getBlockMVar uvm slot   -- clear the parking spot
+        f loop hdl `onException` hs_uv_handle_free hdl
         closed <- newIORef False
-        return (UVStream handle slot uvm closed))
+        return (UVStream hdl slot uvm closed))
     closeUVStream
 
 closeUVStream :: UVStream -> IO ()
-closeUVStream (UVStream handle _ uvm closed) = withUVManager' uvm $ do
+closeUVStream (UVStream hdl _ uvm closed) = withUVManager' uvm $ do
     c <- readIORef closed
     -- hs_uv_handle_close won't return error
-    unless c $ writeIORef closed True >> hs_uv_handle_close handle
+    unless c $ writeIORef closed True >> hs_uv_handle_close hdl
 
 instance Input UVStream where
     -- readInput :: HasCallStack => UVStream -> Ptr Word8 ->  Int -> IO Int
-    readInput uvs@(UVStream handle slot uvm closed) buf len = mask_ $ do
+    readInput (UVStream hdl slot uvm closed) buf len = mask_ $ do
         c <- readIORef closed
         when c throwECLOSED
+        -- set up buffer
+        pokeBufferTable uvm slot buf len
         m <- getBlockMVar uvm slot
-        withUVManager' uvm $ do
-            throwUVIfMinus_ (hs_uv_read_start handle)
-            pokeBufferTable uvm slot buf len
-            tryTakeMVar m
+        -- clean up
+        _ <- tryTakeMVar m
+
+        throwUVIfMinus_ $ withUVManager' uvm (hs_uv_read_start hdl)
         -- since we are inside mask, this is the only place
         -- async exceptions could possibly kick in, and we should stop reading
-        r <- catch (takeMVar m) (\ (e :: SomeException) -> do
-                withUVManager' uvm (uv_read_stop handle)
-                -- after we locked uvm and stop reading, the reading probably finished
-                -- so try again
-                r <- tryTakeMVar m
-                case r of Just r -> return r
-                          _      -> throwIO e)
+        r <- takeMVar m `onException` (do
+                -- normally we call 'uv_read_stop' in C read callback
+                -- but when exception raise, here's the place to stop
+                throwUVIfMinus_ $ withUVManager' uvm (uv_read_stop hdl)
+                void (tryTakeMVar m))
 
         if  | r > 0  -> return r
             -- r == 0 should be impossible, since we guard this situation in c side
@@ -453,14 +447,14 @@ instance Input UVStream where
 
 instance Output UVStream where
     -- writeOutput :: HasCallStack => UVStream -> Ptr Word8 -> Int -> IO ()
-    writeOutput uvs@(UVStream handle _ uvm closed) buf len = mask_ $ do
+    writeOutput (UVStream hdl _ uvm closed) buf len = mask_ $ do
         c <- readIORef closed
         when c throwECLOSED
-        (slot, m) <- withUVManager' uvm $ do
-            slot <- getUVSlot uvm (hs_uv_write handle buf len)
-            m <- getBlockMVar uvm slot
-            tryTakeMVar m
-            return (slot, m)
+        m <- withUVManager' uvm $ do
+            reqSlot <- getUVSlot uvm (hs_uv_write hdl buf len)
+            m <- getBlockMVar uvm reqSlot
+            _ <- tryTakeMVar m
+            return m
         -- we can't cancel uv_write_t with current libuv,
         -- otherwise disaster will happen if buffer got collected.
         -- so we have to turn to uninterruptibleMask_'s help.

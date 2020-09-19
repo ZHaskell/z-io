@@ -25,7 +25,7 @@ The threadpool version operations have overheads similar to safe FFI, but provid
 
 module Z.IO.FileSystem.Threaded
   ( -- * regular file devices
-    FileT, withFileT
+    FileT, checkFileTClosed
   , initFileT, readFileT, writeFileT
     -- * opening constant
   , FileMode(DEFAULT_MODE, S_IRWXU, S_IRUSR, S_IWUSR
@@ -59,10 +59,7 @@ module Z.IO.FileSystem.Threaded
   , readlink, realpath
   ) where
 
-import           Control.Concurrent.STM.TVar
-import           Control.Concurrent.MVar
 import           Control.Monad
-import           Control.Monad.STM
 import           Data.Word
 import           Data.Int
 import           Data.IORef
@@ -90,14 +87,12 @@ import           Z.IO.UV.Manager
 -- Implict offset interface is provided by 'Input' \/ 'Output' instances.
 -- Explict offset interface is provided by 'readFileT' \/ 'writeFileT'.
 --
-data FileT =  FileT
-    { uvFileT       :: {-# UNPACK #-} UVFD
-    , uvFileTClosed :: {-# UNPACK #-} IORef Bool
-    }
+data FileT =  FileT  {-# UNPACK #-} !UVFD      -- ^ the file
+                     {-# UNPACK #-} !(IORef Bool)  -- ^ closed flag
 
--- | take 'UVFD' from MVar, if fd is -1 (closed), throw 'ResourceVanished' ECLOSED.
-withFileT :: HasCallStack => FileT -> (UVFD -> IO a) -> IO a
-withFileT (FileT fd closedRef) f = do
+-- | If fd is -1 (closed), throw 'ResourceVanished' ECLOSED.
+checkFileTClosed :: HasCallStack => FileT -> (UVFD -> IO a) -> IO a
+checkFileTClosed (FileT fd closedRef) f = do
     closed <- readIORef closedRef
     if closed then throwECLOSED else f fd
 
@@ -114,7 +109,7 @@ readFileT :: HasCallStack
           -> Int64     -- ^ file offset, pass -1 to use default(system) offset
           -> IO Int    -- ^ read length
 readFileT uvf buf bufSiz off =
-    withFileT uvf  $ \ fd -> do
+    checkFileTClosed uvf  $ \ fd -> do
         uvm <- getUVManager
         withUVRequest uvm (hs_uv_fs_read_threaded fd buf bufSiz off)
 
@@ -130,10 +125,10 @@ writeFileT :: HasCallStack
            -> Int       -- ^ buffer size
            -> Int64     -- ^ file offset, pass -1 to use default(system) offset
            -> IO ()
-writeFileT uvf buf bufSiz off =
-    withFileT uvf $ \ fd -> do
-             (if off == -1 then go fd buf bufSiz
-                           else go' fd buf bufSiz off)
+writeFileT uvf buf0 bufSiz0 off0 =
+    checkFileTClosed uvf $ \ fd -> do
+             (if off0 == -1 then go fd buf0 bufSiz0
+                            else go' fd buf0 bufSiz0 off0)
   where
     -- use -1 offset to use fd's default offset
     go fd buf bufSiz = do
@@ -241,10 +236,10 @@ scandir path = do
         (\ (dents, n) -> hs_uv_fs_scandir_cleanup dents n)
         (\ (dents, n) -> forM [0..n-1] $ \ i -> do
             dent <- peekElemOff dents i
-            (path, typ) <- peekUVDirEnt dent
+            (p, typ) <- peekUVDirEnt dent
             let !typ' = fromUVDirEntType typ
-            !path' <- fromCString path
-            return (path', typ'))
+            !p' <- fromCString p
+            return (p', typ'))
 
 --------------------------------------------------------------------------------
 
@@ -252,27 +247,27 @@ scandir path = do
 stat :: HasCallStack => CBytes -> IO UVStat
 stat path = do
     withCBytes path $ \ p ->
-         allocaBytes uvStatSize $ \ stat -> do
+         allocaBytes uvStatSize $ \ s -> do
             uvm <- getUVManager
-            withUVRequest_ uvm (hs_uv_fs_stat_threaded p stat)
-            peekUVStat stat
+            withUVRequest_ uvm (hs_uv_fs_stat_threaded p s)
+            peekUVStat s
 
 -- | Equivalent to <http://linux.die.net/man/2/lstat lstat(2)>
 lstat :: HasCallStack => CBytes -> IO UVStat
 lstat path =
     withCBytes path $ \ p ->
-         allocaBytes uvStatSize $ \ stat -> do
+         allocaBytes uvStatSize $ \ s -> do
             uvm <- getUVManager
-            withUVRequest_ uvm (hs_uv_fs_lstat_threaded p stat)
-            peekUVStat stat
+            withUVRequest_ uvm (hs_uv_fs_lstat_threaded p s)
+            peekUVStat s
 
 -- | Equivalent to <http://linux.die.net/man/2/fstat fstat(2)>
 fstat :: HasCallStack => FileT -> IO UVStat
-fstat uvf = withFileT uvf $ \ fd ->
-     (allocaBytes uvStatSize $ \ stat -> do
+fstat uvf = checkFileTClosed uvf $ \ fd ->
+     (allocaBytes uvStatSize $ \ s -> do
         uvm <- getUVManager
-        withUVRequest_ uvm (hs_uv_fs_fstat_threaded fd stat)
-        peekUVStat stat)
+        withUVRequest_ uvm (hs_uv_fs_fstat_threaded fd s)
+        peekUVStat s)
 
 --------------------------------------------------------------------------------
 
@@ -288,19 +283,19 @@ rename path path' = do
 
 -- | Equivalent to <http://linux.die.net/man/2/fsync fsync(2)>.
 fsync :: HasCallStack => FileT -> IO ()
-fsync uvf = withFileT uvf $ \ fd -> do
+fsync uvf = checkFileTClosed uvf $ \ fd -> do
     uvm <- getUVManager
     withUVRequest_ uvm (hs_uv_fs_fsync_threaded fd)
 
 -- | Equivalent to <http://linux.die.net/man/2/fdatasync fdatasync(2)>.
 fdatasync :: HasCallStack => FileT -> IO ()
-fdatasync uvf = withFileT uvf $ \ fd -> do
+fdatasync uvf = checkFileTClosed uvf $ \ fd -> do
     uvm <- getUVManager
     withUVRequest_ uvm (hs_uv_fs_fdatasync_threaded fd)
 
 -- | Equivalent to <http://linux.die.net/man/2/ftruncate ftruncate(2)>.
 ftruncate :: HasCallStack => FileT -> Int64 -> IO ()
-ftruncate uvf off = withFileT uvf $ \ fd -> do
+ftruncate uvf off = checkFileTClosed uvf $ \ fd -> do
     uvm <- getUVManager
     withUVRequest_ uvm (hs_uv_fs_ftruncate_threaded fd off)
 
@@ -340,7 +335,7 @@ chmod path mode = do
 
 -- | Equivalent to <http://linux.die.net/man/2/fchmod fchmod(2)>.
 fchmod :: HasCallStack => FileT -> FileMode -> IO ()
-fchmod uvf mode = withFileT uvf $ \ fd -> do
+fchmod uvf mode = checkFileTClosed uvf $ \ fd -> do
     uvm <- getUVManager
     withUVRequest_ uvm (hs_uv_fs_fchmod_threaded fd mode)
 
@@ -368,7 +363,7 @@ utime path atime mtime = do
 --
 -- Same precision notes with 'utime'.
 futime :: HasCallStack => FileT -> Double -> Double -> IO ()
-futime uvf atime mtime = withFileT uvf $ \ fd -> do
+futime uvf atime mtime = checkFileTClosed uvf $ \ fd -> do
     uvm <- getUVManager
     withUVRequest_ uvm (hs_uv_fs_futime_threaded fd atime mtime)
 
@@ -405,10 +400,8 @@ readlink path = do
                 withUVRequestEx uvm
                     (hs_uv_fs_readlink_threaded p p')
                     (\ _ -> hs_uv_fs_readlink_extra_cleanup p'))
-        (\ (p, _) -> hs_uv_fs_readlink_cleanup p)
-        (\ (p, _) -> do
-            !p' <- fromCString p
-            return p')
+        (hs_uv_fs_readlink_cleanup . fst)
+        (fromCString . fst)
 
 -- | Equivalent to <http://linux.die.net/man/3/realpath realpath(3)> on Unix. Windows uses <https://msdn.microsoft.com/en-us/library/windows/desktop/aa364962(v=vs.85).aspx GetFinalPathNameByHandle>.
 --
@@ -436,7 +429,5 @@ realpath path = do
                 withUVRequestEx uvm
                     (hs_uv_fs_realpath_threaded p p')
                     (\ _ -> hs_uv_fs_readlink_extra_cleanup p'))
-        (\ (path, _) -> hs_uv_fs_readlink_cleanup path)
-        (\ (path, _) -> do
-            !path' <- fromCString path
-            return path')
+        (hs_uv_fs_readlink_cleanup . fst)
+        (fromCString . fst)

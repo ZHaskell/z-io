@@ -51,14 +51,12 @@ import           Z.Data.Array
 import           GHC.Event
 #endif
 import           Control.Concurrent
-import           Control.Concurrent.MVar
-import           Z.IO.Exception
 import           Control.Monad
 import           Data.IORef
-import           Z.Data.PrimRef.PrimIORef
-import           Data.Word
 import           GHC.Conc
 import           System.IO.Unsafe
+import           Z.Data.PrimRef.PrimIORef
+import           Z.IO.Exception
 
 --
 queueSize :: Int
@@ -81,7 +79,7 @@ newLowResTimerManager = do
     regCounter <- newCounter 0
     runningLock <- newMVar False
     queue <- newArr queueSize
-    forM [0..queueSize-1] $ \ i -> do
+    forM_ [0..queueSize-1] $ \ i -> do
         writeArr queue i =<< newIORef TimerNil
     iqueue <- unsafeFreezeArr queue
     return (LowResTimerManager iqueue indexLock regCounter runningLock)
@@ -91,7 +89,7 @@ lowResTimerManager :: IORef (Array LowResTimerManager)
 lowResTimerManager = unsafePerformIO $ do
     numCaps <- getNumCapabilities
     lrtmArray <- newArr numCaps
-    forM [0..numCaps-1] $ \ i -> do
+    forM_ [0..numCaps-1] $ \ i -> do
         writeArr lrtmArray i =<< newLowResTimerManager
     ilrtmArray <- unsafeFreezeArr lrtmArray
     newIORef ilrtmArray
@@ -112,12 +110,12 @@ lowResTimerManagerCapabilitiesChanged = do
         lrtmArray' <- newArr numCaps
         if numCaps < oldSize
         then do
-            forM [0..numCaps-1] $ \ i -> do
+            forM_ [0..numCaps-1] $ \ i -> do
                 writeArr lrtmArray' i =<< indexArrM lrtmArray i
         else do
-            forM [0..oldSize-1] $ \ i -> do
+            forM_ [0..oldSize-1] $ \ i -> do
                 writeArr lrtmArray' i =<< indexArrM lrtmArray i
-            forM [oldSize..numCaps-1] $ \ i -> do
+            forM_ [oldSize..numCaps-1] $ \ i -> do
                 writeArr lrtmArray' i =<< newLowResTimerManager
 
         ilrtmArray' <- unsafeFreezeArr lrtmArray'
@@ -167,10 +165,10 @@ registerLowResTimerOn :: LowResTimerManager   -- ^ a low resolution timer manage
                       -> IO LowResTimer
 registerLowResTimerOn lrtm@(LowResTimerManager queue indexLock regCounter _) t action = do
 
-    let (round, tick) = (max 0 t) `quotRem` queueSize
+    let (round_, tick) = (max 0 t) `quotRem` queueSize
     i <- readMVar indexLock
     tlistRef <- indexArrM queue ((i + tick) `rem` queueSize)
-    roundCounter <- newCounter round
+    roundCounter <- newCounter round_
     mask_ $ do
         atomicModifyIORef' tlistRef $ \ tlist ->
             let newList = TimerItem roundCounter action tlist
@@ -218,11 +216,11 @@ timeoutLowRes timeo io = do
     catch
         (do timer <- registerLowResTimer timeo (timeoutAThread mid)
             r <- io
-            cancelLowResTimer timer
+            _ <- cancelLowResTimer timer
             return (Just r))
-        ( \ (e :: TimeOutException) -> return Nothing )
+        ( \ (_ :: TimeOutException) -> return Nothing )
   where
-    timeoutAThread id = void . forkIO $ throwTo id (TimeOutException id undefined)
+    timeoutAThread tid = void . forkIO $ throwTo tid (TimeOutException tid undefined)
 
 -- | similar to 'timeoutLowRes', but raise a 'TimeOutException' instead of return 'Nothing'
 -- if timeout.
@@ -234,10 +232,10 @@ timeoutLowResEx timeo io = do
     mid <- myThreadId
     timer <- registerLowResTimer timeo (timeoutAThread mid)
     r <- io
-    cancelLowResTimer timer
+    _ <- cancelLowResTimer timer
     return r
   where
-    timeoutAThread id = void . forkIO $ throwTo id (TimeOutException id callStack)
+    timeoutAThread tid = void . forkIO $ throwTo tid (TimeOutException tid callStack)
 
 data TimeOutException = TimeOutException ThreadId CallStack deriving Show
 instance Exception TimeOutException
@@ -250,7 +248,7 @@ ensureLowResTimerManager lrtm@(LowResTimerManager _ _ _ runningLock) = do
     modifyMVar_ runningLock $ \ running -> do
         unless running $ do
             tid <- forkIO (startLowResTimerManager lrtm)
-            labelThread tid "stdio: low resolution time manager"    -- make sure we can see it in GHC event log
+            labelThread tid "Z-IO: low resolution time manager"    -- make sure we can see it in GHC event log
         return True
 
 -- | Start low resolution timer loop, the loop is automatically stopped if there's no more new registrations.
@@ -261,7 +259,7 @@ startLowResTimerManager lrtm@(LowResTimerManager _ _ regCounter runningLock)  = 
         c <- readPrimIORef regCounter          -- unless something terribly wrong happened, e.g., stackoverflow
         if c > 0
         then do
-            forkIO (fireLowResTimerQueue lrtm)  -- we offload the scanning to another thread to minimize
+            _ <- forkIO (fireLowResTimerQueue lrtm)  -- we offload the scanning to another thread to minimize
                                                 -- the time we holding runningLock
             case () of
                 _
@@ -282,7 +280,7 @@ startLowResTimerManager lrtm@(LowResTimerManager _ _ regCounter runningLock)  = 
 -- | Scan the timeout queue in current tick index, and move tick index forward by one.
 --
 fireLowResTimerQueue :: LowResTimerManager -> IO ()
-fireLowResTimerQueue lrtm@(LowResTimerManager queue indexLock regCounter runningLock) = do
+fireLowResTimerQueue (LowResTimerManager queue indexLock regCounter _) = do
     (tList, tListRef) <- modifyMVar indexLock $ \ index -> do                 -- get the index lock
         tListRef <- indexArrM queue index
         tList <- atomicModifyIORef' tListRef $ \ tList -> (TimerNil, tList)   -- swap current index list with an empty one
@@ -291,19 +289,19 @@ fireLowResTimerQueue lrtm@(LowResTimerManager queue indexLock regCounter running
 
     go tList tListRef regCounter
   where
-    go (TimerItem roundCounter action nextList) tListRef regCounter = do
+    go (TimerItem roundCounter action nextList) tListRef counter = do
         r <- atomicSubCounter roundCounter 1
         case r `compare` 0 of
             LT -> do                                     -- if round number is less than 0, then it's a cancelled timer
-                atomicSubCounter_ regCounter 1
-                go nextList tListRef regCounter
+                atomicSubCounter_ counter 1
+                go nextList tListRef counter
             EQ -> do                                     -- if round number is equal to 0, fire it
-                atomicSubCounter_ regCounter 1
+                atomicSubCounter_ counter 1
                 catch action ( \ (_ :: SomeException) -> return () )  -- well, we really don't want timers break our loop
-                go nextList tListRef regCounter
+                go nextList tListRef counter
             GT -> do                                     -- if round number is larger than 0, put it back for another round
                 atomicModifyIORef' tListRef $ \ tlist -> (TimerItem roundCounter action tlist, ())
-                go nextList tListRef regCounter
+                go nextList tListRef counter
     go TimerNil _ _ = return ()
 
 --------------------------------------------------------------------------------

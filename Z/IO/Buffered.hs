@@ -43,8 +43,6 @@ module Z.IO.Buffered
   , V.smallChunkSize
   ) where
 
-import           Control.Concurrent.MVar
-import           Control.Concurrent.STM.TVar
 import           Control.Monad
 import           Control.Monad.Primitive     (ioToPrim, primToIO)
 import           Control.Monad.ST
@@ -58,7 +56,6 @@ import qualified Z.Data.Builder.Base       as B
 import qualified Z.Data.Parser             as P
 import qualified Z.Data.Vector             as V
 import qualified Z.Data.Vector.Base        as V
-import qualified Z.Data.Text               as T
 import           Z.Data.PrimRef.PrimIORef
 import           Z.Foreign
 import           Z.IO.Exception
@@ -163,7 +160,7 @@ readBuffer BufferedInput{..} = do
 -- If EOF reached before N bytes read, a 'ShortReadException' will be thrown
 --
 readExactly :: (HasCallStack, Input i) => Int -> BufferedInput i -> IO V.Bytes
-readExactly n h = V.concat `fmap` (go h n)
+readExactly n0 h0 = V.concat `fmap` (go h0 n0)
   where
     go h n = do
         chunk <- readBuffer h
@@ -221,7 +218,7 @@ readParser p i = do
 --
 -- If EOF is reached before meet a magic byte, partial bytes are returned.
 readToMagic :: (HasCallStack, Input i) => Word8 -> BufferedInput i -> IO V.Bytes
-readToMagic magic h = V.concat `fmap` (go h magic)
+readToMagic magic0 h0 = V.concat `fmap` (go h0 magic0)
   where
     go h magic = do
         chunk <- readBuffer h
@@ -240,7 +237,7 @@ readToMagic magic h = V.concat `fmap` (go h magic)
 --
 -- If EOF is reached before meet a magic byte, a 'ShortReadException' will be thrown.
 readToMagic' :: (HasCallStack, Input i) => Word8 -> BufferedInput i -> IO V.Bytes
-readToMagic' magic h = V.concat `fmap` (go h magic)
+readToMagic' magic0 h0 = V.concat `fmap` (go h0 magic0)
   where
     go h magic = do
         chunk <- readBuffer h

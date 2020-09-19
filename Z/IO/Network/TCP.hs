@@ -29,24 +29,18 @@ module Z.IO.Network.TCP (
   , startTCPServer
   ) where
 
-import           Control.Concurrent
 import           Control.Concurrent.MVar
 import           Control.Monad
 import           Control.Monad.IO.Class
-import           Data.Int
 import           Data.Primitive.PrimArray
-import           Foreign.C.Types
 import           Foreign.Ptr
 import           GHC.Ptr
-import           Z.Foreign
-import           Z.Data.Array
 import           Z.IO.Buffered
 import           Z.IO.Exception
 import           Z.IO.Network.SocketAddr
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
 import           Z.IO.UV.Manager
-import           Z.Data.Vector
 import           Data.Coerce
 
 --------------------------------------------------------------------------------
@@ -69,15 +63,15 @@ initTCPClient :: HasCallStack => TCPClientConfig -> Resource UVStream
 initTCPClient TCPClientConfig{..} = do
     uvm <- liftIO getUVManager
     client <- initTCPStream uvm
-    let handle = uvsHandle client
+    let hdl = uvsHandle client
     liftIO . withSocketAddr tcpRemoteAddr $ \ targetPtr -> do
         forM_ tcpClientAddr $ \ tcpClientAddr' ->
             withSocketAddr tcpClientAddr' $ \ localPtr ->
                 -- bind is safe without withUVManager
-                throwUVIfMinus_ (uv_tcp_bind handle localPtr 0)
+                throwUVIfMinus_ (uv_tcp_bind hdl localPtr 0)
         -- nodelay is safe without withUVManager
-        when tcpNoDelay $ throwUVIfMinus_ (uv_tcp_nodelay handle 1)
-        withUVRequest uvm $ \ _ -> hs_uv_tcp_connect handle targetPtr
+        when tcpNoDelay $ throwUVIfMinus_ (uv_tcp_nodelay hdl 1)
+        void . withUVRequest uvm $ \ _ -> hs_uv_tcp_connect hdl targetPtr
     return client
 
 --------------------------------------------------------------------------------
@@ -153,7 +147,7 @@ startTCPServer TCPServerConfig{..} = do
 
                         -- we lock uv manager here in case of next uv_run overwrite current accept buffer
                         acceptBufCopy <- withUVManager' serverUVManager $ do
-                            tryTakeMVar m
+                            _ <- tryTakeMVar m
                             pokeBufferTable serverUVManager serverSlot acceptBufPtr (backLog-1)
 
                             -- if acceptCountDown count to -1, we should resume on haskell side
@@ -174,9 +168,9 @@ startTCPServer TCPServerConfig{..} = do
                             -- It's important to use the worker thread's mananger instead of server's one!
                             else void . forkBa $ do
                                 uvm <- getUVManager
-                                withResource (initUVStream (\ loop handle -> do
-                                    throwUVIfMinus_ (uv_tcp_init loop handle)
-                                    throwUVIfMinus_ (hs_uv_tcp_open handle fd)) uvm) $ \ uvs -> do
+                                withResource (initUVStream (\ loop hdl -> do
+                                    throwUVIfMinus_ (uv_tcp_init loop hdl)
+                                    throwUVIfMinus_ (hs_uv_tcp_open hdl fd)) uvm) $ \ uvs -> do
                                     when tcpServerWorkerNoDelay . throwUVIfMinus_ $
                                         -- safe without withUVManager
                                         uv_tcp_nodelay (uvsHandle uvs) 1
@@ -185,5 +179,5 @@ startTCPServer TCPServerConfig{..} = do
 --------------------------------------------------------------------------------
 
 initTCPStream :: HasCallStack => UVManager -> Resource UVStream
-initTCPStream = initUVStream (\ loop handle ->
-    throwUVIfMinus_ (uv_tcp_init loop handle))
+initTCPStream = initUVStream (\ loop hdl ->
+    throwUVIfMinus_ (uv_tcp_init loop hdl))

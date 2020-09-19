@@ -28,10 +28,8 @@ import           Foreign.C.String
 import           Foreign.C.Types
 import           Foreign.Ptr
 import           Foreign.Storable
-import           GHC.Prim
 import           Z.Foreign
-import           Z.IO.Exception
-import           Z.IO.Network.SocketAddr    (SocketAddr, SocketFamily (..))
+import           Z.IO.Network.SocketAddr    (SocketAddr)
 import           System.Posix.Types (CSsize (..))
 import           GHC.Generics
 
@@ -172,12 +170,19 @@ foreign import ccall unsafe uv_udp_open :: Ptr UVHandle -> UVFD -> IO CInt
 foreign import ccall unsafe uv_udp_bind :: Ptr UVHandle -> Ptr SocketAddr -> UVUDPFlag -> IO CInt
 
 newtype UVMembership = UVMembership CInt deriving (Show, Eq, Ord)
+
+pattern UV_LEAVE_GROUP :: UVMembership
 pattern UV_LEAVE_GROUP = UVMembership #{const UV_LEAVE_GROUP}
+pattern UV_JOIN_GROUP :: UVMembership
 pattern UV_JOIN_GROUP = UVMembership #{const UV_JOIN_GROUP}
 
 newtype UVUDPFlag = UVUDPFlag CInt deriving (Show, Eq, Ord, Storable, Bits, FiniteBits, Num)
+
+pattern UV_UDP_DEFAULT :: UVUDPFlag
 pattern UV_UDP_DEFAULT = UVUDPFlag 0
+pattern UV_UDP_IPV6ONLY :: UVUDPFlag
 pattern UV_UDP_IPV6ONLY = UVUDPFlag #{const UV_UDP_IPV6ONLY}
+pattern UV_UDP_REUSEADDR :: UVUDPFlag
 pattern UV_UDP_REUSEADDR = UVUDPFlag #{const UV_UDP_REUSEADDR}
 
 pattern UV_UDP_PARTIAL :: Int32
@@ -326,7 +331,7 @@ pattern O_APPEND = FileFlag #{const UV_FS_O_APPEND}
 pattern O_CREAT :: FileFlag
 pattern O_CREAT = FileFlag #{const UV_FS_O_CREAT}
 
--- | File IO is done directly to and from user-space buffers, which must be aligned. Buffer size and address should be a multiple of the physical sector size of the block device, (DO NOT USE WITH stdio's @BufferedIO@)
+-- | File IO is done directly to and from user-space buffers, which must be aligned. Buffer size and address should be a multiple of the physical sector size of the block device, (DO NOT USE WITH Z-IO's @BufferedIO@)
 pattern O_DIRECT :: FileFlag
 pattern O_DIRECT = FileFlag #{const UV_FS_O_DIRECT}
 
@@ -375,7 +380,7 @@ pattern O_NOCTTY = FileFlag #{const UV_FS_O_NOCTTY}
 pattern O_NOFOLLOW :: FileFlag
 pattern O_NOFOLLOW = FileFlag #{const UV_FS_O_NOFOLLOW}
 
--- | Open the file in nonblocking mode if possible. (Definitely not useful with stdio)
+-- | Open the file in nonblocking mode if possible. (Definitely not useful in Z-IO)
 --
 -- Note 'o_NONBLOCK' is not supported on Windows. (Not useful on regular file anyway)
 pattern O_NONBLOCK :: FileFlag

@@ -35,25 +35,18 @@ module Z.IO.Network.IPC (
   , startIPCServer
   ) where
 
-import           Control.Concurrent
 import           Control.Concurrent.MVar
 import           Control.Monad
 import           Control.Monad.IO.Class
-import           Data.Int
 import           Data.Primitive.PrimArray
-import           Foreign.C.Types
 import           Foreign.Ptr
 import           GHC.Ptr
-import           Z.Foreign
-import           Z.Data.Array
 import           Z.Data.CBytes
 import           Z.IO.Buffered
-import           Z.IO.Exception            hiding (handle)
-import           Z.IO.Network.SocketAddr
+import           Z.IO.Exception
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
 import           Z.IO.UV.Manager
-import           Z.Data.Vector
 import           Data.Coerce
 
 --------------------------------------------------------------------------------
@@ -75,13 +68,13 @@ initIPCClient :: HasCallStack => IPCClientConfig -> Resource UVStream
 initIPCClient (IPCClientConfig cname tname) = do
     uvm <- liftIO getUVManager
     client <- initIPCStream uvm
-    let handle = uvsHandle client
+    let hdl = uvsHandle client
     liftIO . withCBytes tname $ \ tname_p -> do
         forM_ cname $ \ cname' ->
             withCBytes cname' $ \ cname_p ->
                 -- bind is safe without withUVManager
-                throwUVIfMinus_ (uv_pipe_bind handle cname_p)
-        withUVRequest uvm $ \ _ -> hs_uv_pipe_connect handle tname_p
+                throwUVIfMinus_ (uv_pipe_bind hdl cname_p)
+        void . withUVRequest uvm $ \ _ -> hs_uv_pipe_connect hdl tname_p
     return client
 
 --------------------------------------------------------------------------------
@@ -155,7 +148,7 @@ startIPCServer IPCServerConfig{..} = do
 
                         -- we lock uv manager here in case of next uv_run overwrite current accept buffer
                         acceptBufCopy <- withUVManager' serverUVManager $ do
-                            tryTakeMVar m
+                            _ <- tryTakeMVar m
                             pokeBufferTable serverUVManager serverSlot acceptBufPtr (backLog-1)
 
                             -- if acceptCountDown count to -1, we should resume on haskell side
@@ -176,13 +169,13 @@ startIPCServer IPCServerConfig{..} = do
                             -- It's important to use the worker thread's mananger instead of server's one!
                             else void . forkBa $ do
                                 uvm <- getUVManager
-                                withResource (initUVStream (\ loop handle -> do
-                                    throwUVIfMinus_ (uv_pipe_init loop handle 0)
-                                    throwUVIfMinus_ (hs_uv_pipe_open handle fd)) uvm) $ \ uvs -> do
+                                withResource (initUVStream (\ loop hdl -> do
+                                    throwUVIfMinus_ (uv_pipe_init loop hdl 0)
+                                    throwUVIfMinus_ (hs_uv_pipe_open hdl fd)) uvm) $ \ uvs -> do
                                     ipcServerWorker uvs
 
 --------------------------------------------------------------------------------
 
 initIPCStream :: HasCallStack => UVManager -> Resource UVStream
-initIPCStream = initUVStream (\ loop handle ->
-    throwUVIfMinus_ (uv_pipe_init loop handle 0))
+initIPCStream = initUVStream (\ loop hdl ->
+    throwUVIfMinus_ (uv_pipe_init loop hdl 0))

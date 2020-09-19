@@ -68,22 +68,13 @@ module Z.IO.Network.SocketAddr
   , pattern IPPROTO_UDP
   ) where
 
-import           Control.Monad
-import           Control.Monad.IO.Class
-import           Control.Monad.Primitive
 import           Data.Bits
 import qualified Data.List                as List
-import           Data.Primitive.PrimArray
 import           Data.Ratio
 import           Data.Typeable
 import           Foreign
 import           Foreign.C
 import           Numeric                  (showHex)
-import           Z.Data.CBytes
-import qualified Z.Data.Parser            as P
-import qualified Z.Data.Text.Builder      as T
-import qualified Z.Data.Vector            as V
-import           Z.Foreign
 import           Z.IO.Exception
 import           Z.IO.UV.Errno
 

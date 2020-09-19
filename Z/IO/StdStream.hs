@@ -46,23 +46,20 @@ module Z.IO.StdStream
   , putLineStd
   ) where
 
+import Control.Monad
+import Control.Concurrent.MVar
+import Foreign.C.Types (CInt)
+import Foreign.Ptr
+import System.IO.Unsafe
 import Z.Data.Builder as B
 import Z.Data.Vector as V
 import Z.Data.Text.Builder (ToText, toBuilder)
 import Z.IO.UV.FFI
 import Z.IO.UV.Manager
-import Control.Monad
-import Control.Concurrent.STM.TVar
-import Control.Concurrent.MVar
-import Foreign.C.Types (CInt)
-import Z.IO.Exception
 import Z.IO.UV.Errno
-import System.IO.Unsafe
-import Z.IO.Resource
+import Z.IO.Exception
 import Z.IO.Buffered
-import Z.Data.Vector.Base (defaultChunkSize)
 import Z.Foreign
-import Foreign.Ptr
 
 -- | Standard input and output streams
 --
@@ -83,21 +80,16 @@ isStdStreamTTY _              = False
 
 instance Input StdStream where
     {-# INLINE readInput #-}
-    readInput uvs@(StdTTY handle slot uvm) buf len = mask_ $ do
+    readInput (StdTTY hdl slot uvm) buf len = mask_ $ do
+        pokeBufferTable uvm slot buf len
         m <- getBlockMVar uvm slot
-        withUVManager' uvm $ do
-            throwUVIfMinus_ (hs_uv_read_start handle)
-            pokeBufferTable uvm slot buf len
-            tryTakeMVar m
+        _ <- tryTakeMVar m
+        throwUVIfMinus_ $ withUVManager' uvm (hs_uv_read_start hdl)
         -- since we are inside mask, this is the only place
         -- async exceptions could possibly kick in, and we should stop reading
-        r <- catch (takeMVar m) (\ (e :: SomeException) -> do
-                withUVManager' uvm (uv_read_stop handle)
-                -- after we locked uvm and stop reading, the reading probably finished
-                -- so try again
-                r <- tryTakeMVar m
-                case r of Just r -> return r
-                          _      -> throwIO e)
+        r <- takeMVar m `onException` (do
+                throwUVIfMinus_ $ withUVManager' uvm (uv_read_stop hdl)
+                void (tryTakeMVar m))
         if  | r > 0  -> return r
             -- r == 0 should be impossible, since we guard this situation in c side
             | r == fromIntegral UV_EOF -> return 0
@@ -107,20 +99,20 @@ instance Input StdStream where
 
 instance Output StdStream where
     {-# INLINE writeOutput #-}
-    writeOutput (StdTTY handle _ uvm) buf len = mask_ $ do
-        (slot, m) <- withUVManager' uvm $ do
-            slot <- getUVSlot uvm (hs_uv_write handle buf len)
-            m <- getBlockMVar uvm slot
-            tryTakeMVar m
-            return (slot, m)
-        throwUVIfMinus_  (uninterruptibleMask_ $ takeMVar m)
+    writeOutput (StdTTY hdl _ uvm) buf len = mask_ $ do
+        m <- withUVManager' uvm $ do
+            reqSlot <- getUVSlot uvm (hs_uv_write hdl buf len)
+            m <- getBlockMVar uvm reqSlot
+            _ <- tryTakeMVar m
+            return m
+        throwUVIfMinus_ (uninterruptibleMask_ $ takeMVar m)
     writeOutput (StdFile fd) buf len = go buf len
       where
-        go !buf !bufSiz = do
+        go !b !bufSiz = do
             written <- throwUVIfMinus
-                (hs_uv_fs_write fd buf bufSiz (-1))
+                (hs_uv_fs_write fd b bufSiz (-1))
             when (written < bufSiz)
-                (go (buf `plusPtr` written) (bufSiz-written))
+                (go (b `plusPtr` written) (bufSiz-written))
 
 -- | The global stdin stream.
 stdin :: StdStream
@@ -167,29 +159,29 @@ makeStdStream fd = do
     then do
         uvm <- getUVManager
         withUVManager uvm $ \ loop -> do
-            handle <- hs_uv_handle_alloc loop
-            slot <- getUVSlot uvm (peekUVHandleData handle)
-            tryTakeMVar =<< getBlockMVar uvm slot   -- clear the parking spot
-            throwUVIfMinus_ (uv_tty_init loop handle (fromIntegral fd))
-                `onException` hs_uv_handle_free handle
-            return (StdTTY handle slot uvm)
+            hdl <- hs_uv_handle_alloc loop
+            slot <- getUVSlot uvm (peekUVHandleData hdl)
+            _ <- tryTakeMVar =<< getBlockMVar uvm slot   -- clear the parking spot
+            throwUVIfMinus_ (uv_tty_init loop hdl (fromIntegral fd))
+                `onException` hs_uv_handle_free hdl
+            return (StdTTY hdl slot uvm)
     else return (StdFile fd)
 
 -- | Change terminal's mode if stdin is connected to a terminal.
 setStdinTTYMode :: UVTTYMode -> IO ()
 setStdinTTYMode mode = case stdin of
-    StdTTY handle _ uvm ->
-        withUVManager' uvm . throwUVIfMinus_ $ uv_tty_set_mode handle mode
+    StdTTY hdl _ uvm ->
+        withUVManager' uvm . throwUVIfMinus_ $ uv_tty_set_mode hdl mode
     _ -> return ()
 
 -- | Get terminal's output window size in (width, height) format,
 -- return (-1, -1) if stdout is a file.
 getStdoutWinSize :: IO (CInt, CInt)
 getStdoutWinSize = case stdout of
-    StdTTY handle _ uvm ->
+    StdTTY hdl _ uvm ->
         withUVManager' uvm $ do
             (w, (h, ())) <- allocPrimUnsafe $ \ w ->
-                allocPrimUnsafe $ \ h -> throwUVIfMinus_ $ uv_tty_get_winsize handle w h
+                allocPrimUnsafe $ \ h -> throwUVIfMinus_ $ uv_tty_get_winsize hdl w h
             return (w, h)
     _ -> return (-1, -1)
 

@@ -53,15 +53,14 @@ module Z.IO.FileSystem
   , readlink, realpath
   ) where
 
-import           Control.Concurrent.MVar
 import           Control.Monad
 import           Data.Word
 import           Data.Int
 import           Data.IORef
-import           Z.Data.CBytes                 as CBytes
 import           Foreign.Ptr
 import           Foreign.Storable               (peekElemOff)
 import           Foreign.Marshal.Alloc          (allocaBytes)
+import           Z.Data.CBytes                 as CBytes
 import           Z.Foreign
 import           Z.IO.Buffered
 import           Z.IO.Exception
@@ -79,10 +78,8 @@ import           Prelude hiding (writeFile, readFile)
 -- Implict offset interface is provided by 'Input' \/ 'Output' instances.
 -- Explict offset interface is provided by 'readFile' \/ 'writeFile'.
 --
-data File = File
-    { uvFile       :: {-# UNPACK #-} UVFD
-    , uvFileClosed :: {-# UNPACK #-} IORef Bool
-    }
+data File =  File  {-# UNPACK #-} !UVFD      -- ^ the file
+                   {-# UNPACK #-} !(IORef Bool)  -- ^ closed flag
 
 -- | If fd is -1 (closed), throw 'ResourceVanished' ECLOSED.
 checkFileClosed :: HasCallStack => File -> (UVFD -> IO a) -> IO a
@@ -119,9 +116,9 @@ writeFile :: HasCallStack
             -> Int       -- ^ buffer size
             -> Int64     -- ^ file offset, pass -1 to use default(system) offset
             -> IO ()
-writeFile uvf buf bufSiz off =
-    checkFileClosed uvf $ \fd ->  if off == -1 then go fd buf bufSiz
-                                      else go' fd buf bufSiz off
+writeFile uvf buf0 bufSiz0 off0 =
+    checkFileClosed uvf $ \fd ->  if off0 == -1 then go fd buf0 bufSiz0
+                                                else go' fd buf0 bufSiz0 off0
   where
     go fd !buf !bufSiz = do
         written <- throwUVIfMinus (hs_uv_fs_write fd buf bufSiz (-1))
@@ -209,33 +206,33 @@ scandir path = do
         (\ (dents, n) -> hs_uv_fs_scandir_cleanup dents n)
         (\ (dents, n) -> forM [0..n-1] $ \ i -> do
             dent <- peekElemOff dents i
-            (path, typ) <- peekUVDirEnt dent
+            (p, typ) <- peekUVDirEnt dent
             let !typ' = fromUVDirEntType typ
-            !path' <- fromCString path
-            return (path', typ'))
+            !p' <- fromCString p
+            return (p', typ'))
 
 --------------------------------------------------------------------------------
 
 -- | Equivalent to <http://linux.die.net/man/2/stat stat(2)>
 stat :: HasCallStack => CBytes -> IO UVStat
 stat path = withCBytes path $ \ p ->
-     allocaBytes uvStatSize $ \ stat -> do
-        throwUVIfMinus_ (hs_uv_fs_stat p stat)
-        peekUVStat stat
+     allocaBytes uvStatSize $ \ s -> do
+        throwUVIfMinus_ (hs_uv_fs_stat p s)
+        peekUVStat s
 
 -- | Equivalent to <http://linux.die.net/man/2/lstat lstat(2)>
 lstat :: HasCallStack => CBytes -> IO UVStat
 lstat path = withCBytes path $ \ p ->
-     allocaBytes uvStatSize $ \ stat -> do
-        throwUVIfMinus_ (hs_uv_fs_lstat p stat)
-        peekUVStat stat
+     allocaBytes uvStatSize $ \ s -> do
+        throwUVIfMinus_ (hs_uv_fs_lstat p s)
+        peekUVStat s
 
 -- | Equivalent to <http://linux.die.net/man/2/fstat fstat(2)>
 fstat :: HasCallStack => File -> IO UVStat
 fstat uvf = checkFileClosed uvf $ \ fd ->
-    allocaBytes uvStatSize $ \ stat -> do
-        throwUVIfMinus_ (hs_uv_fs_fstat fd stat)
-        peekUVStat stat
+    allocaBytes uvStatSize $ \ s -> do
+        throwUVIfMinus_ (hs_uv_fs_fstat fd s)
+        peekUVStat s
 
 --------------------------------------------------------------------------------
 
@@ -335,10 +332,8 @@ readlink path = do
         (withCBytes path $ \ p ->
             allocPrimUnsafe $ \ p' ->
                 throwUVIfMinus (hs_uv_fs_readlink p p'))
-        (\ (path, _) -> hs_uv_fs_readlink_cleanup path)
-        (\ (path, _) -> do
-            !path' <- fromCString path
-            return path')
+        (hs_uv_fs_readlink_cleanup . fst)
+        (fromCString . fst)
 
 
 -- | Equivalent to <http://linux.die.net/man/3/realpath realpath(3)> on Unix. Windows uses <https://msdn.microsoft.com/en-us/library/windows/desktop/aa364962(v=vs.85).aspx GetFinalPathNameByHandle>.
@@ -364,7 +359,5 @@ realpath path = do
         (withCBytes path $ \ p ->
             allocPrimUnsafe $ \ p' ->
                 throwUVIfMinus (hs_uv_fs_realpath p p'))
-        (\ (path, _) -> hs_uv_fs_readlink_cleanup path)
-        (\ (path, _) -> do
-            !path' <- fromCString path
-            return path')
+        (hs_uv_fs_readlink_cleanup . fst)
+        (fromCString . fst)

@@ -4,7 +4,7 @@ synopsis:                   A simple and high performance IO toolkit for Haskell
 description:                This package provides a simple and high performance IO toolkit for Haskell, including
                             packed vectors, unicode texts, socket, file system, timers and more!
 license:                    BSD3
-license-file:               ../LICENSE
+license-file:               LICENSE
 author:                     Dong Han, Tao He
 maintainer:                 winterland1989@gmail.com
 copyright:                  (c) Dong Han, 2017-2018
@@ -12,8 +12,8 @@ copyright:                  (c) Dong Han, 2017-2018
 category:                   Data
 build-type:                 Simple
 cabal-version:              >=1.10
-homepage:                   https://github.com/haskell-stdio/stdio
-bug-reports:                https://github.com/haskell-stdio/stdio/issues
+homepage:                   https://github.com/haskell-Z/Z-IO
+bug-reports:                https://github.com/haskell-Z/Z-IO/issues
 
 extra-source-files:         ChangeLog.md
                             README.md
@@ -85,7 +85,7 @@ extra-source-files:         ChangeLog.md
 
 source-repository head
     type:     git
-    location: git://github.com/haskell-stdio/stdio.git
+    location: git://github.com/haskell-Z/Z-IO.git
 
 flag no-pkg-config
     description: Don't use pkg-config to check for library dependences

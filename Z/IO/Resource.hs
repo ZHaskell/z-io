@@ -35,7 +35,6 @@ module Z.IO.Resource (
 ) where
 
 import           Control.Concurrent.STM
-import           Control.Concurrent.STM.TVar
 import           Control.Monad
 import qualified Control.Monad.Catch as MonadCatch
 import           Control.Monad.IO.Class
@@ -48,9 +47,9 @@ import           Z.IO.Exception
 -- | A 'Resource' is an 'IO' action which acquires some resource of type a and
 -- also returns a finalizer of type IO () that releases the resource.
 --
--- The only safe way to use a 'Resource' is 'withResource' \/ 'withResource\'',
--- You should not use the `acquire` field directly, unless you want to implement your own
--- resource management. In the later case, you should always use 'mask_' since
+-- The only safe way to use a 'Resource' is 'withResource' and 'withResource\'',
+-- You should not use the 'acquire' field directly, unless you want to implement your own
+-- resource management. In the later case, you should 'mask_' 'acquire' since
 -- some resource initializations may assume async exceptions are masked.
 --
 -- 'MonadIO' instance is provided so that you can lift 'IO' computation inside
@@ -60,13 +59,13 @@ import           Z.IO.Exception
 -- A convention in Z-IO is that functions returning a 'Resource' should be
 -- named in @initXXX@ format, users are strongly recommended to follow this convention.
 --
--- There're two additional guarantees we made in stdio:
+-- There're two additional guarantees we made in Z-IO:
 --
---   * All resources in stdio can track its own liveness, throw 'ResourceVanished'
+--   * All resources in Z-IO can track its own liveness, throw 'ResourceVanished'
 --     exception using 'throwECLOSED' or 'throwECLOSEDSTM' when used after resource
 --     is closed.
 --
---   * All resources' clean up action in stdio is idempotent.
+--   * All resources' clean up action in Z-IO is idempotent.
 --
 -- Library authors providing 'initXXX' are also encouraged to provide these guarantees.
 --
@@ -254,12 +253,12 @@ initInPool (Pool res limit itime entries inuse state) = fst <$> initResource tak
             PoolEmpty -> do
                 modifyTVar' entries (Entry a itime:)
                 writeTVar state PoolScanning
-                return (void $ registerLowResTimer 10 (scanPool entries inuse state))
+                return (void $ registerLowResTimer 10 scanPool)
             _ -> do
                 modifyTVar' entries (Entry a itime:)
                 return (return ())
 
-    scanPool entries inuse state = do
+    scanPool = do
          join . atomically $ do
             c <- readTVar state
             if c == PoolClosed
@@ -277,7 +276,7 @@ initInPool (Pool res limit itime entries inuse state) = fst <$> initResource tak
                     return (do
                         forM_ dead $ \ (_, close) ->
                             MonadCatch.handleAll (\ _ -> return ()) close
-                        void $ registerLowResTimer 10 (scanPool entries inuse state))
+                        void $ registerLowResTimer 10 scanPool)
 
     age ((Entry a life):es) !deadNum dead living
         | life > 1  = age es deadNum     dead     (Entry a (life-1):living)

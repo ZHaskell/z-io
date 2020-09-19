@@ -10,8 +10,10 @@ Portability : non-portable
 -}
 module Z.IO.UV.Win where
 
+#if defined(mingw32_HOST_OS)
 import System.IO.Unsafe
 import Control.Exception
+#endif
 
 -- | 'withUVInitDo' is necessary for some socket code because on windows WSAStartup has to be called
 -- before use sockets.
