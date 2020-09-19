@@ -15,6 +15,18 @@ This package provides basic IO operations:
 * High performance logger
 * High performance timer
 
+## Dependencies
+
+On *nix system, libuv >= 1.27 are required to build this library, e.g.
+
+```base
+# on ubuntu
+sudo apt-get install libuv1 libuv1-dev
+# on mac
+brew install libuv
+```
+
+
 ## Example usage
 
 ```haskell

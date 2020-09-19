@@ -239,7 +239,7 @@ test-suite Z-IO-Test
                             Z.IO.FileSystem.ThreadedSpec
                             Z.IO.LowResTimerSpec
                             Z.IO.ResourceSpec
-                            -- Z.IO.UDPSpec
+                            Z.IO.UDPSpec
 
     ghc-options:            -threaded
     default-language:       Haskell2010
