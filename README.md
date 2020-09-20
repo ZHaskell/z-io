@@ -46,6 +46,7 @@ AddrInfo {addrFlags = [AI_ADDRCONFIG,AI_V4MAPPED], addrFamily = SocketFamily 2, 
 | in withResource (initTCPClient defaultTCPClientConfig{ tcpRemoteAddr = addr}) $ \ tcp -> do
 |     i <- newBufferedInput defaultChunkSize tcp 
 |     o <- newBufferedOutput defaultChunkSize tcp
+|     writeBuffer o "GET http://www.bing.com HTTP/1.1\r\nHost: www.bing.com\r\n\r\n"
 |     flushBuffer o
 |     readBuffer i >>= pure . T.validate
 | :}
