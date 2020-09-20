@@ -38,6 +38,8 @@ module Z.IO.Buffered
   , flushBuffer
     -- * Exceptions
   , ShortReadException(..)
+    -- * Stream utility
+  , drain
     -- * common buffer size
   , V.defaultChunkSize
   , V.smallChunkSize
@@ -179,17 +181,17 @@ readExactly n0 h0 = V.concat `fmap` (go h0 n0)
                     chunks <- go h (n - l)
                     return (chunk : chunks)
 
--- | Read all chunks from a 'BufferedInput'.
+-- | Read all chunks from a 'BufferedInput'. @readAll == drain null . readBuffer@
+--
+-- This function will loop read until meet EOF('Input' device return 'V.empty'),
+-- Useful for reading small file into memory.
 readAll :: (HasCallStack, Input i) => BufferedInput i -> IO [V.Bytes]
-readAll i = loop []
-  where
-    loop acc = do
-        chunk <- readBuffer i
-        if V.null chunk
-        then return $! reverse (chunk:acc)
-        else loop (chunk:acc)
+readAll = drain V.null . readBuffer
 
 -- | Read all chunks from a 'BufferedInput', and concat chunks together.
+--
+-- This function will loop read until meet EOF('Input' device return 'V.empty'),
+-- Useful for reading small file into memory.
 readAll' :: (HasCallStack, Input i) => BufferedInput i -> IO V.Bytes
 readAll' i = V.concat <$> readAll i
 
@@ -342,3 +344,25 @@ flushBuffer BufferedOutput{..} = do
     i <- readPrimIORef bufIndex
     withMutablePrimArrayContents outputBuffer $ \ ptr -> writeOutput bufOutput ptr i
     writePrimIORef bufIndex 0
+
+-- | Perform IO action until reach EOF, return all result in a list.
+--
+-- This is a @IO@ specific version of @unfoldWhileM@ from 'monad-loops' pacakge. Useful
+-- when dealing with @IO@ streams, e.g.
+--
+-- @
+--      allElements <- drain (==Nothing) someIOStreamReturnMaybeElement
+-- @
+--
+drain :: HasCallStack
+      => (a -> Bool)    -- ^ EOF check, return True if reach EOF
+      -> IO a            -- ^ Get an element\/block
+      -> IO [a]          -- ^ all element\/block list
+{-# INLINE drain #-}
+drain isEOF f = loop []
+  where
+    loop acc = do
+        chunk <- f
+        if isEOF chunk
+        then return $! reverse (chunk:acc)
+        else loop (chunk:acc)

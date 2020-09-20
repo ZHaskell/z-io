@@ -1,3 +1,6 @@
 [submodule "third_party/libuv"]
 	path = third_party/libuv
 	url = git@github.com:haskell-Z/libuv.git
+[submodule "third_party/zlib"]
+	path = third_party/zlib
+	url = git@github.com:haskell-Z/zlib.git

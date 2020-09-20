@@ -137,6 +137,7 @@ IOE(Interrupted)
 throwOOMIfNull :: HasCallStack
                => IO (Ptr a)    -- ^ the allocation action
                -> IO (Ptr a)
+{-# INLINABLE throwOOMIfNull #-}
 throwOOMIfNull f = do
     addr <- f
     if addr == nullPtr
@@ -148,6 +149,7 @@ throwOOMIfNull f = do
 throwUVIfMinus :: (HasCallStack, Integral a)
                => IO a    -- ^ the IO action
                -> IO a
+{-# INLINABLE throwUVIfMinus #-}
 throwUVIfMinus f = do
     errno <- f
     let errno' = fromIntegral errno
@@ -163,6 +165,7 @@ throwUVIfMinus f = do
 throwUVIfMinus_ :: (HasCallStack, Integral a)
                 => IO a    -- ^ the IO action
                 -> IO ()
+{-# INLINABLE throwUVIfMinus_ #-}
 throwUVIfMinus_ f = do
     errno <- f
     let errno' = fromIntegral errno

@@ -107,7 +107,7 @@ data SocketAddr
         {-# UNPACK #-} !FlowInfo    -- sin6_flowinfo (ditto)
         {-# UNPACK #-} !Inet6Addr   -- sin6_addr (ditto)
         {-# UNPACK #-} !ScopeID     -- sin6_scope_id (ditto)
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Typeable)
 
 instance Show SocketAddr where
     showsPrec _ (SocketAddrInet port ia)
@@ -137,7 +137,7 @@ type ScopeID = Word32
 --
 -- For direct manipulation prefer 'inetAddrToTuple' and 'tupleToInetAddr'.
 --
-newtype InetAddr = InetAddr Word32 deriving (Eq, Ord)
+newtype InetAddr = InetAddr Word32 deriving (Eq, Ord, Typeable)
 instance Show InetAddr where
     showsPrec _ ia = 
         let (a,b,c,d) = inetAddrToTuple ia
@@ -223,7 +223,7 @@ tupleToInetAddr (b3, b2, b1, b0) =
 data Inet6Addr = Inet6Addr {-# UNPACK #-}!Word32
                            {-# UNPACK #-}!Word32
                            {-# UNPACK #-}!Word32
-                           {-# UNPACK #-}!Word32 deriving (Eq, Ord)
+                           {-# UNPACK #-}!Word32 deriving (Eq, Ord, Typeable)
 
 
 instance Show Inet6Addr where
@@ -425,7 +425,8 @@ poke32 p i0 a = do
 -- 1
 -- >>> read "1" :: PortNumber
 -- 1
-newtype PortNumber = PortNumber Word16 deriving (Eq, Ord, Typeable)
+newtype PortNumber = PortNumber Word16
+    deriving (Eq, Ord, Typeable)
 -- newtyped to prevent accidental use of sane-looking
 -- port numbers that haven't actually been converted to
 -- network-byte-order first.
@@ -480,9 +481,12 @@ instance Storable PortNumber where
     
 --------------------------------------------------------------------------------
 
-newtype SocketFamily = SocketFamily CInt deriving (Show, Read, Eq, Ord, Typeable)
-newtype SocketType = SocketType CInt deriving (Show, Read, Eq, Ord, Typeable)
-newtype ProtocolNumber = ProtocolNumber CInt deriving (Show, Read, Eq, Ord, Typeable)
+newtype SocketFamily = SocketFamily CInt
+    deriving (Eq, Ord, Read, Show, Typeable)
+newtype SocketType = SocketType CInt
+    deriving (Eq, Ord, Read, Show, Typeable)
+newtype ProtocolNumber = ProtocolNumber CInt
+    deriving (Eq, Ord, Read, Show, Typeable)
 
 instance Storable SocketFamily where                      
     sizeOf _ = sizeOf (undefined :: CInt)       
