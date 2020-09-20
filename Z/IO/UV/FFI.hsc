@@ -23,6 +23,7 @@ module Z.IO.UV.FFI where
 
 import           Data.Bits
 import           Data.Int
+import           Data.Typeable
 import           Data.Word
 import           Foreign.C.String
 import           Foreign.C.Types
@@ -80,8 +81,7 @@ peekUVBufferTable p = (,)
     <$> (#{peek hs_loop_data, buffer_table          } p)
     <*> (#{peek hs_loop_data, buffer_size_table     } p)
 
-newtype UVRunMode = UVRunMode CInt 
-    deriving (Eq, Ord, Read, Show, FiniteBits, Bits, Storable, Num)
+newtype UVRunMode = UVRunMode CInt deriving (Eq, Ord, Typeable)
 
 pattern UV_RUN_DEFAULT :: UVRunMode
 pattern UV_RUN_DEFAULT = UVRunMode #{const UV_RUN_DEFAULT}

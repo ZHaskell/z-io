@@ -20,11 +20,27 @@ extra-source-files:         ChangeLog.md
                             LICENSE
 
                             include/hs_uv.h
+                            include/hs_zlib.h
                             cbits/hs_uv_base.c
                             cbits/hs_uv_stream.c
                             cbits/hs_uv_udp.c
                             cbits/hs_uv_file.c
                             cbits/hs_uv_dns.c
+
+                            -- zlib C sources
+                            third_party/zlib/zconf.h
+                            third_party/zlib/zlib.h
+                            third_party/zlib/adler32.c
+                            third_party/zlib/compress.c
+                            third_party/zlib/crc32.c
+                            third_party/zlib/deflate.c
+                            third_party/zlib/infback.c
+                            third_party/zlib/inffast.c
+                            third_party/zlib/inflate.c
+                            third_party/zlib/inftrees.c
+                            third_party/zlib/trees.c
+                            third_party/zlib/uncompr.c
+                            third_party/zlib/zutil.c
 
                             -- libuv C sources (for Windows)
                             third_party/libuv/include/uv.h
@@ -120,6 +136,8 @@ library
                             Z.IO.UV.Manager
                             Z.IO.UV.Win
 
+                            Z.Compression.Zlib
+
     build-depends:          base                    >= 4.12 && <5.0
                           , Z-Data                  >= 0.1.1 && < 0.2
                           , primitive               >= 0.7.1 && < 0.7.2
@@ -136,14 +154,34 @@ library
         build-depends:      integer-gmp >= 0.2 && < 1.1
 
     include-dirs:           include
+                            third_party/zlib
+
     includes:               hs_uv.h
-    install-includes:       hs_uv.h
+                            hs_zlib.h 
+
+    install-includes:       hs_uv.h 
+                            hs_zlib.h 
+                            zlib.h
+                            zconf.h
+
     cc-options:             -march=native
     c-sources:              cbits/hs_uv_base.c
                             cbits/hs_uv_stream.c
                             cbits/hs_uv_udp.c
                             cbits/hs_uv_file.c
                             cbits/hs_uv_dns.c
+
+                            third_party/zlib/adler32.c
+                            third_party/zlib/compress.c
+                            third_party/zlib/crc32.c
+                            third_party/zlib/deflate.c
+                            third_party/zlib/infback.c
+                            third_party/zlib/inffast.c
+                            third_party/zlib/inflate.c
+                            third_party/zlib/inftrees.c
+                            third_party/zlib/trees.c
+                            third_party/zlib/uncompr.c
+                            third_party/zlib/zutil.c
 
     -- Note: The c-sources list is taken from libuv's Makefile.mingw, needs to be
     -- updated when we bump up libuv's version.
