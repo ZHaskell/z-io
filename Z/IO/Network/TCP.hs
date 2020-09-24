@@ -23,10 +23,12 @@ module Z.IO.Network.TCP (
     TCPClientConfig(..)
   , defaultTCPClientConfig
   , initTCPClient
+  , getTCPSockName
   -- * TCP Server
   , TCPServerConfig(..)
   , defaultTCPServerConfig
   , startTCPServer
+  , getTCPPeerName
   ) where
 
 import           Control.Concurrent.MVar
@@ -34,6 +36,7 @@ import           Control.Monad
 import           Control.Monad.IO.Class
 import           Data.Primitive.PrimArray
 import           Foreign.Ptr
+import           Foreign.C
 import           GHC.Ptr
 import           Z.IO.Buffered
 import           Z.IO.Exception
@@ -41,6 +44,7 @@ import           Z.IO.Network.SocketAddr
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
 import           Z.IO.UV.Manager
+import           Z.Foreign
 import           Data.Coerce
 
 --------------------------------------------------------------------------------
@@ -49,13 +53,15 @@ import           Data.Coerce
 --
 data TCPClientConfig = TCPClientConfig
     { tcpClientAddr :: Maybe SocketAddr -- ^ assign a local address, or let OS pick one
-    , tcpRemoteAddr :: SocketAddr      -- ^ remote target address
-    , tcpNoDelay :: Bool             -- ^ if we want to use @TCP_NODELAY@
+    , tcpRemoteAddr :: SocketAddr       -- ^ remote target address
+    , tcpClientNoDelay :: Bool          -- ^ if we want to use @TCP_NODELAY@
+    , tcpClientKeepAlive :: CUInt       -- ^ set keepalive delay for client socket, see 'setTCPKeepAlive'
     }
 
 -- | Default config, connect to @localhost:8888@.
+--
 defaultTCPClientConfig :: TCPClientConfig
-defaultTCPClientConfig = TCPClientConfig Nothing (SocketAddrInet 8888 inetLoopback) True
+defaultTCPClientConfig = TCPClientConfig Nothing (SocketAddrInet 8888 inetLoopback) True 30
 
 -- | init a TCP client 'Resource', which open a new connect when used.
 --
@@ -70,7 +76,9 @@ initTCPClient TCPClientConfig{..} = do
                 -- bind is safe without withUVManager
                 throwUVIfMinus_ (uv_tcp_bind hdl localPtr 0)
         -- nodelay is safe without withUVManager
-        when tcpNoDelay $ throwUVIfMinus_ (uv_tcp_nodelay hdl 1)
+        when tcpClientNoDelay . throwUVIfMinus_ $ uv_tcp_nodelay hdl 1
+        when (tcpClientKeepAlive > 0) . throwUVIfMinus_ $
+            uv_tcp_keepalive hdl 1 tcpClientKeepAlive
         void . withUVRequest uvm $ \ _ -> hs_uv_tcp_connect hdl targetPtr
     return client
 
@@ -82,6 +90,7 @@ data TCPServerConfig = TCPServerConfig
     { tcpListenAddr       :: SocketAddr      -- ^ listening address
     , tcpListenBacklog    :: Int           -- ^ listening socket's backlog size, should be large enough(>128)
     , tcpServerWorkerNoDelay :: Bool       -- ^ if we want to use @TCP_NODELAY@
+    , tcpServerWorkerKeepAlive :: CUInt    -- ^ set keepalive delay for worker socket, see 'setTCPKeepAlive'
     , tcpServerWorker     :: UVStream -> IO ()  -- ^ worker which get an accepted TCP stream,
                                             -- the socket will be closed upon exception or worker finishes.
     }
@@ -95,6 +104,7 @@ defaultTCPServerConfig = TCPServerConfig
     (SocketAddrInet 8888 inetAny)
     256
     True
+    30
     (\ uvs -> writeOutput uvs (Ptr "hello world"#) 11)
 
 -- | Start a server
@@ -174,10 +184,40 @@ startTCPServer TCPServerConfig{..} = do
                                     when tcpServerWorkerNoDelay . throwUVIfMinus_ $
                                         -- safe without withUVManager
                                         uv_tcp_nodelay (uvsHandle uvs) 1
+                                    when (tcpServerWorkerKeepAlive > 0) . throwUVIfMinus_ $
+                                        uv_tcp_keepalive (uvsHandle uvs) 1 tcpServerWorkerKeepAlive
                                     tcpServerWorker uvs
 
 --------------------------------------------------------------------------------
 
 initTCPStream :: HasCallStack => UVManager -> Resource UVStream
-initTCPStream = initUVStream (\ loop hdl ->
-    throwUVIfMinus_ (uv_tcp_init loop hdl))
+initTCPStream = initUVStream (\ loop hdl -> throwUVIfMinus_ (uv_tcp_init loop hdl))
+
+-- | Enable or disable @TCP_NODELAY@, which disables Nagle’s algorithm.
+setTCPNoDelay :: HasCallStack => UVStream -> Bool -> IO ()
+setTCPNoDelay uvs nodelay =
+    throwUVIfMinus_ (uv_tcp_nodelay (uvsHandle uvs) (if nodelay then 1 else 0))
+
+-- Enable / disable TCP keep-alive. delay is the initial delay in seconds, ignored when enable is zero.
+--
+-- After delay has been reached, 10 successive probes, each spaced 1 second from the previous one,
+-- will still happen. If the connection is still lost at the end of this procedure,
+-- then the connection is closed, pending io thread will throw 'TimeExpired' exception.
+setTCPKeepAlive :: HasCallStack => UVStream -> CUInt -> IO ()
+setTCPKeepAlive uvs delay
+    | delay > 0 = throwUVIfMinus_ (uv_tcp_keepalive (uvsHandle uvs) 1 delay)
+    | otherwise = throwUVIfMinus_ (uv_tcp_keepalive (uvsHandle uvs) 0 0)
+
+-- | Get the current address to which the handle is bound.
+getTCPSockName :: HasCallStack => UVStream -> IO SocketAddr
+getTCPSockName uvs = do
+    withSocketAddrStorage $ \ paddr ->
+        void $ withPrimUnsafe (fromIntegral sizeOfSocketAddrStorage :: CInt) $ \ plen ->
+            throwUVIfMinus_ (uv_udp_getsockname (uvsHandle uvs) paddr plen)
+
+-- | Get the address of the peer connected to the handle.
+getTCPPeerName :: HasCallStack => UVStream -> IO SocketAddr
+getTCPPeerName uvs = do
+    withSocketAddrStorage $ \ paddr ->
+        void $ withPrimUnsafe (fromIntegral sizeOfSocketAddrStorage :: CInt) $ \ plen ->
+            throwUVIfMinus_ (uv_udp_getpeername (uvsHandle uvs) paddr plen)

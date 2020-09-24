@@ -421,6 +421,7 @@ closeUVStream (UVStream hdl _ uvm closed) = withUVManager' uvm $ do
 
 instance Input UVStream where
     -- readInput :: HasCallStack => UVStream -> Ptr Word8 ->  Int -> IO Int
+    {-# INLINABLE readInput  #-}
     readInput (UVStream hdl slot uvm closed) buf len = mask_ $ do
         c <- readIORef closed
         when c throwECLOSED
@@ -444,9 +445,9 @@ instance Input UVStream where
             | r == fromIntegral UV_EOF -> return 0
             | r < 0 ->  throwUVIfMinus (return r)
 
-
 instance Output UVStream where
     -- writeOutput :: HasCallStack => UVStream -> Ptr Word8 -> Int -> IO ()
+    {-# INLINABLE writeOutput  #-}
     writeOutput (UVStream hdl _ uvm closed) buf len = mask_ $ do
         c <- readIORef closed
         when c throwECLOSED

@@ -3,6 +3,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE RankNTypes #-}
 
 {-|
 Module      : Z.IO.Buffered
@@ -26,7 +27,7 @@ module Z.IO.Buffered
   , readBuffer
   , unReadBuffer
   , readParser
-  , readExactly
+  , readExactly,  readExactly'
   , readToMagic, readToMagic'
   , readLine, readLine'
   , readAll, readAll'
@@ -36,10 +37,20 @@ module Z.IO.Buffered
   , writeBuffer
   , writeBuilder
   , flushBuffer
+    -- * Stream utilities
+  , Source, Sink
+  , sourceBuffer
+  , sinkBuffer
+  , sourceFromList
+  , (>+>)
+  , parseSource
+  , collectSource
+  , concatSource
+  , zipSource
+  , (>>>>=)
+
     -- * Exceptions
-  , ShortReadException(..)
-    -- * Stream utility
-  , drain
+  , BufferedException(..)
     -- * common buffer size
   , V.defaultChunkSize
   , V.smallChunkSize
@@ -52,6 +63,7 @@ import           Data.IORef
 import           Data.Primitive.PrimArray
 import           Data.Typeable
 import           Data.Word
+import           Data.Bits                 (unsafeShiftR)
 import           Foreign.Ptr
 import           Z.Data.Array
 import qualified Z.Data.Builder.Base       as B
@@ -107,8 +119,8 @@ data BufferedOutput o = BufferedOutput
 
 -- | Open a new buffered input with given buffer size, e.g. 'V.defaultChunkSize'.
 newBufferedInput :: Int     -- ^ Input buffer size
-                 -> input
-                 -> IO (BufferedInput input)
+                 -> i
+                 -> IO (BufferedInput i)
 newBufferedInput bufSiz i = do
     pb <- newIORef V.empty
     buf <- newPinnedPrimArray (max bufSiz 0)
@@ -117,8 +129,8 @@ newBufferedInput bufSiz i = do
 
 -- | Open a new buffered output with given buffer size, e.g. 'V.defaultChunkSize'.
 newBufferedOutput :: Int    -- ^ Output buffer size
-                  -> output
-                  -> IO (BufferedOutput output)
+                  -> o
+                  -> IO (BufferedOutput o)
 newBufferedOutput bufSiz o = do
     index <- newPrimIORef 0
     buf <- newPinnedPrimArray (max bufSiz 0)
@@ -132,7 +144,7 @@ newBufferedOutput bufSiz o = do
 -- If we read N bytes, and N is larger than half of the buffer size, then we freeze buffer and return,
 -- otherwise we copy buffer into result and reuse buffer afterward.
 --
-readBuffer :: (HasCallStack, Input i) => BufferedInput i -> IO V.Bytes
+readBuffer :: (Input i, HasCallStack) => BufferedInput i -> IO V.Bytes
 readBuffer BufferedInput{..} = do
     pb <- readIORef bufPushBack
     if V.null pb
@@ -158,7 +170,7 @@ readBuffer BufferedInput{..} = do
 
 -- | Read exactly N bytes
 --
--- If EOF reached before N bytes read, a 'ShortReadException' will be thrown
+-- If EOF reached before N bytes read, trailing bytes will be returned.
 --
 readExactly :: (HasCallStack, Input i) => Int -> BufferedInput i -> IO V.Bytes
 readExactly n0 h0 = V.concat `fmap` (go h0 n0)
@@ -174,19 +186,34 @@ readExactly n0 h0 = V.concat `fmap` (go h0 n0)
         else if l == n
             then return [chunk]
             else if l == 0
-                then
-                    throwIO (ShortReadException
-                        (IOEInfo "" "unexpected EOF reached" callStack))
+                then return [chunk]
                 else do
                     chunks <- go h (n - l)
                     return (chunk : chunks)
 
--- | Read all chunks from a 'BufferedInput'. @readAll == drain null . readBuffer@
+-- | Read exactly N bytes
+--
+-- If EOF reached before N bytes read, a 'ShortReadException' will be thrown
+--
+readExactly' :: (HasCallStack, Input i) => Int -> BufferedInput i -> IO V.Bytes
+readExactly' n h = do
+    v <- readExactly n h
+    if (V.length v /= n)
+    then throwIO (ShortReadException callStack)
+    else return v
+
+-- | Read all chunks from a 'BufferedInput'.
 --
 -- This function will loop read until meet EOF('Input' device return 'V.empty'),
 -- Useful for reading small file into memory.
 readAll :: (HasCallStack, Input i) => BufferedInput i -> IO [V.Bytes]
-readAll = drain V.null . readBuffer
+readAll h = loop []
+  where
+    loop acc = do
+        chunk <- readBuffer h
+        if V.null chunk
+        then return $! reverse (chunk:acc)
+        else loop (chunk:acc)
 
 -- | Read all chunks from a 'BufferedInput', and concat chunks together.
 --
@@ -195,25 +222,31 @@ readAll = drain V.null . readBuffer
 readAll' :: (HasCallStack, Input i) => BufferedInput i -> IO V.Bytes
 readAll' i = V.concat <$> readAll i
 
-data ShortReadException = ShortReadException IOEInfo deriving (Show, Typeable)
+data BufferedException = ParseException P.ParseError CallStack
+                       | ShortReadException CallStack deriving (Show, Typeable)
 
-instance Exception ShortReadException where
+instance Exception BufferedException where
     toException = ioExceptionToException
     fromException = ioExceptionFromException
 
--- | Push bytes back into buffer.
+-- | Push bytes back into buffer(if not empty).
 --
 unReadBuffer :: (HasCallStack, Input i) => V.Bytes -> BufferedInput i -> IO ()
-unReadBuffer pb' BufferedInput{..} = do
+unReadBuffer pb' BufferedInput{..} = unless (V.null pb') $ do
     modifyIORef' bufPushBack $ \ pb -> pb' `V.append` pb
 
 -- | Read buffer and parse with 'Parser'.
 --
--- This function will continuously draw data from input before parsing finish.
-readParser :: (HasCallStack, Input i) => P.Parser a -> BufferedInput i -> IO (V.Bytes, Either P.ParseError a)
-readParser p i = do
+-- This function will continuously draw data from input before parsing finish. Unconsumed
+-- bytes will be returned to buffer.
+--
+-- Either during parsing or before parsing, reach EOF will result in 'P.ParseError'.
+readParser :: (HasCallStack, Input i) => P.Parser a -> BufferedInput i -> IO (Either P.ParseError a)
+readParser p i@BufferedInput{..} = do
     bs <- readBuffer i
-    P.parseChunks p (readBuffer i) bs
+    (rest, r) <- P.parseChunks p (readBuffer i) bs
+    unReadBuffer rest i
+    return r
 
 -- | Read until reach a magic bytes
 --
@@ -243,8 +276,7 @@ readToMagic' magic0 h0 = V.concat `fmap` (go h0 magic0)
     go h magic = do
         chunk <- readBuffer h
         if V.null chunk
-        then throwIO (ShortReadException
-            (IOEInfo "" "unexpected EOF reached" callStack))
+        then throwIO (ShortReadException callStack)
         else case V.elemIndex magic chunk of
             Just i -> do
                 let (lastChunk, rest) = V.splitAt (i+1) chunk
@@ -256,7 +288,7 @@ readToMagic' magic0 h0 = V.concat `fmap` (go h0 magic0)
 
 -- | Read to a linefeed ('\n' or '\r\n'), return 'Bytes' before it.
 --
--- If EOF is reached before meet a magic byte, partial line is returned.
+-- If EOF is reached before meet a line feed, partial line is returned.
 readLine :: (HasCallStack, Input i) => BufferedInput i -> IO V.Bytes
 readLine i = do
     bs@(V.PrimVector arr s l) <- readToMagic 10 i
@@ -269,7 +301,7 @@ readLine i = do
 
 -- | Read to a linefeed ('\n' or '\r\n'), return 'Bytes' before it.
 --
--- If EOF reached before meet a '\n', a 'ShortReadException' will be thrown.
+-- If EOF reached before meet a line feed, a 'ShortReadException' will be thrown.
 readLine' :: (HasCallStack, Input i) => BufferedInput i -> IO V.Bytes
 readLine' i = do
     bs@(V.PrimVector arr s l) <- readToMagic' 10 i
@@ -284,36 +316,41 @@ readLine' i = do
 
 -- | Write 'V.Bytes' into buffered handle.
 --
--- Copy 'V.Bytes' to buffer if it can hold, otherwise
--- write both buffer(if not empty) and 'V.Bytes'.
+-- * If buffer is empty and bytes are larger than half of buffer, directly write bytes,
+--   otherwise copy bytes to buffer.
 --
-writeBuffer :: (Output o) => BufferedOutput o -> V.Bytes -> IO ()
+-- * If buffer is not empty, then copy bytes to buffer if it can hold, otherwise
+--   write buffer first, then try again.
+--
+writeBuffer :: (HasCallStack, Output o) => BufferedOutput o -> V.Bytes -> IO ()
 writeBuffer o@BufferedOutput{..} v@(V.PrimVector ba s l) = do
     i <- readPrimIORef bufIndex
     bufSiz <- getSizeofMutablePrimArray outputBuffer
-    if i + l <= bufSiz
-    then do
-        -- current buffer can hold it
-        copyPrimArray outputBuffer i ba s l   -- copy to buffer
-        writePrimIORef bufIndex (i+l)              -- update index
-    else do
-        if (i > 0)
+    if i /= 0
+    then if i + l <= bufSiz
         then do
-            -- flush the buffer
-            withMutablePrimArrayContents outputBuffer $ \ ptr -> writeOutput bufOutput ptr i
+            -- current buffer can hold it
+            copyPrimArray outputBuffer i ba s l   -- copy to buffer
+            writePrimIORef bufIndex (i+l)              -- update index
+        else do
+            -- flush the buffer first
+            withMutablePrimArrayContents outputBuffer $ \ ptr -> (writeOutput bufOutput) ptr i
             writePrimIORef bufIndex 0
+            -- try write to buffer again
+            writeBuffer o v
+    else
+        if l > bufSiz `unsafeShiftR` 2
+        then withPrimVectorSafe v (writeOutput bufOutput)
+        else do
+            copyPrimArray outputBuffer i ba s l   -- copy to buffer
+            writePrimIORef bufIndex l             -- update index
 
-            writeBuffer o v -- try write to buffer again
-        else
-            withPrimVectorSafe v (writeOutput bufOutput)
 
-
--- | Write 'V.Bytes' into buffered handle.
+-- | Directly write 'B.Builder' into buffered handle.
 --
--- Copy 'V.Bytes' to buffer if it can hold, otherwise
--- write both buffer(if not empty) and 'V.Bytes'.
+-- Run 'B.Builder' with buffer if it can hold, write to device when buffer is full.
 --
-writeBuilder :: (Output o) => BufferedOutput o -> B.Builder a -> IO ()
+writeBuilder :: (HasCallStack, Output o) => BufferedOutput o -> B.Builder a -> IO ()
 writeBuilder BufferedOutput{..} (B.Builder b) = do
     i <- readPrimIORef bufIndex
     originBufSiz <- getSizeofMutablePrimArray outputBuffer
@@ -329,7 +366,7 @@ writeBuilder BufferedOutput{..} (B.Builder b) = do
             writePrimIORef bufIndex offset   -- record new buffer index
             return []
         | offset >= originBufSiz = ioToPrim $ do
-            withMutablePrimArrayContents buf $ \ ptr -> writeOutput bufOutput ptr offset
+            withMutablePrimArrayContents buf $ \ ptr -> (writeOutput bufOutput) ptr offset
             writePrimIORef bufIndex 0
             return [] -- to match 'BuildStep' return type
         | otherwise = ioToPrim $ do
@@ -337,32 +374,136 @@ writeBuilder BufferedOutput{..} (B.Builder b) = do
             writePrimIORef bufIndex offset
             return [] -- to match 'BuildStep' return type
 
--- | Flush the buffer into output device(if not empty).
+-- | Flush the buffer into output device(if buffer is not empty).
 --
-flushBuffer :: Output f => BufferedOutput f -> IO ()
+flushBuffer :: (HasCallStack, Output o) => BufferedOutput o -> IO ()
 flushBuffer BufferedOutput{..} = do
     i <- readPrimIORef bufIndex
-    withMutablePrimArrayContents outputBuffer $ \ ptr -> writeOutput bufOutput ptr i
-    writePrimIORef bufIndex 0
+    when (i /= 0) $ do
+        withMutablePrimArrayContents outputBuffer $ \ ptr -> (writeOutput bufOutput) ptr i
+        writePrimIORef bufIndex 0
 
--- | Perform IO action until reach EOF, return all result in a list.
+--------------------------------------------------------------------------------
+
+-- | Type alias for input stream, 'Nothing' indicate EOF.
+type Source a = IO (Maybe a)
+
+-- | Type alias for output stream, contain a write & a flush function.
+type Sink a = (a -> IO (), IO ())
+
+-- | Turn a 'BufferedInput' into 'Source', map EOF to Nothing.
 --
--- This is a @IO@ specific version of @unfoldWhileM@ from 'monad-loops' pacakge. Useful
--- when dealing with @IO@ streams, e.g.
+sourceBuffer :: (HasCallStack, Input i) => BufferedInput i -> Source V.Bytes
+{-# INLINABLE sourceBuffer #-}
+sourceBuffer i = readBuffer i >>= \ x -> if V.null x then return Nothing
+                                                     else return (Just x)
+
+-- | Turn a 'BufferedOutput' into 'Sink'.
 --
--- @
---      allElements <- drain (==Nothing) someIOStreamReturnMaybeElement
--- @
---
-drain :: HasCallStack
-      => (a -> Bool)    -- ^ EOF check, return True if reach EOF
-      -> IO a            -- ^ Get an element\/block
-      -> IO [a]          -- ^ all element\/block list
-{-# INLINE drain #-}
-drain isEOF f = loop []
+sinkBuffer :: (HasCallStack, Output o) => BufferedOutput o -> Sink V.Bytes
+{-# INLINABLE sinkBuffer #-}
+sinkBuffer o = (writeBuffer o, flushBuffer o)
+
+-- | Source a list streamly.
+sourceFromList :: [a] -> IO (Source a)
+{-# INLINABLE sourceFromList #-}
+sourceFromList xs = do
+    xsRef <- newIORef xs
+    return (popper xsRef)
+  where
+    popper xsRef = do
+        xs <- readIORef xsRef
+        case xs of
+            (x:xs') -> do
+                writeIORef xsRef xs'
+                return (Just x)
+            _ -> return Nothing
+
+-- | Connect two streams, after first reach EOF, draw element from second.
+(>+>) :: Source a -> Source a  -> IO (Source a)
+{-# INLINABLE (>+>) #-}
+input1 >+> input2 = concatSource [input1, input2]
+
+-- | Read all stream elements to a list.
+collectSource :: Source a -> IO [a]
+{-# INLINABLE collectSource #-}
+collectSource input = loop []
   where
     loop acc = do
-        chunk <- f
-        if isEOF chunk
-        then return $! reverse (chunk:acc)
-        else loop (chunk:acc)
+        r <- input
+        case r of
+            Just r' -> loop (r':acc)
+            _       -> return $! reverse acc
+
+
+-- | Read buffer and parse with 'Parser'.
+--
+-- This function will continuously draw data from input before parsing finish. Unconsumed
+-- bytes will be returned to buffer.
+--
+-- Return 'Nothing' if reach EOF before parsing, throw 'ParseException' if parsing fail.
+parseSource :: HasCallStack => P.Parser a -> Source V.Bytes -> IO (Source a)
+{-# INLINABLE parseSource #-}
+parseSource p source = do
+    trailingRef <- newIORef V.empty
+    return (go trailingRef)
+  where
+    go trailingRef = do
+        trailing <- readIORef trailingRef
+        if V.null trailing
+        then do
+            bs <- source
+            case bs of
+                Just bs' -> do
+                    (rest, r) <- P.parseChunks p source' bs'
+                    writeIORef trailingRef rest
+                    case r of Right v -> return (Just v)
+                              Left e  -> throwIO (ParseException e callStack)
+                _    -> return Nothing
+        else do
+            (rest, r) <- P.parseChunks p source' trailing
+            writeIORef trailingRef rest
+            case r of Right v -> return (Just v)
+                      Left e  -> throwIO (ParseException e callStack)
+
+    source' = source >>= \ r -> case r of Just r' -> return r'
+                                          _      -> return V.empty
+
+-- | Connect list of streams, after one stream reach EOF, draw element from next.
+concatSource :: [Source a] -> IO (Source a)
+{-# INLINABLE concatSource #-}
+concatSource ss = newIORef ss >>= return . loop
+  where
+    loop ref = do
+        ss <- readIORef ref
+        case ss of
+          []       -> return Nothing
+          (input:rest) -> do
+              chunk <- input
+              case chunk of
+                Just _  -> return chunk
+                _       -> writeIORef ref rest >> loop ref
+
+-- | Zip two streams into one.
+zipSource :: Source a -> Source b -> Source (a,b)
+{-# INLINABLE zipSource #-}
+zipSource inputA inputB = do
+    mA <- inputA
+    mB <- inputB
+    case mA of Just a -> case mB of Just b -> return (Just (a, b))
+                                    _ -> return Nothing
+               _ -> return Nothing
+
+-- | Loop read stream and write to output, when input ends flush the output.
+--
+(>>>>=) :: Source a     -- ^ stream to write
+        -> Sink a
+        -> IO ()
+{-# INLINABLE (>>>>=) #-}
+(>>>>=) input (write, flush) = loop
+  where
+    loop = do
+        m <- input
+        case m of
+            Just x' -> write x' >> loop
+            _       -> flush

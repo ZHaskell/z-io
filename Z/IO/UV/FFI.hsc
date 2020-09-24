@@ -149,6 +149,8 @@ foreign import ccall unsafe uv_tcp_init :: Ptr UVLoop -> Ptr UVHandle -> IO CInt
 foreign import ccall unsafe uv_tcp_init_ex :: Ptr UVLoop -> Ptr UVHandle -> CUInt -> IO CInt
 foreign import ccall unsafe uv_tcp_nodelay :: Ptr UVHandle -> CInt -> IO CInt
 foreign import ccall unsafe uv_tcp_keepalive :: Ptr UVHandle -> CInt -> CUInt -> IO CInt
+foreign import ccall unsafe uv_tcp_getsockname :: Ptr UVHandle -> Ptr SocketAddr -> CInt -> IO CInt
+foreign import ccall unsafe uv_tcp_getpeername :: Ptr UVHandle -> Ptr SocketAddr -> CInt -> IO CInt
 
 uV_TCP_IPV6ONLY :: CUInt
 uV_TCP_IPV6ONLY = #{const UV_TCP_IPV6ONLY}
@@ -707,3 +709,4 @@ pattern UV_FILE :: UVHandleType
 pattern UV_FILE = UVHandleType #{const UV_FILE}
 
 foreign import ccall unsafe uv_guess_handle :: UVFD -> IO UVHandleType
+

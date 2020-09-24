@@ -43,6 +43,7 @@ AddrInfo {addrFlags = [AI_ADDRCONFIG,AI_V4MAPPED], addrFamily = SocketFamily 2, 
 > -- send a simple HTTP request
 > :{
 | let addr = SocketAddrInet 80 (tupleToInetAddr (13,107,21,200))
+| -- addr = ipv4 "13.107.21.200" 80
 | in withResource (initTCPClient defaultTCPClientConfig{ tcpRemoteAddr = addr}) $ \ tcp -> do
 |     i <- newBufferedInput defaultChunkSize tcp 
 |     o <- newBufferedOutput defaultChunkSize tcp

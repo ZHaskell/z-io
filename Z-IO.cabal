@@ -1,8 +1,8 @@
 name:                       Z-IO
-version:                    0.1.0.0
-synopsis:                   A simple and high performance IO toolkit for Haskell
-description:                This package provides a simple and high performance IO toolkit for Haskell, including
-                            packed vectors, unicode texts, socket, file system, timers and more!
+version:                    0.1.1.0
+synopsis:                   Simple and high performance IO toolkit for Haskell
+description:                Simple and high performance IO toolkit for Haskell, including
+                            file system, network, ipc and more!
 license:                    BSD3
 license-file:               LICENSE
 author:                     Dong Han, Tao He
@@ -20,7 +20,6 @@ extra-source-files:         ChangeLog.md
                             LICENSE
 
                             include/hs_uv.h
-                            include/hs_zlib.h
                             cbits/hs_uv_base.c
                             cbits/hs_uv_stream.c
                             cbits/hs_uv_udp.c
@@ -139,7 +138,7 @@ library
                             Z.Compression.Zlib
 
     build-depends:          base                    >= 4.12 && <5.0
-                          , Z-Data                  >= 0.1.1 && < 0.2
+                          , Z-Data                  >= 0.1.3.1 && < 0.1.4
                           , primitive               >= 0.7.1 && < 0.7.2
                           , ghc-prim                >= 0.6.1 && < 0.6.2
                           , exceptions              == 0.10.*
@@ -157,10 +156,8 @@ library
                             third_party/zlib
 
     includes:               hs_uv.h
-                            hs_zlib.h 
 
     install-includes:       hs_uv.h 
-                            hs_zlib.h 
                             zlib.h
                             zconf.h
 
@@ -170,6 +167,7 @@ library
                             cbits/hs_uv_udp.c
                             cbits/hs_uv_file.c
                             cbits/hs_uv_dns.c
+                            cbits/hs_zlib.c
 
                             third_party/zlib/adler32.c
                             third_party/zlib/compress.c
@@ -265,6 +263,8 @@ test-suite Z-IO-Test
                           , word8
                           , scientific
                           , primitive
+                          , zlib
+                          , bytestring
 
     other-modules:          Z.IO.FileSystemSpec
                             Z.IO.FileSystem.ThreadedSpec

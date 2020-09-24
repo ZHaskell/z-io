@@ -29,22 +29,41 @@
  */
 
 #include <zlib.h>
+#include <stdlib.h>
 
-void set_avail_in (z_stream *stream, char *buff, unsigned int avail)
-{
-	stream->next_in = buff;
-	stream->avail_in = avail;
+z_stream * create_z_stream(void){
+    z_stream *stream = malloc(sizeof(z_stream));
+    if (stream) {
+        stream->zalloc = Z_NULL;
+        stream->zfree = Z_NULL;
+        stream->opaque = Z_NULL;
+        stream->next_in = NULL;
+        stream->avail_in = 0;
+        stream->next_out = NULL;
+        stream->avail_out = 0;
+    }
+    return stream;
 }
 
-void set_avail_out (z_stream *stream, char *buff, unsigned int avail)
+int deflate_init2(z_stream *stream, int level, int methodBits, int memlevel, int strategy)
 {
-	stream->next_out = buff;
-	stream->avail_out = avail;
+    return deflateInit2(stream, level, Z_DEFLATED, methodBits, memlevel, strategy);
 }
 
-int deflate_init2(z_stream *stream, int level, int methodBits,
-                  int memlevel, int strategy)
+void free_z_stream_deflate (z_stream *stream)
 {
-	return deflateInit2(stream, level, Z_DEFLATED, methodBits, memlevel, strategy);
+	deflateEnd(stream);
+	free(stream);
+}
+
+int inflate_init2(z_stream *stream, int methodBits)
+{
+	return inflateInit2(stream, methodBits);
+}
+
+void free_z_stream_inflate (z_stream *stream)
+{
+	inflateEnd(stream);
+	free(stream);
 }
 

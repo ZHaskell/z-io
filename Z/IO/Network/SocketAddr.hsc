@@ -1,5 +1,10 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE UnliftedFFITypes #-}
 {-# LANGUAGE PatternSynonyms    #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE UnboxedTuples #-}
+{-# LANGUAGE MagicHash #-}
 
 {-|
 Module      : Z.IO.Network.SocketAddr
@@ -17,14 +22,16 @@ This module provides necessary types and constant for low level socket address m
 module Z.IO.Network.SocketAddr
   ( -- * name to address
     SocketAddr(..)
+  , ipv4, ipv6
   , sockAddrFamily
-  , peekSocketAddr
   , withSocketAddr
+  , withSocketAddrUnsafe
   , sizeOfSocketAddr
   , withSocketAddrStorage
+  , withSocketAddrStorageUnsafe
   , sizeOfSocketAddrStorage
    -- ** IPv4 address
-  , InetAddr
+  , InetAddr(..)
   , inetAny
   , inetBroadcast
   , inetNone
@@ -35,20 +42,16 @@ module Z.IO.Network.SocketAddr
   , inetAddrToTuple
   , tupleToInetAddr
    -- ** IPv6 address
-  , Inet6Addr
+  , Inet6Addr(..)
   , inet6Any
   , inet6Loopback
   , inet6AddrToTuple
   , tupleToInet6Addr
-  , FlowInfo
-  , ScopeID
+  , FlowInfo(..)
+  , ScopeID(..)
   -- * port numbber
-  , PortNumber 
+  , PortNumber(..)
   , portAny
-  , htons
-  , ntohs
-  , ntohl
-  , htonl
   -- * family, type, protocol
   , SocketFamily(..)
   , pattern AF_UNSPEC
@@ -66,6 +69,15 @@ module Z.IO.Network.SocketAddr
   , pattern IPPROTO_IP
   , pattern IPPROTO_TCP
   , pattern IPPROTO_UDP
+  -- * Internal helper
+  , peekSocketAddr
+  , pokeSocketAddr
+  , peekSocketAddrMBA
+  , pokeSocketAddrMBA
+  , htons
+  , ntohs
+  , ntohl
+  , htonl
   ) where
 
 import           Data.Bits
@@ -75,8 +87,12 @@ import           Data.Typeable
 import           Foreign
 import           Foreign.C
 import           Numeric                  (showHex)
+import           System.IO.Unsafe
+import           Text.Read
+import           Z.Data.CBytes
 import           Z.IO.Exception
 import           Z.IO.UV.Errno
+import           Z.Foreign
 
 #include "hs_uv.h" 
 
@@ -122,7 +138,7 @@ instance Show SocketAddr where
 --
 -- /The implementation is completely compatible with the current implementation
 -- of the `inet_ntop` function in glibc./
-
+--
 sockAddrFamily :: SocketAddr -> SocketFamily
 sockAddrFamily (SocketAddrInet _ _) = AF_INET
 sockAddrFamily (SocketAddrInet6 _ _ _ _) = AF_INET6
@@ -130,6 +146,19 @@ sockAddrFamily (SocketAddrInet6 _ _ _ _) = AF_INET6
 type FlowInfo = Word32
 type ScopeID = Word32
 
+-- | Convert a string containing an IPv4 addresses to a binary structure
+--
+-- This is partial function, wrong address will throw 'InvalidArgument' exception.
+ipv4:: HasCallStack => CBytes -> PortNumber -> SocketAddr
+ipv4 str (PortNumber port) = unsafeDupablePerformIO . withSocketAddrStorageUnsafe $ \ p ->
+    withCBytes str $ \ cstr -> throwUVIfMinus_ $ uv_ip4_addr cstr (fromIntegral port) p
+
+-- | Convert a string containing an IPv6 addresses to a binary structure
+--
+-- This is partial function, wrong address will throw 'InvalidArgument' exception.
+ipv6:: HasCallStack => CBytes -> PortNumber -> SocketAddr
+ipv6 str (PortNumber port) = unsafeDupablePerformIO . withSocketAddrStorageUnsafe $ \ p ->
+    withCBytes str $ \ cstr -> throwUVIfMinus_ $ uv_ip6_addr cstr (fromIntegral port) p
 
 --------------------------------------------------------------------------------
 
@@ -137,35 +166,12 @@ type ScopeID = Word32
 --
 -- For direct manipulation prefer 'inetAddrToTuple' and 'tupleToInetAddr'.
 --
-newtype InetAddr = InetAddr Word32 deriving (Eq, Ord, Typeable)
+newtype InetAddr = InetAddr { getInetAddr :: Word32 } deriving (Eq, Ord, Typeable)
 instance Show InetAddr where
     showsPrec _ ia = 
         let (a,b,c,d) = inetAddrToTuple ia
         in shows a . ('.':) . shows b . ('.':) . shows c . ('.':) . shows d 
-{-
--- | Parse IPv4 address in format "a.b.c.d"
-parseInetAddr:: V.Bytes -> Either P.ParseError InetAddr
-parseInetAddr = P.parse_ inetAddrParser
 
--- | Parse IPv4 address in format "a.b.c.d", octets must be between 0 and 255. 
-inetAddrParser :: P.Parser InetAddr
-inetAddrParser = do
-    a <- oct
-    P.char8 '.'
-    b <- oct
-    P.char8 '.'
-    c <- oct
-    P.char8 '.'
-    d <- oct
-    return $! tupleToInetAddr (a,b,c,d)
-  where
-    oct = do
-        x <- P.uint :: P.Parser Integer
-        if (x > 255) 
-        then fail "all octets in an IPv4 address must be between 0 and 255"
-        else return $! fromIntegral x
--}
-        
 -- | @0.0.0.0@
 inetAny             :: InetAddr
 inetAny              = InetAddr 0
@@ -200,6 +206,12 @@ instance Storable InetAddr where
     peek p = (InetAddr . ntohl) `fmap` peekByteOff p 0
     poke p (InetAddr ia) = pokeByteOff p 0 (htonl ia)
 
+instance UnalignedAccess InetAddr where
+    unalignedSize = UnalignedSize 4
+    pokeMBA p off x = pokeMBA p off (htonl (getInetAddr x))
+    peekMBA p off = InetAddr . ntohl <$> peekMBA p off
+    indexBA p off = InetAddr (ntohl (indexBA p off))
+    
 -- | Converts 'InetAddr' to representation-independent IPv4 quadruple.
 -- For example for @127.0.0.1@ the function will return @(127, 0, 0, 1)@
 -- regardless of host endianness.
@@ -250,33 +262,6 @@ instance Show Inet6Addr where
         (diff, end) = minimum $
             scanl (\c i -> if i == 0 then c - 1 else 0) 0 fields `zip` [0..]
 
-{-
--- | Parse IPv6 address in format "a.b.c.d"
-parseInet6Addr:: V.Bytes -> Either P.ParseError Inet6Addr
-parseInet6Addr = P.parse_ inet6AddrParser
-
--- | Parse IPv6 address in format "a.b.c.d"
---
--- Octets must be between 0 and 255. 
--- Note: if octets exceed (maxBound :: Int), parser will overflow.
-inet6AddrParser :: P.Parser Inet6Addr
-inet6AddrParser = do
-    a <- oct
-    P.char8 '.'
-    b <- oct
-    P.char8 '.'
-    c <- oct
-    P.char8 '.'
-    d <- oct
-    return $! tupleToInetAddr (a,b,c,d)
-  where
-    oct = do
-        x <- P.uint :: P.Parser Int
-        if (x > 255) 
-        then fail "all octets in an IPv4 address must be between 0 and 255"
-        else return $! fromIntegral x
--}
-
 -- | @::@
 inet6Any      :: Inet6Addr
 inet6Any       = Inet6Addr 0 0 0 0
@@ -285,6 +270,7 @@ inet6Any       = Inet6Addr 0 0 0 0
 inet6Loopback :: Inet6Addr
 inet6Loopback  = Inet6Addr 0 0 0 1
 
+-- | convert 'Inet6Addr' to octets.
 inet6AddrToTuple :: Inet6Addr -> (Word16, Word16, Word16, Word16,
                                         Word16, Word16, Word16, Word16)
 inet6AddrToTuple (Inet6Addr w3 w2 w1 w0) =
@@ -293,6 +279,7 @@ inet6AddrToTuple (Inet6Addr w3 w2 w1 w0) =
         low w = fromIntegral w
     in (high w3, low w3, high w2, low w2, high w1, low w1, high w0, low w0)
 
+-- | convert 'Inet6Addr' from octets.
 tupleToInet6Addr :: (Word16, Word16, Word16, Word16,
                         Word16, Word16, Word16, Word16) -> Inet6Addr
 tupleToInet6Addr (w7, w6, w5, w4, w3, w2, w1, w0) =
@@ -303,92 +290,18 @@ tupleToInet6Addr (w7, w6, w5, w4, w3, w2, w1, w0) =
 instance Storable Inet6Addr where
     sizeOf _    = #size struct in6_addr
     alignment _ = #alignment struct in6_addr
-
     peek p = do
         a <- peek32 p 0
         b <- peek32 p 1
         c <- peek32 p 2
         d <- peek32 p 3
         return $ Inet6Addr a b c d
-
     poke p (Inet6Addr a b c d) = do
         poke32 p 0 a
         poke32 p 1 b
         poke32 p 2 c
         poke32 p 3 d
 
---------------------------------------------------------------------------------
-
-peekSocketAddr :: HasCallStack => Ptr SocketAddr -> IO SocketAddr
-peekSocketAddr p = do
-    family <- (#peek struct sockaddr, sa_family) p
-    case family :: CSaFamily of
-        (#const AF_INET) -> do
-            addr <- (#peek struct sockaddr_in, sin_addr) p
-            port <- (#peek struct sockaddr_in, sin_port) p
-            return (SocketAddrInet (PortNumber port) addr)
-        (#const AF_INET6) -> do
-            port <- (#peek struct sockaddr_in6, sin6_port) p
-            flow <- (#peek struct sockaddr_in6, sin6_flowinfo) p
-            addr <- (#peek struct sockaddr_in6, sin6_addr) p
-            scope <- (#peek struct sockaddr_in6, sin6_scope_id) p
-            return (SocketAddrInet6 (PortNumber port) flow addr scope)
-
-        _ -> do let errno = UV_EAI_ADDRFAMILY
-                name <- uvErrName errno
-                desc <- uvStdError errno
-                throwUVError errno (IOEInfo name desc callStack)
-
-pokeSocketAddr :: HasCallStack => Ptr SocketAddr -> SocketAddr -> IO ()
-pokeSocketAddr p (SocketAddrInet (PortNumber port) addr) =  do
-#if defined(darwin_HOST_OS)
-    clearPtr p (#size struct sockaddr_in)
-#endif
-#if defined(HAVE_STRUCT_SOCKADDR_SA_LEN)
-    (#poke struct sockaddr_in, sin_len) p ((#size struct sockaddr_in) :: Word8)
-#endif
-    (#poke struct sockaddr_in, sin_family) p ((#const AF_INET) :: CSaFamily)
-    (#poke struct sockaddr_in, sin_port) p port
-    (#poke struct sockaddr_in, sin_addr) p addr
-pokeSocketAddr p (SocketAddrInet6 (PortNumber port) flow addr scope) =  do
-#if defined(darwin_HOST_OS)
-    clearPtr p (#size struct sockaddr_in6)
-#endif
-#if defined(HAVE_STRUCT_SOCKADDR_SA_LEN)
-    (#poke struct sockaddr_in6, sin6_len) p ((#size struct sockaddr_in6) :: Word8)
-#endif
-    (#poke struct sockaddr_in6, sin6_family) p ((#const AF_INET6) :: CSaFamily)
-    (#poke struct sockaddr_in6, sin6_port) p port
-    (#poke struct sockaddr_in6, sin6_flowinfo) p flow
-    (#poke struct sockaddr_in6, sin6_addr) p (addr)
-    (#poke struct sockaddr_in6, sin6_scope_id) p scope
-
-withSocketAddr :: SocketAddr -> (Ptr SocketAddr -> IO a) -> IO a
-withSocketAddr sa@(SocketAddrInet _ _) f = do
-    allocaBytesAligned
-        (#size struct sockaddr_in)
-        (#alignment struct sockaddr_in) $ \ p -> pokeSocketAddr p sa >> f p
-withSocketAddr sa@(SocketAddrInet6 _ _ _ _) f = do
-    allocaBytesAligned 
-        (#size struct sockaddr_in6) 
-        (#alignment struct sockaddr_in6) $ \ p -> pokeSocketAddr p sa >> f p
-
-sizeOfSocketAddr :: SocketAddr -> CSize
-sizeOfSocketAddr (SocketAddrInet _ _) = #size struct sockaddr_in
-sizeOfSocketAddr (SocketAddrInet6 _ _ _ _) = #size struct sockaddr_in6
-
-withSocketAddrStorage :: (Ptr SocketAddr -> IO ()) -> IO SocketAddr
-withSocketAddrStorage f = do
-    allocaBytesAligned
-        (#size struct sockaddr_storage)
-        (#alignment struct sockaddr_storage) $ \ p -> f p >> peekSocketAddr p
-
-sizeOfSocketAddrStorage :: CSize
-sizeOfSocketAddrStorage = #size struct sockaddr_storage
-
--- The peek32 and poke32 functions work around the fact that the RFCs
--- don't require 32-bit-wide address fields to be present.  We can
--- only portably rely on an 8-bit field, s6_addr.
 
 s6_addr_offset :: Int
 s6_addr_offset = (#offset struct in6_addr, s6_addr)
@@ -414,70 +327,201 @@ poke32 p i0 a = do
     pokeByte 2 (a `sr`  8)
     pokeByte 3 (a `sr`  0)
 
+instance UnalignedAccess Inet6Addr where
+    unalignedSize   = UnalignedSize (#size struct in6_addr)
+
+    peekMBA p off = do
+        a <- peekMBA p (off + s6_addr_offset + 0)
+        b <- peekMBA p  (off + s6_addr_offset + 4)
+        c <- peekMBA p  (off + s6_addr_offset + 8)
+        d <- peekMBA p  (off + s6_addr_offset + 12)
+        return $ Inet6Addr (getBE a) (getBE b) (getBE c) (getBE d)
+
+    pokeMBA p off (Inet6Addr a b c d) = do
+        pokeMBA p (off + s6_addr_offset) (BE a)
+        pokeMBA p (off + 4 + s6_addr_offset) (BE b)
+        pokeMBA p (off + 8 + s6_addr_offset) (BE c)
+        pokeMBA p (off + 12 + s6_addr_offset) (BE d)
+
 --------------------------------------------------------------------------------
 
+peekSocketAddr :: HasCallStack => Ptr SocketAddr -> IO SocketAddr
+peekSocketAddr p = do
+    family <- (#peek struct sockaddr, sa_family) p
+    case family :: CSaFamily of
+        (#const AF_INET) -> do
+            addr <- (#peek struct sockaddr_in, sin_addr) p
+            port <- (#peek struct sockaddr_in, sin_port) p
+            return (SocketAddrInet port addr)
+        (#const AF_INET6) -> do
+            port <- (#peek struct sockaddr_in6, sin6_port) p
+            flow <- (#peek struct sockaddr_in6, sin6_flowinfo) p
+            addr <- (#peek struct sockaddr_in6, sin6_addr) p
+            scope <- (#peek struct sockaddr_in6, sin6_scope_id) p
+            return (SocketAddrInet6 port flow addr scope)
+        _ -> do let errno = UV_EAI_ADDRFAMILY
+                name <- uvErrName errno
+                desc <- uvStdError errno
+                throwUVError errno (IOEInfo name desc callStack)
+
+pokeSocketAddr :: Ptr SocketAddr -> SocketAddr -> IO ()
+pokeSocketAddr p (SocketAddrInet port addr) =  do
+#if defined(darwin_HOST_OS)
+    clearPtr p (#size struct sockaddr_in)
+#endif
+#if defined(HAVE_STRUCT_SOCKADDR_SA_LEN)
+    (#poke struct sockaddr_in, sin_len) p ((#size struct sockaddr_in) :: Word8)
+#endif
+    (#poke struct sockaddr_in, sin_family) p ((#const AF_INET) :: CSaFamily)
+    (#poke struct sockaddr_in, sin_port) p port
+    (#poke struct sockaddr_in, sin_addr) p addr
+pokeSocketAddr p (SocketAddrInet6 port flow addr scope) =  do
+#if defined(darwin_HOST_OS)
+    clearPtr p (#size struct sockaddr_in6)
+#endif
+#if defined(HAVE_STRUCT_SOCKADDR_SA_LEN)
+    (#poke struct sockaddr_in6, sin6_len) p ((#size struct sockaddr_in6) :: Word8)
+#endif
+    (#poke struct sockaddr_in6, sin6_family) p ((#const AF_INET6) :: CSaFamily)
+    (#poke struct sockaddr_in6, sin6_port) p port
+    (#poke struct sockaddr_in6, sin6_flowinfo) p flow
+    (#poke struct sockaddr_in6, sin6_addr) p (addr)
+    (#poke struct sockaddr_in6, sin6_scope_id) p scope
+
+
+-- | Pass 'SocketAddr' to FFI as pointer.
+--
+withSocketAddr :: SocketAddr -> (Ptr SocketAddr -> IO a) -> IO a
+withSocketAddr sa@(SocketAddrInet _ _) f = do
+    allocaBytesAligned
+        (#size struct sockaddr_in)
+        (#alignment struct sockaddr_in) $ \ p -> pokeSocketAddr p sa >> f p
+withSocketAddr sa@(SocketAddrInet6 _ _ _ _) f = do
+    allocaBytesAligned 
+        (#size struct sockaddr_in6) 
+        (#alignment struct sockaddr_in6) $ \ p -> pokeSocketAddr p sa >> f p
+
+-- | Pass 'SocketAddr' to FFI as pointer.
+--
+-- USE THIS FUNCTION WITH UNSAFE FFI CALL ONLY.
+--
+withSocketAddrUnsafe :: SocketAddr -> (MBA## SocketAddr -> IO a) -> IO a
+withSocketAddrUnsafe sa@(SocketAddrInet _ _) f = do
+    allocMutableByteArrayUnsafe (#size struct sockaddr_in) $ \ p ->
+        pokeSocketAddrMBA p sa >> f p
+withSocketAddrUnsafe sa@(SocketAddrInet6 _ _ _ _) f = do
+    allocMutableByteArrayUnsafe (#size struct sockaddr_in6) $ \ p ->
+        pokeSocketAddrMBA p sa >> f p
+
+sizeOfSocketAddr :: SocketAddr -> CSize
+sizeOfSocketAddr (SocketAddrInet _ _) = #size struct sockaddr_in
+sizeOfSocketAddr (SocketAddrInet6 _ _ _ _) = #size struct sockaddr_in6
+
+-- | Allocate space for 'sockaddr_storage' and pass to FFI.
+withSocketAddrStorage :: (Ptr SocketAddr -> IO ()) -> IO SocketAddr
+withSocketAddrStorage f = do
+    allocaBytesAligned
+        (#size struct sockaddr_storage)
+        (#alignment struct sockaddr_storage) $ \ p -> f p >> peekSocketAddr p
+
+-- | Allocate space for 'sockaddr_storage' and pass to FFI.
+--
+-- USE THIS FUNCTION WITH UNSAFE FFI CALL ONLY.
+--
+withSocketAddrStorageUnsafe :: (MBA## SocketAddr -> IO ()) -> IO SocketAddr
+withSocketAddrStorageUnsafe f = do
+    allocMutableByteArrayUnsafe (#size struct sockaddr_storage) $ \ p ->
+        f p >> peekSocketAddrMBA p
+
+sizeOfSocketAddrStorage :: CSize
+sizeOfSocketAddrStorage = (#size struct sockaddr_storage)
+
+peekSocketAddrMBA :: HasCallStack => MBA## SocketAddr -> IO SocketAddr
+peekSocketAddrMBA p = do
+    family <- peekMBA p (#offset struct sockaddr, sa_family)
+    case family :: CSaFamily of
+        (#const AF_INET) -> do
+            addr <- peekMBA p (#offset struct sockaddr_in, sin_addr) 
+            port <- peekMBA p (#offset struct sockaddr_in, sin_port) 
+            return (SocketAddrInet port addr)
+        (#const AF_INET6) -> do
+            port <- peekMBA p (#offset struct sockaddr_in6, sin6_port) 
+            flow <- peekMBA p (#offset struct sockaddr_in6, sin6_flowinfo) 
+            addr <- peekMBA p (#offset struct sockaddr_in6, sin6_addr) 
+            scope <- peekMBA p (#offset struct sockaddr_in6, sin6_scope_id) 
+            return (SocketAddrInet6 port flow addr scope)
+        _ -> do let errno = UV_EAI_ADDRFAMILY
+                name <- uvErrName errno
+                desc <- uvStdError errno
+                throwUVError errno (IOEInfo name desc callStack)
+
+pokeSocketAddrMBA :: MBA## SocketAddr -> SocketAddr -> IO ()
+pokeSocketAddrMBA p (SocketAddrInet port addr) =  do
+#if defined(darwin_HOST_OS)
+    clearMBA p (#size struct sockaddr_in)
+#endif
+#if defined(HAVE_STRUCT_SOCKADDR_SA_LEN)
+    pokeMBA p (#offset struct sockaddr_in, sin_len) ((#size struct sockaddr_in) :: Word8)
+#endif
+    pokeMBA p (#offset struct sockaddr_in, sin_family) ((#const AF_INET) :: CSaFamily)
+    pokeMBA p (#offset struct sockaddr_in, sin_port) port
+    pokeMBA p (#offset struct sockaddr_in, sin_addr) addr
+pokeSocketAddrMBA p (SocketAddrInet6 port flow addr scope) =  do
+#if defined(darwin_HOST_OS)
+    clearMBA p (#size struct sockaddr_in6)
+#endif
+#if defined(HAVE_STRUCT_SOCKADDR_SA_LEN)
+    pokeMBA p (#offset struct sockaddr_in6, sin6_len) ((#size struct sockaddr_in6) :: Word8)
+#endif
+    pokeMBA p (#offset struct sockaddr_in6, sin6_family) ((#const AF_INET6) :: CSaFamily)
+    pokeMBA p (#offset struct sockaddr_in6, sin6_port) port
+    pokeMBA p (#offset struct sockaddr_in6, sin6_flowinfo) flow
+    pokeMBA p (#offset struct sockaddr_in6, sin6_addr) (addr)
+    pokeMBA p (#offset struct sockaddr_in6, sin6_scope_id) scope
+
+--------------------------------------------------------------------------------
 -- Port Numbers
 
--- | Use the @Num@ instance (i.e. use a literal or 'fromIntegral') to create a
--- @PortNumber@ value with the correct network-byte-ordering.
+-- | Port number.
+--   Use the @Num@ instance (i.e. use a literal) to create a
+--   @PortNumber@ value.
 --
 -- >>> 1 :: PortNumber
 -- 1
 -- >>> read "1" :: PortNumber
 -- 1
-newtype PortNumber = PortNumber Word16
-    deriving (Eq, Ord, Typeable)
--- newtyped to prevent accidental use of sane-looking
--- port numbers that haven't actually been converted to
--- network-byte-order first.
+-- >>> show (12345 :: PortNumber)
+-- "12345"
+-- >>> 50000 < (51000 :: PortNumber)
+-- True
+-- >>> 50000 < (52000 :: PortNumber)
+-- True
+-- >>> 50000 + (10000 :: PortNumber)
+-- 60000
+newtype PortNumber = PortNumber Word16 deriving (Eq, Ord, Num, Enum, Bounded, Real, Integral)
 
+-- | @:0@
 portAny :: PortNumber
-portAny = 0
+portAny = PortNumber 0
 
+-- Print "n" instead of "PortNum n".
 instance Show PortNumber where
-  showsPrec p pn = showsPrec p (portNumberToInt pn)
+  showsPrec p (PortNumber pn) = showsPrec p pn
 
+-- Read "n" instead of "PortNum n".
 instance Read PortNumber where
-  readsPrec n = map (\(x,y) -> (intToPortNumber x, y)) . readsPrec n
-
-intToPortNumber :: Int -> PortNumber
-intToPortNumber v = PortNumber (htons (fromIntegral v))
-
-portNumberToInt :: PortNumber -> Int
-portNumberToInt (PortNumber po) = fromIntegral (ntohs po)
-
-foreign import #{CALLCONV} unsafe "ntohs" ntohs :: Word16 -> Word16
-foreign import #{CALLCONV} unsafe "htons" htons :: Word16 -> Word16
-foreign import #{CALLCONV} unsafe "ntohl" ntohl :: Word32 -> Word32
-foreign import #{CALLCONV} unsafe "htonl" htonl :: Word32 -> Word32
-
-instance Enum PortNumber where
-    toEnum   = intToPortNumber
-    fromEnum = portNumberToInt
-
-instance Num PortNumber where
-   fromInteger i = intToPortNumber (fromInteger i)
-    -- for completeness.
-   (+) x y   = intToPortNumber (portNumberToInt x + portNumberToInt y)
-   (-) x y   = intToPortNumber (portNumberToInt x - portNumberToInt y)
-   negate x  = intToPortNumber (-portNumberToInt x)
-   (*) x y   = intToPortNumber (portNumberToInt x * portNumberToInt y)
-   abs n     = intToPortNumber (abs (portNumberToInt n))
-   signum n  = intToPortNumber (signum (portNumberToInt n))
-
-instance Real PortNumber where
-    toRational x = toInteger x % 1
-
-instance Integral PortNumber where
-    quotRem a b = let (c,d) = quotRem (portNumberToInt a) (portNumberToInt b) in
-                  (intToPortNumber c, intToPortNumber d)
-    toInteger a = toInteger (portNumberToInt a)
+  readPrec = PortNumber <$> readPrec
 
 instance Storable PortNumber where
-   sizeOf    _ = sizeOf    (undefined :: Word16)
-   alignment _ = alignment (undefined :: Word16)
-   poke p (PortNumber po) = poke (castPtr p) po
-   peek p = PortNumber `fmap` peek (castPtr p)
+   sizeOf    _ = sizeOf    (0 :: Word16)
+   alignment _ = alignment (0 :: Word16)
+   poke p (PortNumber po) = poke (castPtr p) (htons po)
+   peek p = PortNumber . ntohs <$> peek (castPtr p)
+
+instance UnalignedAccess PortNumber where
+   unalignedSize = UnalignedSize 2
+   pokeMBA p off (PortNumber po) = pokeMBA p off (htons po)
+   peekMBA p off = PortNumber . ntohs <$> peekMBA p off
     
 --------------------------------------------------------------------------------
 
@@ -538,3 +582,13 @@ pattern IPPROTO_TCP :: ProtocolNumber
 pattern IPPROTO_TCP = ProtocolNumber (#const IPPROTO_TCP)
 pattern IPPROTO_UDP :: ProtocolNumber
 pattern IPPROTO_UDP = ProtocolNumber (#const IPPROTO_UDP)
+
+--------------------------------------------------------------------------------
+
+foreign import #{CALLCONV} unsafe "ntohs" ntohs :: Word16 -> Word16
+foreign import #{CALLCONV} unsafe "htons" htons :: Word16 -> Word16
+foreign import #{CALLCONV} unsafe "ntohl" ntohl :: Word32 -> Word32
+foreign import #{CALLCONV} unsafe "htonl" htonl :: Word32 -> Word32
+
+foreign import ccall unsafe uv_ip4_addr :: CString -> CInt -> MBA## SocketAddr -> IO CInt
+foreign import ccall unsafe uv_ip6_addr :: CString -> CInt -> MBA## SocketAddr -> IO CInt

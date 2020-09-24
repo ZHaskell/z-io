@@ -47,7 +47,7 @@ spec = describe "filesystem operations" $ do
             withResource (initFile filename flags mode) $ \ file -> do
                 i <- newBufferedInput 4096 file
                 written <- readExactly size i
-                written @=? content
+                written @?= content
 
 
             unlink filename
@@ -61,12 +61,12 @@ spec = describe "filesystem operations" $ do
             withResource (initFile filename flags mode) $ \ file -> do
                 i <- newBufferedInput 4096 file
                 written <- readExactly size2 i
-                written @=? content2
+                written @?= content2
 
             withResource (initFile filename flags mode) $ \ file -> do
                 i <- newBufferedInput 4096 file
                 firstLine <- readLine i
-                firstLine  @=? fst (V.break (== V.c2w '\n') content2)
+                firstLine  @?= fst (V.break (== V.c2w '\n') content2)
 
             unlink filename
 
@@ -101,13 +101,13 @@ spec = describe "filesystem operations" $ do
             s2 <- stat symlinkname
             s2' <- stat symlinkname2
 
-            s0 @?= s1 {stNlink = 1} -- update hard link number
-            s0 @?= s2 {stNlink = 1}
-            s0 @?= s2' {stNlink = 1}
+            s0 @=? s1 {stNlink = 1} -- update hard link number
+            s0 @=? s2 {stNlink = 1}
+            s0 @=? s2' {stNlink = 1}
 
             withResource (initFile filename flags mode) $ \ file -> do
                 s4 <- fstat file
-                s0 @?= s4 {stNlink = 1}
+                s0 @=? s4 {stNlink = 1}
 
             unlink filename
             unlink linkname
