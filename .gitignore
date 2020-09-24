@@ -21,3 +21,6 @@ cabal.project.local
 cabal.project.local~
 .HTF/
 .ghc.environment.*
+example/**
+!examples/wordcount.hs
+!examples/examples.cabal

@@ -162,7 +162,7 @@ stderrBuf :: MVar (BufferedOutput StdStream)
 {-# NOINLINE stderrBuf #-}
 stderrBuf = unsafePerformIO (newBufferedOutput defaultChunkSize stderr >>= newMVar)
 
-makeStdStream :: UVFD -> IO StdStream
+makeStdStream :: HasCallStack => UVFD -> IO StdStream
 makeStdStream fd = do
     typ <- uv_guess_handle fd
     if typ == UV_TTY
@@ -186,7 +186,7 @@ setStdinTTYMode mode = case stdin of
 
 -- | Get terminal's output window size in (width, height) format,
 -- return (-1, -1) if stdout is a file.
-getStdoutWinSize :: IO (CInt, CInt)
+getStdoutWinSize :: HasCallStack => IO (CInt, CInt)
 getStdoutWinSize = case stdout of
     StdTTY hdl _ uvm ->
         withUVManager' uvm $ do
@@ -198,21 +198,26 @@ getStdoutWinSize = case stdout of
 --------------------------------------------------------------------------------
 
 -- | print a 'ToText' and flush to stdout.
-printStd :: ToText a => a -> IO ()
+printStd :: HasCallStack => ToText a => a -> IO ()
 printStd s = putStd (toBuilder s)
 
 -- | print a 'Builder' and flush to stdout.
-putStd :: Builder a -> IO ()
+putStd :: HasCallStack => Builder a -> IO ()
 putStd b = withMVar stdoutBuf $ \ o -> do
     writeBuilder o b
     flushBuffer o
 
 -- | print a 'Builder' and flush to stdout, with a linefeed.
-putLineStd :: Builder a -> IO ()
+putLineStd :: HasCallStack => Builder a -> IO ()
 putLineStd b = withMVar stdoutBuf $ \ o -> do
     writeBuilder o (b >> B.char8 '\n')
     flushBuffer o
 
 -- | read a line from stdin
-readLineStd :: IO V.Bytes
-readLineStd = withMVar stdinBuf readLine
+readLineStd :: HasCallStack => IO V.Bytes
+readLineStd = withMVar stdinBuf $ \ s -> do
+    line <- readLine s
+    case line of Just line' -> return line'
+                 Nothing    -> throwIO (ResourceVanished
+                    (IOEInfo "ECLOSED" "stdin is closed" callStack))
+

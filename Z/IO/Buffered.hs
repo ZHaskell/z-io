@@ -248,7 +248,7 @@ readParser p i@BufferedInput{..} = do
     unReadBuffer rest i
     return r
 
--- | Read until reach a magic bytes
+-- | Read until reach a magic bytes, return bytes(including the magic bytes)
 --
 -- If EOF is reached before meet a magic byte, partial bytes are returned.
 readToMagic :: (HasCallStack, Input i) => Word8 -> BufferedInput i -> IO V.Bytes
@@ -267,7 +267,7 @@ readToMagic magic0 h0 = V.concat `fmap` (go h0 magic0)
                 chunks <- go h magic
                 return (chunk : chunks)
 
--- | Read until reach a magic bytes
+-- | Read until reach a magic bytes, return bytes(including the magic bytes)
 --
 -- If EOF is reached before meet a magic byte, a 'ShortReadException' will be thrown.
 readToMagic' :: (HasCallStack, Input i) => Word8 -> BufferedInput i -> IO V.Bytes
@@ -288,29 +288,31 @@ readToMagic' magic0 h0 = V.concat `fmap` (go h0 magic0)
 
 -- | Read to a linefeed ('\n' or '\r\n'), return 'Bytes' before it.
 --
+-- Return bytes don't include linefeed, empty bytes indicate empty line, 'Nothing' indicate EOF.
 -- If EOF is reached before meet a line feed, partial line is returned.
-readLine :: (HasCallStack, Input i) => BufferedInput i -> IO V.Bytes
+readLine :: (HasCallStack, Input i) => BufferedInput i -> Source V.Bytes
 readLine i = do
     bs@(V.PrimVector arr s l) <- readToMagic 10 i
     if l == 0
-    then return bs
+    then return Nothing
     else return $ case bs `V.indexMaybe` (l-2) of
-        Nothing -> V.PrimVector arr s (l-1)
-        Just r | r == 13   -> V.PrimVector arr s (l-2)
-               | otherwise -> V.PrimVector arr s (l-1)
+        Nothing -> Just (V.PrimVector arr s (l-1))
+        Just r | r == 13   -> Just (V.PrimVector arr s (l-2))
+               | otherwise -> Just (V.PrimVector arr s (l-1))
 
 -- | Read to a linefeed ('\n' or '\r\n'), return 'Bytes' before it.
 --
+-- Return bytes don't include linefeed, empty bytes indicate empty line, 'Nothing' indicate EOF.
 -- If EOF reached before meet a line feed, a 'ShortReadException' will be thrown.
-readLine' :: (HasCallStack, Input i) => BufferedInput i -> IO V.Bytes
+readLine' :: (HasCallStack, Input i) => BufferedInput i -> Source V.Bytes
 readLine' i = do
     bs@(V.PrimVector arr s l) <- readToMagic' 10 i
     if l == 0
-    then return bs
+    then return Nothing
     else return $ case bs `V.indexMaybe` (l-2) of
-        Nothing -> V.PrimVector arr s (l-1)
-        Just r | r == 13   -> V.PrimVector arr s (l-2)
-               | otherwise -> V.PrimVector arr s (l-1)
+        Nothing -> Just (V.PrimVector arr s (l-1))
+        Just r | r == 13   -> Just (V.PrimVector arr s (l-2))
+               | otherwise -> Just (V.PrimVector arr s (l-1))
 
 --------------------------------------------------------------------------------
 

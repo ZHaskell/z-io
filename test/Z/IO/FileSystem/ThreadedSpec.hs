@@ -58,7 +58,7 @@ spec = describe "filesystem (threadpool version) operations" $ do
 
             withResource (initFileT filename flags mode) $ \ file -> do
                 i <- newBufferedInput 4096 file
-                firstLine <- readLine i
+                Just firstLine <- readLine i
                 firstLine  @=? fst (V.break (== V.c2w '\n') content2)
 
             unlink filename
