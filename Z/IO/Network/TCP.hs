@@ -29,6 +29,10 @@ module Z.IO.Network.TCP (
   , defaultTCPServerConfig
   , startTCPServer
   , getTCPPeerName
+  -- * Internal helper
+  , setTCPNoDelay
+  , setTCPKeepAlive
+  , initTCPStream
   ) where
 
 import           Control.Concurrent.MVar

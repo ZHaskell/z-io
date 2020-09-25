@@ -47,8 +47,8 @@ module Z.IO.Network.SocketAddr
   , inet6Loopback
   , inet6AddrToTuple
   , tupleToInet6Addr
-  , FlowInfo(..)
-  , ScopeID(..)
+  , FlowInfo
+  , ScopeID
   -- * port numbber
   , PortNumber(..)
   , portAny
@@ -82,7 +82,6 @@ module Z.IO.Network.SocketAddr
 
 import           Data.Bits
 import qualified Data.List                as List
-import           Data.Ratio
 import           Data.Typeable
 import           Foreign
 import           Foreign.C
@@ -330,6 +329,13 @@ poke32 p i0 a = do
 instance UnalignedAccess Inet6Addr where
     unalignedSize   = UnalignedSize (#size struct in6_addr)
 
+    indexBA p off = 
+        let a = indexBA p (off + s6_addr_offset + 0)
+            b = indexBA p  (off + s6_addr_offset + 4)
+            c = indexBA p  (off + s6_addr_offset + 8)
+            d = indexBA p  (off + s6_addr_offset + 12)
+        in Inet6Addr (getBE a) (getBE b) (getBE c) (getBE d)
+
     peekMBA p off = do
         a <- peekMBA p (off + s6_addr_offset + 0)
         b <- peekMBA p  (off + s6_addr_offset + 4)
@@ -520,6 +526,7 @@ instance Storable PortNumber where
 
 instance UnalignedAccess PortNumber where
    unalignedSize = UnalignedSize 2
+   indexBA p off = PortNumber . ntohs $ indexBA p off
    pokeMBA p off (PortNumber po) = pokeMBA p off (htons po)
    peekMBA p off = PortNumber . ntohs <$> peekMBA p off
     

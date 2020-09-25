@@ -139,9 +139,11 @@ library
 
     includes:               hs_uv.h
                             zlib.h
+                            zconf.h
 
     install-includes:       hs_uv.h 
                             zlib.h
+                            zconf.h
 
     cc-options:             -march=native
     c-sources:              cbits/hs_uv_base.c
