@@ -7,6 +7,8 @@ sudo: required
 env:
     - CABALVER=3.4 GHCVER=8.10.2
     - CABALVER=head GHCVER=head   # see section about GHC HEAD snapshots
+  global:
+    - TMPDIR=/tmp
 
 matrix:
    allow_failures:

@@ -22,7 +22,7 @@ spec = describe "IPC operations" $ do
     it "roundtrip test" $ do
         let testMsg = V.cycleN 256 "abc"
             longMsg = V.cycleN 2048 "abcdefg"
-            addr = "./test_ipc"
+            addr = "/tmp/test_ipc"
 
         serverThread <- forkIO $ startIPCServer defaultIPCServerConfig{
                 ipcListenName = addr

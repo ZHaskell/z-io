@@ -2,12 +2,11 @@ on: [push]
 name: build
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         ghc: ['8.10.2']
         cabal: ['3.4.0.0']
-        os: [ubuntu-latest, macOS-latest, windows-latest]
         exclude:
           # GHC 8.8+ only works with cabal v3+
           - ghc: 8.8.3
@@ -22,6 +21,10 @@ jobs:
         with:
           ghc-version: ${{ matrix.ghc }}
           cabal-version: ${{ matrix.cabal }}
+
+      - name: install libuv
+        run: sudo apt install libuv1 libuv1-dev
+
       - run: cabal v2-update
       - run: cabal v2-freeze $CONFIG
       - uses: actions/cache@v2
