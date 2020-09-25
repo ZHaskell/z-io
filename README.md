@@ -4,7 +4,9 @@
 
 ## Z-IO
 
-[![Linux Build Status](https://img.shields.io/travis/haskell-z/z-io/master.svg?label=Linux%20build)](https://travis-ci.org/haskell-z/z-io)
+[![Linux Build Status](https://github.com/haskell-Z/z-io/workflows/ubuntu-ci/badge.svg)](https://github.com/haskell-Z/z-io/actions)
+
+[![MacOS Build Status](https://github.com/haskell-Z/z-io/workflows/oxs-ci/badge.svg)](https://github.com/haskell-Z/z-io/actions)
 
 This package provides basic IO operations:
 

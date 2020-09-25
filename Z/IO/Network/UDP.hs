@@ -202,7 +202,7 @@ sendConnectedUDP (ConnectedUDP udp@(UDP hdl _ uvm sbuf _)) (V.PrimVector ba s la
         m <- withUVManager' uvm $ do
             reqSlot <- getUVSlot uvm (hs_uv_udp_send_connected hdl pbuf la)
             reqMVar <- getBlockMVar uvm reqSlot
-            -- ^ Since we locked uv manager here, it won't affect next event
+            -- since we locked uv manager here, it won't affect next event
             _ <- tryTakeMVar reqMVar
             return reqMVar
         -- we can't cancel uv_udp_send_t in current libuv
@@ -229,7 +229,7 @@ sendUDP udp@(UDP hdl _ uvm sbuf _) addr (V.PrimVector ba s la) = mask_ $ do
             reqSlot <- withSocketAddrUnsafe addr $ \ paddr ->
                 getUVSlot uvm (hs_uv_udp_send hdl paddr pbuf la)
             reqMVar <- getBlockMVar uvm reqSlot
-            -- ^ Since we locked uv manager here, it won't affect next event
+            -- since we locked uv manager here, it won't affect next event
             _ <- tryTakeMVar reqMVar
             return reqMVar
         -- we can't cancel uv_udp_send_t in current libuv

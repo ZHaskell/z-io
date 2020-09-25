@@ -45,6 +45,6 @@ jobs:
             export PATH=$HOME/.cabal/bin:$PATH
 
       - run: cabal v2-build $CONFIG
-      - run: cabal v2-test $CONFIG
-      - run: cabal v2-haddock $CONFIG
+      - run: cabal v2-test --test-show-details=direct
+      - run: cabal v2-haddock
       - run: cabal v2-sdist
