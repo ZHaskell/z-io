@@ -103,13 +103,6 @@ flag no-pkg-config
     default: False
     manual: True
 
-flag integer-simple
-    description:
-        Use the [simple integer library](http://hackage.haskell.org/package/integer-simple)
-        instead of [integer-gmp](http://hackage.haskell.org/package/integer-gmp)
-    default: False
-    manual: False
-
 library
     exposed-modules:        Z.IO.FileSystem
                             Z.IO.FileSystem.Threaded
@@ -141,17 +134,11 @@ library
                           , time                    >= 1.8 && < 2.0
                           , stm                     == 2.5.*
 
-    if flag(integer-simple)
-        cpp-options:        -DINTEGER_SIMPLE
-        build-depends:      integer-simple >= 0.1 && < 0.5
-    else
-        cpp-options:        -DINTEGER_GMP
-        build-depends:      integer-gmp >= 0.2 && < 1.1
-
     include-dirs:           include
                             third_party/zlib
 
     includes:               hs_uv.h
+                            zlib.h
 
     install-includes:       hs_uv.h 
                             zlib.h
@@ -269,11 +256,3 @@ test-suite Z-IO-Test
 
     ghc-options:            -threaded
     default-language:       Haskell2010
-
-    if flag(integer-simple)
-        cpp-options: -DINTEGER_SIMPLE
-        build-depends: integer-simple >= 0.1 && < 0.5
-    else
-        cpp-options: -DINTEGER_GMP
-        build-depends: integer-gmp >= 0.2 && < 1.1
-

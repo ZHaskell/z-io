@@ -167,7 +167,7 @@ compressSink (CompressConfig level windowBits memLevel dict strategy) (write, fl
             zflush zs bufRef
 
 -- | Compress some bytes.
-compress :: CompressConfig -> V.Bytes -> V.Bytes
+compress :: HasCallStack => CompressConfig -> V.Bytes -> V.Bytes
 compress conf input = unsafePerformIO $ do
     ref <- newIORef []
     (write, flush) <- compressSink conf (\ x -> modifyIORef' ref (x:), return ())
@@ -266,7 +266,7 @@ decompressSource (DecompressConfig windowBits dict) source = do
 
     
 -- | Decompress some bytes.
-decompress :: DecompressConfig -> V.Bytes -> V.Bytes
+decompress :: HasCallStack => DecompressConfig -> V.Bytes -> V.Bytes
 decompress conf input = V.concat . unsafePerformIO $ do
      collectSource =<< decompressSource conf =<< sourceFromList [input]
 
