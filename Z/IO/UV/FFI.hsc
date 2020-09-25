@@ -149,14 +149,14 @@ foreign import ccall unsafe uv_tcp_init :: Ptr UVLoop -> Ptr UVHandle -> IO CInt
 foreign import ccall unsafe uv_tcp_init_ex :: Ptr UVLoop -> Ptr UVHandle -> CUInt -> IO CInt
 foreign import ccall unsafe uv_tcp_nodelay :: Ptr UVHandle -> CInt -> IO CInt
 foreign import ccall unsafe uv_tcp_keepalive :: Ptr UVHandle -> CInt -> CUInt -> IO CInt
-foreign import ccall unsafe uv_tcp_getsockname :: Ptr UVHandle -> Ptr SocketAddr -> CInt -> IO CInt
-foreign import ccall unsafe uv_tcp_getpeername :: Ptr UVHandle -> Ptr SocketAddr -> CInt -> IO CInt
+foreign import ccall unsafe uv_tcp_getsockname :: Ptr UVHandle -> MBA## SocketAddr -> MBA## CInt -> IO CInt
+foreign import ccall unsafe uv_tcp_getpeername :: Ptr UVHandle -> MBA## SocketAddr -> MBA## CInt -> IO CInt
 
 uV_TCP_IPV6ONLY :: CUInt
 uV_TCP_IPV6ONLY = #{const UV_TCP_IPV6ONLY}
 
-foreign import ccall unsafe uv_tcp_bind :: Ptr UVHandle -> Ptr SocketAddr -> CUInt -> IO CInt
-foreign import ccall unsafe hs_uv_tcp_connect :: Ptr UVHandle -> Ptr SocketAddr -> IO UVSlotUnSafe
+foreign import ccall unsafe uv_tcp_bind :: Ptr UVHandle -> MBA## SocketAddr -> CUInt -> IO CInt
+foreign import ccall unsafe hs_uv_tcp_connect :: Ptr UVHandle -> MBA## SocketAddr -> IO UVSlotUnSafe
 foreign import ccall unsafe hs_set_socket_reuse :: Ptr UVHandle -> IO CInt
 
 foreign import ccall unsafe hs_uv_pipe_open :: Ptr UVHandle -> UVFD -> IO CInt
@@ -169,7 +169,7 @@ foreign import ccall unsafe hs_uv_pipe_connect :: Ptr UVHandle -> CString -> IO 
 foreign import ccall unsafe uv_udp_init :: Ptr UVLoop -> Ptr UVHandle -> IO CInt
 foreign import ccall unsafe uv_udp_init_ex :: Ptr UVLoop -> Ptr UVHandle -> CUInt -> IO CInt
 foreign import ccall unsafe uv_udp_open :: Ptr UVHandle -> UVFD -> IO CInt
-foreign import ccall unsafe uv_udp_bind :: Ptr UVHandle -> Ptr SocketAddr -> UVUDPFlag -> IO CInt
+foreign import ccall unsafe uv_udp_bind :: Ptr UVHandle -> MBA## SocketAddr -> UVUDPFlag -> IO CInt
 
 newtype UVMembership = UVMembership CInt deriving (Show, Eq, Ord)
 
@@ -191,6 +191,9 @@ pattern UV_UDP_PARTIAL :: Int32
 pattern UV_UDP_PARTIAL = #{const UV_UDP_PARTIAL}
 
 foreign import ccall unsafe uv_udp_connect
+    :: Ptr UVHandle -> MBA## SocketAddr -> IO CInt
+-- | Just pass null pointer as SocketAddr to disconnect
+foreign import ccall unsafe "uv_udp_connect" uv_udp_disconnect
     :: Ptr UVHandle -> Ptr SocketAddr -> IO CInt
 
 foreign import ccall unsafe uv_udp_set_membership ::
@@ -207,11 +210,13 @@ foreign import ccall unsafe uv_udp_set_ttl :: Ptr UVHandle -> CInt -> IO CInt
 foreign import ccall unsafe hs_uv_udp_recv_start :: Ptr UVHandle -> IO CInt
 foreign import ccall unsafe uv_udp_recv_stop :: Ptr UVHandle -> IO CInt
 foreign import ccall unsafe hs_uv_udp_send 
-    :: Ptr UVHandle -> Ptr SocketAddr -> Ptr Word8 -> Int -> IO UVSlotUnSafe
+    :: Ptr UVHandle -> MBA## SocketAddr -> Ptr Word8 -> Int -> IO UVSlotUnSafe
+foreign import ccall unsafe hs_uv_udp_send_connected
+    :: Ptr UVHandle -> Ptr Word8 -> Int -> IO UVSlotUnSafe
 foreign import ccall unsafe uv_udp_getsockname 
-    :: Ptr UVHandle -> Ptr SocketAddr -> MBA## CInt -> IO CInt
+    :: Ptr UVHandle -> MBA## SocketAddr -> MBA## CInt -> IO CInt
 foreign import ccall unsafe uv_udp_getpeername
-    :: Ptr UVHandle -> Ptr SocketAddr -> MBA## CInt -> IO CInt
+    :: Ptr UVHandle -> MBA## SocketAddr -> MBA## CInt -> IO CInt
 
 
 --------------------------------------------------------------------------------

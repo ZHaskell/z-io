@@ -126,3 +126,8 @@ HsInt hs_uv_udp_send(uv_udp_t* handle, const struct sockaddr* addr, char* buf, H
     } else return slot;
 
 }
+
+HsInt hs_uv_udp_send_connected(uv_udp_t* handle, char* buf, HsInt buf_siz){
+    return hs_uv_udp_send(handle, NULL, buf, buf_siz);
+}
+

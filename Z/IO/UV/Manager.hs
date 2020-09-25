@@ -330,6 +330,7 @@ withUVRequest' uvm f g = do
     (slot, m) <- withUVManager uvm $ \ loop -> mask_ $ do
         slot <- getUVSlot uvm (f loop)
         m <- getBlockMVar uvm slot
+        -- ^ Since we locked uv manager here, it won't affect next event
         _ <- tryTakeMVar m
         return (slot, m)
     g =<< (takeMVar m `onException` cancelUVReq uvm slot no_extra_cleanup)

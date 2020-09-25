@@ -130,12 +130,14 @@ initUDP (UDPConfig sbsiz maddr) = initResource
 
             -- init uv struct
             (do throwUVIfMinus_ (uv_udp_init loop hdl)
-                -- bind the socket if address is available
-                forM_ maddr $ \ (addr, flag) ->
-                    withSocketAddr addr $ \ p ->
-                        throwUVIfMinus_ (uv_udp_bind hdl p flag)
                 ) `onException` hs_uv_handle_free hdl
             return (hdl, slot)
+
+        -- bind the socket if address is available
+        -- This is safe without lock UV manager
+        forM_ maddr $ \ (addr, flag) ->
+            withSocketAddrUnsafe addr $ \ p ->
+                throwUVIfMinus_ (uv_udp_bind hdl p flag)
 
         sbuf <- A.newPinnedPrimArray (max 0 sbsiz)
         closed <- newIORef False
@@ -154,7 +156,7 @@ checkUDPClosed udp = do
 getSockName :: HasCallStack => UDP -> IO SocketAddr
 getSockName udp@(UDP hdl _ _ _ _) = do
     checkUDPClosed udp
-    withSocketAddrStorage $ \ paddr ->
+    withSocketAddrStorageUnsafe $ \ paddr ->
         void $ withPrimUnsafe (fromIntegral sizeOfSocketAddrStorage :: CInt) $ \ plen ->
             throwUVIfMinus_ (uv_udp_getsockname hdl paddr plen)
 
@@ -166,7 +168,7 @@ newtype ConnectedUDP = ConnectedUDP UDP deriving Show
 connectUDP :: HasCallStack => UDP -> SocketAddr -> IO ConnectedUDP
 connectUDP udp@(UDP hdl _ _ _ _) addr = do
     checkUDPClosed udp
-    withSocketAddr addr $ \ paddr ->
+    withSocketAddrUnsafe addr $ \ paddr ->
         throwUVIfMinus_ (uv_udp_connect hdl paddr)
     return (ConnectedUDP udp)
 
@@ -174,14 +176,14 @@ connectUDP udp@(UDP hdl _ _ _ _) addr = do
 disconnectUDP :: HasCallStack => ConnectedUDP -> IO UDP
 disconnectUDP (ConnectedUDP udp@(UDP hdl _ _ _ _)) = do
     checkUDPClosed udp
-    throwUVIfMinus_ (uv_udp_connect hdl nullPtr)
+    throwUVIfMinus_ (uv_udp_disconnect hdl nullPtr)
     return udp
 
 -- | Get the remote IP and port on 'ConnectedUDP'.
 getPeerName :: HasCallStack => ConnectedUDP -> IO SocketAddr
 getPeerName (ConnectedUDP udp@(UDP hdl _ _ _ _)) = do
     checkUDPClosed udp
-    withSocketAddrStorage $ \ paddr ->
+    withSocketAddrStorageUnsafe $ \ paddr ->
         void $ withPrimUnsafe (fromIntegral sizeOfSocketAddrStorage :: CInt) $ \ plen ->
             throwUVIfMinus_ (uv_udp_getpeername hdl paddr plen)
 
@@ -198,8 +200,9 @@ sendConnectedUDP (ConnectedUDP udp@(UDP hdl _ uvm sbuf _)) (V.PrimVector ba s la
     copyPrimArray sbuf 0 ba s la
     withMutablePrimArrayContents sbuf $ \ pbuf -> do
         m <- withUVManager' uvm $ do
-            reqSlot <- getUVSlot uvm (hs_uv_udp_send hdl nullPtr pbuf la)
+            reqSlot <- getUVSlot uvm (hs_uv_udp_send_connected hdl pbuf la)
             reqMVar <- getBlockMVar uvm reqSlot
+            -- ^ Since we locked uv manager here, it won't affect next event
             _ <- tryTakeMVar reqMVar
             return reqMVar
         -- we can't cancel uv_udp_send_t in current libuv
@@ -221,20 +224,21 @@ sendUDP udp@(UDP hdl _ uvm sbuf _) addr (V.PrimVector ba s la) = mask_ $ do
     lb <- getSizeofMutablePrimArray sbuf
     when (la > lb) (throwUVIfMinus_ (return UV_EMSGSIZE))
     copyPrimArray sbuf 0 ba s la
-    withSocketAddr addr $ \ paddr ->
-        withMutablePrimArrayContents sbuf $ \ pbuf -> do
-            m <- withUVManager' uvm $ do
-                reqSlot <- getUVSlot uvm (hs_uv_udp_send hdl paddr pbuf la)
-                reqMVar <- getBlockMVar uvm reqSlot
-                _ <- tryTakeMVar reqMVar
-                return reqMVar
-            -- we can't cancel uv_udp_send_t in current libuv
-            -- and disaster will happen if buffer got collected.
-            -- so we have to turn to uninterruptibleMask_'s help.
-            -- i.e. sendUDP is an uninterruptible operation.
-            -- OS will guarantee writing a socket will not
-            -- hang forever anyway.
-            throwUVIfMinus_  (uninterruptibleMask_ $ takeMVar m)
+    withMutablePrimArrayContents sbuf $ \ pbuf -> do
+        m <- withUVManager' uvm $ do
+            reqSlot <- withSocketAddrUnsafe addr $ \ paddr ->
+                getUVSlot uvm (hs_uv_udp_send hdl paddr pbuf la)
+            reqMVar <- getBlockMVar uvm reqSlot
+            -- ^ Since we locked uv manager here, it won't affect next event
+            _ <- tryTakeMVar reqMVar
+            return reqMVar
+        -- we can't cancel uv_udp_send_t in current libuv
+        -- and disaster will happen if buffer got collected.
+        -- so we have to turn to uninterruptibleMask_'s help.
+        -- i.e. sendUDP is an uninterruptible operation.
+        -- OS will guarantee writing a socket will not
+        -- hang forever anyway.
+        throwUVIfMinus_  (uninterruptibleMask_ $ takeMVar m)
 
 -- | Set IP multicast loop flag. Makes multicast packets loop back to local sockets.
 setMulticastLoop :: HasCallStack => UDP -> Bool -> IO ()

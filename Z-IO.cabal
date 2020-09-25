@@ -1,5 +1,5 @@
 name:                       Z-IO
-version:                    0.1.1.1
+version:                    0.1.1.2
 synopsis:                   Simple and high performance IO toolkit for Haskell
 description:                Simple and high performance IO toolkit for Haskell, including
                             file system, network, ipc and more!
@@ -250,11 +250,14 @@ test-suite Z-IO-Test
                           , zlib
                           , bytestring
 
-    other-modules:          Z.IO.FileSystemSpec
+    other-modules:          Z.Compression.ZlibSpec
                             Z.IO.FileSystem.ThreadedSpec
+                            Z.IO.FileSystemSpec
+                            Z.IO.Network.UDPSpec
+                            Z.IO.Network.TCPSpec
+                            Z.IO.Network.IPCSpec
                             Z.IO.LowResTimerSpec
                             Z.IO.ResourceSpec
-                            Z.IO.UDPSpec
 
     ghc-options:            -threaded
     default-language:       Haskell2010

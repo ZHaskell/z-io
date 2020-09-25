@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Z.IO.UDPSpec where
+module Z.IO.Network.UDPSpec where
 
 import           Control.Concurrent
 import           Control.Monad
@@ -12,8 +12,7 @@ import           Foreign.Marshal.Array
 import           Foreign.Ptr
 import           Z.IO.Exception
 import           Z.IO.Resource
-import           Z.IO.Network.SocketAddr
-import           Z.IO.Network.UDP
+import           Z.IO.Network
 import           Test.Hspec
 import           Test.HUnit
 

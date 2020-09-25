@@ -68,12 +68,13 @@ initIPCClient (IPCClientConfig cname tname) = do
     uvm <- liftIO getUVManager
     client <- initIPCStream uvm
     let hdl = uvsHandle client
-    liftIO . withCBytes tname $ \ tname_p -> do
+    liftIO $ do
         forM_ cname $ \ cname' ->
             withCBytes cname' $ \ cname_p ->
                 -- bind is safe without withUVManager
                 throwUVIfMinus_ (uv_pipe_bind hdl cname_p)
-        void . withUVRequest uvm $ \ _ -> hs_uv_pipe_connect hdl tname_p
+        withCBytes tname $ \ tname_p -> do
+            void . withUVRequest uvm $ \ _ -> hs_uv_pipe_connect hdl tname_p
     return client
 
 --------------------------------------------------------------------------------
@@ -105,7 +106,9 @@ startIPCServer :: HasCallStack => IPCServerConfig -> IO ()
 startIPCServer IPCServerConfig{..} = do
     let backLog = max ipcListenBacklog 128
     serverUVManager <- getUVManager
-    withResource (initIPCStream serverUVManager) $ \ (UVStream serverHandle serverSlot _ _) ->
+    withResource (initIPCStream serverUVManager) $ \ (UVStream serverHandle serverSlot _ _) -> do
+        withCBytes ipcListenName $ \ name_p -> do
+            throwUVIfMinus_ (uv_pipe_bind serverHandle name_p)
         bracket
             (throwOOMIfNull $ hs_uv_accept_check_alloc serverHandle)
             hs_uv_accept_check_close $
@@ -127,51 +130,49 @@ startIPCServer IPCServerConfig{..} = do
 -- we allocate a new uv_check_t for given uv_stream_t, with predefined checking callback
 -- see hs_accept_check_cb in hs_uv_stream.c
                 throwUVIfMinus_ $ hs_uv_accept_check_init check
-                withCBytes ipcListenName $ \ name_p -> do
-                    m <- getBlockMVar serverUVManager serverSlot
-                    acceptBuf <- newPinnedPrimArray backLog
-                    let acceptBufPtr = coerce (mutablePrimArrayContents acceptBuf :: Ptr UVFD)
+                m <- getBlockMVar serverUVManager serverSlot
+                acceptBuf <- newPinnedPrimArray backLog
+                let acceptBufPtr = coerce (mutablePrimArrayContents acceptBuf :: Ptr UVFD)
 -- Step 2.
 -- we allocate a buffer to hold accepted FDs, pass it just like a normal reading buffer.
-                    withUVManager' serverUVManager $ do
-                        -- We use buffersize as accepted fd counter, so we write 0 here
-                        pokeBufferTable serverUVManager serverSlot acceptBufPtr (backLog-1)
-                        throwUVIfMinus_ (uv_pipe_bind serverHandle name_p)
-                        throwUVIfMinus_ (hs_uv_listen serverHandle (max 4 (fromIntegral backLog)))
+                withUVManager' serverUVManager $ do
+                    -- We use buffersize as accepted fd counter, so we write 0 here
+                    pokeBufferTable serverUVManager serverSlot acceptBufPtr (backLog-1)
+                    throwUVIfMinus_ (hs_uv_listen serverHandle (max 4 (fromIntegral backLog)))
 
-                    forever $ do
-                        -- wait until accept some FDs
-                        !acceptCountDown <- takeMVar m
+                forever $ do
+                    -- wait until accept some FDs
+                    !acceptCountDown <- takeMVar m
 -- Step 3.
 -- Copy buffer, fetch accepted FDs and fork worker threads.
 
-                        -- we lock uv manager here in case of next uv_run overwrite current accept buffer
-                        acceptBufCopy <- withUVManager' serverUVManager $ do
-                            _ <- tryTakeMVar m
-                            pokeBufferTable serverUVManager serverSlot acceptBufPtr (backLog-1)
+                    -- we lock uv manager here in case of next uv_run overwrite current accept buffer
+                    acceptBufCopy <- withUVManager' serverUVManager $ do
+                        _ <- tryTakeMVar m
+                        pokeBufferTable serverUVManager serverSlot acceptBufPtr (backLog-1)
 
-                            -- if acceptCountDown count to -1, we should resume on haskell side
-                            when (acceptCountDown == -1) (hs_uv_listen_resume serverHandle)
+                        -- if acceptCountDown count to -1, we should resume on haskell side
+                        when (acceptCountDown == -1) (hs_uv_listen_resume serverHandle)
 
-                            -- copy accepted FDs
-                            let acceptCount = backLog - 1 - acceptCountDown
-                            acceptBuf' <- newPrimArray acceptCount
-                            copyMutablePrimArray acceptBuf' 0 acceptBuf (acceptCountDown+1) acceptCount
-                            unsafeFreezePrimArray acceptBuf'
+                        -- copy accepted FDs
+                        let acceptCount = backLog - 1 - acceptCountDown
+                        acceptBuf' <- newPrimArray acceptCount
+                        copyMutablePrimArray acceptBuf' 0 acceptBuf (acceptCountDown+1) acceptCount
+                        unsafeFreezePrimArray acceptBuf'
 
-                        -- fork worker thread
-                        forM_ [0..sizeofPrimArray acceptBufCopy-1] $ \ i -> do
-                            let fd = indexPrimArray acceptBufCopy i
-                            if fd < 0
-                            -- minus fd indicate a server error and we should close server
-                            then throwUVIfMinus_ (return fd)
-                            -- It's important to use the worker thread's mananger instead of server's one!
-                            else void . forkBa $ do
-                                uvm <- getUVManager
-                                withResource (initUVStream (\ loop hdl -> do
-                                    throwUVIfMinus_ (uv_pipe_init loop hdl 0)
-                                    throwUVIfMinus_ (hs_uv_pipe_open hdl fd)) uvm) $ \ uvs -> do
-                                    ipcServerWorker uvs
+                    -- fork worker thread
+                    forM_ [0..sizeofPrimArray acceptBufCopy-1] $ \ i -> do
+                        let fd = indexPrimArray acceptBufCopy i
+                        if fd < 0
+                        -- minus fd indicate a server error and we should close server
+                        then throwUVIfMinus_ (return fd)
+                        -- It's important to use the worker thread's mananger instead of server's one!
+                        else void . forkBa $ do
+                            uvm <- getUVManager
+                            withResource (initUVStream (\ loop hdl -> do
+                                throwUVIfMinus_ (uv_pipe_init loop hdl 0)
+                                throwUVIfMinus_ (hs_uv_pipe_open hdl fd)) uvm) $ \ uvs -> do
+                                ipcServerWorker uvs
 
 --------------------------------------------------------------------------------
 

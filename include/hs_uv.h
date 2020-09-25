@@ -294,6 +294,7 @@ void uv__io_start(uv_loop_t* loop, uv__io_t* w, unsigned int events);
 // udp
 
 int hs_uv_udp_recv_start(uv_udp_t* handle);
+HsInt hs_uv_udp_send_connected(uv_udp_t* handle, char* buf, HsInt buf_siz);
 HsInt hs_uv_upd_send(uv_udp_t* handle, const struct sockaddr* addr, char* buf, HsInt buf_siz);
 
 ////////////////////////////////////////////////////////////////////////////////
