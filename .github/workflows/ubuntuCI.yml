@@ -1,8 +1,8 @@
 on: [push]
-name: build
+name: ubuntu-ci
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
         ghc: ['8.10.2']
