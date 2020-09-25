@@ -16,16 +16,14 @@ jobs:
         CONFIG: "--enable-tests --enable-benchmarks"
     steps:
       - uses: actions/checkout@v2
+        with:
+          submodules: 'recursive'
+
       - name: Setup Haskell
         uses: actions/setup-haskell@v1.1
         with:
           ghc-version: ${{ matrix.ghc }}
           cabal-version: ${{ matrix.cabal }}
-
-      - name: Checkout submodules
-        uses: srt32/git-actions@v0.0.3
-        with:
-          args: git submodule update --init --recursive
 
       - name: install libuv
         run: sudo apt install libuv1 libuv1-dev pkg-config
