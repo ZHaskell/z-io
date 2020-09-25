@@ -23,9 +23,9 @@ jobs:
           cabal-version: ${{ matrix.cabal }}
 
       - name: Checkout submodules
-          uses: srt32/git-actions@v0.0.3
-          with:
-            args: git submodule update --init --recursive
+        uses: srt32/git-actions@v0.0.3
+        with:
+          args: git submodule update --init --recursive
 
       - name: install libuv
         run: sudo apt install libuv1 libuv1-dev pkg-config
