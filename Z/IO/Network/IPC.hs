@@ -113,6 +113,7 @@ startIPCServer IPCServerConfig{..} = do
             (throwOOMIfNull $ hs_uv_accept_check_alloc serverHandle)
             hs_uv_accept_check_close $
             \ check -> do
+
 -- The buffer passing of accept is a litte complicated here, to get maximum performance,
 -- we do batch accepting. i.e. recv multiple client inside libuv's event loop:
 --
@@ -131,10 +132,12 @@ startIPCServer IPCServerConfig{..} = do
 -- see hs_accept_check_cb in hs_uv_stream.c
                 throwUVIfMinus_ $ hs_uv_accept_check_init check
                 m <- getBlockMVar serverUVManager serverSlot
-                acceptBuf <- newPinnedPrimArray backLog
-                let acceptBufPtr = coerce (mutablePrimArrayContents acceptBuf :: Ptr UVFD)
 -- Step 2.
 -- we allocate a buffer to hold accepted FDs, pass it just like a normal reading buffer.
+-- then we can start listening.
+                acceptBuf <- newPinnedPrimArray backLog
+                let acceptBufPtr = coerce (mutablePrimArrayContents acceptBuf :: Ptr UVFD)
+
                 withUVManager' serverUVManager $ do
                     -- We use buffersize as accepted fd counter, so we write 0 here
                     pokeBufferTable serverUVManager serverSlot acceptBufPtr (backLog-1)
@@ -144,7 +147,7 @@ startIPCServer IPCServerConfig{..} = do
                     -- wait until accept some FDs
                     !acceptCountDown <- takeMVar m
 -- Step 3.
--- Copy buffer, fetch accepted FDs and fork worker threads.
+-- After uv loop finishes, if we got some FDs, copy the FD buffer, fetch accepted FDs and fork worker threads.
 
                     -- we lock uv manager here in case of next uv_run overwrite current accept buffer
                     acceptBufCopy <- withUVManager' serverUVManager $ do
