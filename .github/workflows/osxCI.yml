@@ -22,8 +22,13 @@ jobs:
           ghc-version: ${{ matrix.ghc }}
           cabal-version: ${{ matrix.cabal }}
 
-      - name: GitHub Action for Homebrew
-        uses: artemnovichkov/action-homebrew@0.1.0
+      - name: Checkout submodules
+          uses: srt32/git-actions@v0.0.3
+          with:
+            args: git submodule update --init --recursive
+
+      - name: install homebrew
+        run: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)"
 
       - name: install libuv
         run: brew install libuv pkg-config
