@@ -55,7 +55,6 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 // CONSTANT
-#define ACCEPT_BUFFER_SIZE 1020
 #define INIT_LOOP_SIZE 128
 #define INIT_LOOP_SIZE_BIT 7
 

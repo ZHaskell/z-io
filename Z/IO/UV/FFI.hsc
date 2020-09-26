@@ -55,8 +55,6 @@ type UVFD = Int32
 --------------------------------------------------------------------------------
 -- CONSTANT
 
-pattern ACCEPT_BUFFER_SIZE :: Int
-pattern ACCEPT_BUFFER_SIZE = #const ACCEPT_BUFFER_SIZE
 pattern SO_REUSEPORT_LOAD_BALANCE :: Int
 pattern SO_REUSEPORT_LOAD_BALANCE = #const SO_REUSEPORT_LOAD_BALANCE
 pattern INIT_LOOP_SIZE :: Int

@@ -21,6 +21,8 @@ This module provide IO operations related to filesystem, operations are implemen
 module Z.IO.FileSystem
   ( -- * regular file devices
     File, initFile, readFile, writeFile
+    -- * file offset bundle
+  , FilePtr, newFilePtr, getFileOffset, setFileOffset
     -- * opening constant
   , FileMode(DEFAULT_MODE, S_IRWXU, S_IRUSR, S_IWUSR
       , S_IXUSR, S_IRWXG, S_IRGRP, S_IWGRP, S_IXGRP, S_IRWXO, S_IROTH
@@ -61,6 +63,7 @@ import           Foreign.Ptr
 import           Foreign.Storable               (peekElemOff)
 import           Foreign.Marshal.Alloc          (allocaBytes)
 import           Z.Data.CBytes                 as CBytes
+import           Z.Data.PrimRef.PrimIORef
 import           Z.Foreign
 import           Z.IO.Buffered
 import           Z.IO.Exception
@@ -131,6 +134,42 @@ writeFile uvf buf0 bufSiz0 off0 =
             go' fd (buf `plusPtr` written)
                    (bufSiz-written)
                    (off+fromIntegral written)
+
+-- | File bundled with offset.
+--
+-- Reading or writing using 'Input' \/ 'Output' instance will automatically increase offset.
+-- 'FilePtr' and its operations are NOT thread safe, use 'MVar' 'FilePtr' in multiple threads.
+--
+data FilePtr = FilePtr {-# UNPACK #-} !File
+                       {-# UNPACK #-} !(PrimIORef Int64)
+
+-- |  Create a file offset bundle from an 'File'.
+--
+newFilePtr :: File       -- ^ the file we're reading
+           -> Int64      -- ^ initial offset
+           -> IO FilePtr
+newFilePtr uvf off = FilePtr uvf <$> newPrimIORef off
+
+-- | Get current offset.
+getFileOffset :: FilePtr -> IO Int64
+getFileOffset (FilePtr _ offsetRef) = readPrimIORef offsetRef
+
+-- | Change current offset.
+setFileOffset :: FilePtr -> Int64 -> IO ()
+setFileOffset (FilePtr _ offsetRef) = writePrimIORef offsetRef
+
+instance Input FilePtr where
+    readInput (FilePtr file offsetRef) buf bufSiz =
+        readPrimIORef offsetRef >>= \ off -> do
+            l <- readFile file buf bufSiz off
+            writePrimIORef offsetRef (off + fromIntegral l)
+            return l
+
+instance Output FilePtr where
+    writeOutput (FilePtr file offsetRef) buf bufSiz =
+        readPrimIORef offsetRef >>= \ off -> do
+            writeFile file buf bufSiz off
+            writePrimIORef offsetRef (off + fromIntegral bufSiz)
 
 --------------------------------------------------------------------------------
 

@@ -43,6 +43,16 @@ spec = describe "filesystem (threadpool version) operations" $ do
                 writeBuffer o content
                 flushBuffer o
 
+            withResource (initFileT filename flags mode) $ \ file -> do
+                i <- newBufferedInput 4096 file
+                written <- readExactly size i
+                written @?= content
+
+                fr <- newFilePtrT file 0
+                i <- newBufferedInput 4096 fr
+                written <- readExactly size i
+                written @=? content
+
             unlink filename
 
         it "Opens and writes a file II" $ do
@@ -60,6 +70,12 @@ spec = describe "filesystem (threadpool version) operations" $ do
                 i <- newBufferedInput 4096 file
                 Just firstLine <- readLine i
                 firstLine  @=? fst (V.break (== V.c2w '\n') content2)
+
+                fr <- newFilePtrT file (fromIntegral $ size2 `div` 2)
+                i <- newBufferedInput 4096 fr
+                replicateM_ 512 $ do
+                    Just firstLine <- readLine i
+                    firstLine  @=? fst (V.break (== V.c2w '\n') content2)
 
             unlink filename
 
