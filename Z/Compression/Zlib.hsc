@@ -25,16 +25,8 @@ module Z.Compression.Zlib(
   , defaultCompressConfig
   , compress
   , compressSink
-  , Strategy
-  , pattern Z_FILTERED         
-  , pattern Z_HUFFMAN_ONLY    
-  , pattern Z_RLE             
-  , pattern Z_FIXED           
-  , pattern Z_DEFAULT_STRATEGY
-  , CompressLevel
-  , pattern Z_BEST_SPEED          
-  , pattern Z_BEST_COMPRESSION   
-  , pattern Z_DEFAULT_COMPRESSION
+  , Strategy (Z_FILTERED, Z_HUFFMAN_ONLY, Z_RLE, Z_FIXED, Z_DEFAULT_STRATEGY)
+  , CompressLevel(Z_BEST_SPEED, Z_BEST_COMPRESSION, Z_DEFAULT_COMPRESSION)
   , WindowBits
   , defaultWindowBits
   , MemLevel
@@ -65,6 +57,11 @@ import           Z.IO.Exception
 
 newtype Strategy = Strategy CInt deriving (Eq, Ord, Show, Typeable)
 
+pattern Z_FILTERED           :: Strategy
+pattern Z_HUFFMAN_ONLY       :: Strategy
+pattern Z_RLE                :: Strategy
+pattern Z_FIXED              :: Strategy
+pattern Z_DEFAULT_STRATEGY   :: Strategy
 pattern Z_FILTERED           = Strategy (#const Z_FILTERED        )
 pattern Z_HUFFMAN_ONLY       = Strategy (#const Z_HUFFMAN_ONLY    )
 pattern Z_RLE                = Strategy (#const Z_RLE             )
@@ -75,6 +72,9 @@ pattern Z_DEFAULT_STRATEGY   = Strategy (#const Z_DEFAULT_STRATEGY)
 newtype CompressLevel = CompressLevel CInt deriving (Eq, Ord, Show, Typeable)
 
 -- pattern Z_NO_COMPRESSION       =  CompressLevel (#const Z_NO_COMPRESSION     )
+pattern Z_BEST_SPEED          :: CompressLevel
+pattern Z_BEST_COMPRESSION    :: CompressLevel
+pattern Z_DEFAULT_COMPRESSION :: CompressLevel
 pattern Z_BEST_SPEED           =  CompressLevel (#const Z_BEST_SPEED         )
 pattern Z_BEST_COMPRESSION     =  CompressLevel (#const Z_BEST_COMPRESSION   )
 pattern Z_DEFAULT_COMPRESSION  =  CompressLevel (#const Z_DEFAULT_COMPRESSION)
@@ -318,9 +318,6 @@ foreign import ccall unsafe
 
 foreign import ccall unsafe
     deflate :: Ptr ZStream -> CInt -> IO CInt
-
-foreign import ccall unsafe
-    deflateEnd :: Ptr ZStream -> IO CInt
 
 foreign import ccall unsafe
     inflate_init2 :: Ptr ZStream -> WindowBits -> IO CInt

@@ -53,22 +53,9 @@ module Z.IO.Network.SocketAddr
   , PortNumber(..)
   , portAny
   -- * family, type, protocol
-  , SocketFamily(..)
-  , pattern AF_UNSPEC
-  , pattern AF_INET
-  , pattern AF_INET6
-  , SocketType(..)
-  , pattern SOCK_DGRAM
-  , pattern SOCK_STREAM
-  , pattern SOCK_SEQPACKET
-  , pattern SOCK_RAW
-  , pattern SOCK_RDM
-  , pattern SOCK_ANY
-  , ProtocolNumber(..)
-  , pattern IPPROTO_DEFAULT
-  , pattern IPPROTO_IP
-  , pattern IPPROTO_TCP
-  , pattern IPPROTO_UDP
+  , SocketFamily(AF_UNSPEC, AF_INET, AF_INET6)
+  , SocketType(SOCK_DGRAM, SOCK_STREAM, SOCK_SEQPACKET, SOCK_RAW, SOCK_RDM, SOCK_ANY)
+  , ProtocolNumber(IPPROTO_DEFAULT, IPPROTO_IP, IPPROTO_TCP, IPPROTO_UDP)
   -- * Internal helper
   , peekSocketAddr
   , pokeSocketAddr

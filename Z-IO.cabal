@@ -186,8 +186,8 @@ library
                             third_party/libuv/src/win/winapi.c
                             third_party/libuv/src/win/winsock.c
 
-        cc-options:         -Wall -Wextra -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600 -march=native
-        cpp-options:        -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600
+        cc-options:         -Wall -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600 -O -march=native
+        cpp-options:        -Wall -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600
         include-dirs:       third_party/libuv/include
                             third_party/libuv/src
         -- The C runtime dependencies are imposed by libuv.
@@ -237,7 +237,7 @@ library
             include-dirs:       third_party/libuv/include
                                 third_party/libuv/src/unix
                                 third_party/libuv/src
-            cc-options:         -Wall -Wextra -march=native
+            cc-options:        -Wall -O -march=native
         else
             if os(osx)
                 c-sources:          third_party/libuv/src/fs-poll.c
@@ -282,7 +282,7 @@ library
                 include-dirs:       third_party/libuv/include
                                     third_party/libuv/src/unix
                                     third_party/libuv/src
-                cc-options:         -Wall -Wextra -march=native
+                cc-options:         -Wall -O -march=native
 
             else
                 if flag(no-pkg-config)

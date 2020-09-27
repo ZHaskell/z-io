@@ -242,7 +242,7 @@ unReadBuffer pb' BufferedInput{..} = unless (V.null pb') $ do
 --
 -- Either during parsing or before parsing, reach EOF will result in 'P.ParseError'.
 readParser :: (HasCallStack, Input i) => P.Parser a -> BufferedInput i -> IO (Either P.ParseError a)
-readParser p i@BufferedInput{..} = do
+readParser p i = do
     bs <- readBuffer i
     (rest, r) <- P.parseChunks p (readBuffer i) bs
     unReadBuffer rest i
@@ -409,8 +409,8 @@ sinkBuffer o = (writeBuffer o, flushBuffer o)
 -- | Source a list streamly.
 sourceFromList :: [a] -> IO (Source a)
 {-# INLINABLE sourceFromList #-}
-sourceFromList xs = do
-    xsRef <- newIORef xs
+sourceFromList xs0 = do
+    xsRef <- newIORef xs0
     return (popper xsRef)
   where
     popper xsRef = do
@@ -474,7 +474,7 @@ parseSource p source = do
 -- | Connect list of streams, after one stream reach EOF, draw element from next.
 concatSource :: [Source a] -> IO (Source a)
 {-# INLINABLE concatSource #-}
-concatSource ss = newIORef ss >>= return . loop
+concatSource ss0 = newIORef ss0 >>= return . loop
   where
     loop ref = do
         ss <- readIORef ref

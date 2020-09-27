@@ -28,11 +28,11 @@
  * SUCH DAMAGE.
  */
 
-#include <uv.h>
-#include <assert.h>
 #include <HsFFI.h>  // for HsInt
+#include <assert.h>
 #include <stdlib.h> // for malloc, free, etc.
 #include <string.h> // for fs path
+#include <uv.h>
 
 #if !defined(_WIN32)
 

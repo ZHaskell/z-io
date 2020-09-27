@@ -66,4 +66,3 @@ void free_z_stream_inflate (z_stream *stream)
 	inflateEnd(stream);
 	free(stream);
 }
-
