@@ -17,14 +17,14 @@ This module provide IO manager which bridge libuv's async interface with ghc's l
 The main procedures for doing event IO is:
 
   * Allocate uv_handle in C side, get its slot number with 'getUVSlot', or allocate uv_request with 'withUVRequest'.
-  * Prepare you IO buffer with 'pokeBufferTable'(both read and write).
+  * Prepare you IO buffer with 'pokeBufferTable'(read or write).
   * Call C side IO functions with predefined callbacks.
   * Block your thread with the 'MVar' from 'getBlockMVar'.
   * Read the result by 'takeMVar' on that 'MVar', it will be the value pushed on C side.
   * Slot is freed on C side, either via callbacks, or when handle is closed.
 
 Usually slots are cache in the IO device so that you don't have to allocate new one before each IO operation.
-Check "System.IO.Socket.TCP" as an example.
+Check "Z.IO.Network.TCP" as an example.
 
 -}
 
