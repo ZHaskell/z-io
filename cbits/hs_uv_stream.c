@@ -126,7 +126,7 @@ int hs_uv_tcp_open(uv_tcp_t* handle, int32_t sock) {
 }
 
 int hs_uv_pipe_open(uv_pipe_t* handle, int32_t file) {
-  int r = uv_pipe_open(handle, (uv_file_t)file);
+  int r = uv_pipe_open(handle, (uv_file)file);
   if (r == 0) {
     hs_uv_connection_init((uv_stream_t*)handle);
     handle->flags |= UV_HANDLE_BOUND | UV_HANDLE_READABLE | UV_HANDLE_WRITABLE;
