@@ -28,9 +28,7 @@ jobs:
       - run: cabal v2-update
 
       - name: install hspec-discover
-        run: |
-            cabal install hspec-discover
-            export PATH=:$PATH
+        run: cabal install hspec-discover
 
       - run: cabal v2-build $CONFIG
       - run: cabal v2-test --test-show-details=direct
