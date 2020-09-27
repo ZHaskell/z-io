@@ -21,21 +21,6 @@ This package provides basic IO operations:
 
 * A working haskell compiler system, GHC(>=8.10.2), cabal-install(>=3.4).
 
-* On *nix system, libuv >= 1.32 are required to build this library, e.g.
-
-```base
-# on ubuntu
-sudo apt-get install libuv1 libuv1-dev
-# on mac
-brew install libuv
-```
-
-* On *nix system, pkg-config is required, or you can pass libuv's path manually:
-
-```base
-cabal install -fno-pkg-config -extra-lib-dirs=... --extra-include-dirs=... Z-IO
-```
-
 * Tests need  [hspec-discover](https://hackage.haskell.org/package/hspec-discover).
 
 ## Example usage

@@ -25,9 +25,6 @@ jobs:
           ghc-version: ${{ matrix.ghc }}
           cabal-version: ${{ matrix.cabal }}
 
-      - name: install libuv
-        run: sudo apt install libuv1 libuv1-dev pkg-config
-
       - run: cabal v2-update
       - run: cabal v2-freeze $CONFIG
       - uses: actions/cache@v2

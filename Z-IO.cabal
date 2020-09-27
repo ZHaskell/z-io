@@ -1,5 +1,5 @@
 name:                       Z-IO
-version:                    0.1.1.2
+version:                    0.1.2.0
 synopsis:                   Simple and high performance IO toolkit for Haskell
 description:                Simple and high performance IO toolkit for Haskell, including
                             file system, network, ipc and more!
@@ -39,23 +39,16 @@ extra-source-files:         ChangeLog.md
                             third_party/libuv/include/uv/version.h
                             third_party/libuv/include/uv/stdint-msvc2008.h
 
-                            third_party/libuv/src/fs-poll.c
                             third_party/libuv/src/heap-inl.h
-                            third_party/libuv/src/idna.c
                             third_party/libuv/src/idna.h
-                            third_party/libuv/src/inet.c
                             third_party/libuv/src/queue.h
-                            third_party/libuv/src/strscpy.c
                             third_party/libuv/src/strscpy.h
-                            third_party/libuv/src/threadpool.c
-                            third_party/libuv/src/timer.c
-                            third_party/libuv/src/uv-common.c
                             third_party/libuv/src/uv-common.h
-                            third_party/libuv/src/uv-data-getter-setters.c
-                            third_party/libuv/src/version.c
 
+                            third_party/libuv/src/win/atomicops-inl.h
                             third_party/libuv/src/win/handle-inl.h
                             third_party/libuv/src/win/internal.h
+                            third_party/libuv/src/win/req-inl.h
                             third_party/libuv/src/win/stream-inl.h
                             third_party/libuv/src/win/winapi.h
                             third_party/libuv/src/win/winsock.h
@@ -160,17 +153,14 @@ library
                             third_party/zlib/zutil.c
 
                             third_party/libuv/src/fs-poll.c
-                            -- third_party/libuv/src/heap-inl.h
                             third_party/libuv/src/idna.c
                             third_party/libuv/src/inet.c
-                            -- third_party/libuv/src/queue.h
+                            third_party/libuv/src/random.c
                             third_party/libuv/src/strscpy.c
-                            -- third_party/libuv/src/strscpy.h
                             third_party/libuv/src/threadpool.c
                             third_party/libuv/src/timer.c
                             third_party/libuv/src/uv-data-getter-setters.c
                             third_party/libuv/src/uv-common.c
-                            -- third_party/libuv/src/uv-common.h
                             third_party/libuv/src/version.c
 
     -- Note: The c-sources list is taken from libuv's Makefile.mingw, needs to be
@@ -179,7 +169,6 @@ library
     if os(windows)
         c-sources:
                             third_party/libuv/src/win/async.c
-                            -- third_party/libuv/src/win/atomicops-inl.h
                             third_party/libuv/src/win/core.c
                             third_party/libuv/src/win/detect-wakeup.c
                             third_party/libuv/src/win/dl.c
@@ -189,26 +178,20 @@ library
                             third_party/libuv/src/win/getaddrinfo.c
                             third_party/libuv/src/win/getnameinfo.c
                             third_party/libuv/src/win/handle.c
-                            -- third_party/libuv/src/win/handle-inl.h
-                            -- third_party/libuv/src/win/internal.h
                             third_party/libuv/src/win/loop-watcher.c
                             third_party/libuv/src/win/pipe.c
                             third_party/libuv/src/win/poll.c
                             third_party/libuv/src/win/process-stdio.c
                             third_party/libuv/src/win/process.c
-                            -- third_party/libuv/src/win/req-inl.h
                             third_party/libuv/src/win/signal.c
                             third_party/libuv/src/win/stream.c
-                            -- third_party/libuv/src/win/stream-inl.h
                             third_party/libuv/src/win/tcp.c
                             third_party/libuv/src/win/thread.c
                             third_party/libuv/src/win/tty.c
                             third_party/libuv/src/win/udp.c
                             third_party/libuv/src/win/util.c
                             third_party/libuv/src/win/winapi.c
-                            -- third_party/libuv/src/win/winapi.h
                             third_party/libuv/src/win/winsock.c
-                            -- third_party/libuv/src/win/winsock.h
 
         cc-options:         -Wall -Wextra -Wno-unused-parameter -Wstrict-prototypes -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600 -march=native
         cpp-options:        -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600
@@ -218,66 +201,106 @@ library
         extra-libraries:    psapi, Iphlpapi, userenv, Ws2_32
 
     else
-      if os(linux)
-        c-sources:          third_party/libuv/src/fs-poll.c
-                            -- third_party/libuv/src/heap-inl.h
-                            third_party/libuv/src/idna.c
-                            third_party/libuv/src/inet.c
-                            -- third_party/libuv/src/queue.h
-                            third_party/libuv/src/strscpy.c
-                            -- third_party/libuv/src/strscpy.h
-                            third_party/libuv/src/threadpool.c
-                            third_party/libuv/src/timer.c
-                            third_party/libuv/src/uv-data-getter-setters.c
-                            third_party/libuv/src/uv-common.c
-                            -- third_party/libuv/src/uv-common.h
-                            third_party/libuv/src/version.c
+        if os(linux)
+            c-sources:          third_party/libuv/src/fs-poll.c
+                                third_party/libuv/src/idna.c
+                                third_party/libuv/src/inet.c
+                                third_party/libuv/src/random.c
+                                third_party/libuv/src/strscpy.c
+                                third_party/libuv/src/threadpool.c
+                                third_party/libuv/src/timer.c
+                                third_party/libuv/src/uv-data-getter-setters.c
+                                third_party/libuv/src/uv-common.c
+                                third_party/libuv/src/version.c
 
 
-                           third_party/libuv/src/unix/async.c
-                           third_party/libuv/src/unix/core.c
-                           third_party/libuv/src/unix/dl.c
-                           third_party/libuv/src/unix/fs.c
-                           third_party/libuv/src/unix/getaddrinfo.c
-                           third_party/libuv/src/unix/getnameinfo.c
-                           third_party/libuv/src/unix/loop.c
-                           third_party/libuv/src/unix/pipe.c
-                           third_party/libuv/src/unix/poll.c
-                           third_party/libuv/src/unix/process.c
-                           third_party/libuv/src/unix/random-devurandom.c
-                           third_party/libuv/src/unix/signal.c
-                           third_party/libuv/src/unix/stream.c
-                           third_party/libuv/src/unix/tcp.c
-                           third_party/libuv/src/unix/thread.c
-                           third_party/libuv/src/unix/tty.c
-                           third_party/libuv/src/unix/udp.c
+                               third_party/libuv/src/unix/async.c
+                               third_party/libuv/src/unix/core.c
+                               third_party/libuv/src/unix/dl.c
+                               third_party/libuv/src/unix/fs.c
+                               third_party/libuv/src/unix/getaddrinfo.c
+                               third_party/libuv/src/unix/getnameinfo.c
+                               third_party/libuv/src/unix/loop.c
+                               third_party/libuv/src/unix/loop-watcher.c
+                               third_party/libuv/src/unix/pipe.c
+                               third_party/libuv/src/unix/poll.c
+                               third_party/libuv/src/unix/process.c
+                               third_party/libuv/src/unix/random-devurandom.c
+                               third_party/libuv/src/unix/signal.c
+                               third_party/libuv/src/unix/stream.c
+                               third_party/libuv/src/unix/tcp.c
+                               third_party/libuv/src/unix/thread.c
+                               third_party/libuv/src/unix/tty.c
+                               third_party/libuv/src/unix/udp.c
 
-                           third_party/libuv/src/unix/linux-core.c
-                           third_party/libuv/src/unix/linux-inotify.c
-                           third_party/libuv/src/unix/linux-syscalls.c
-                           third_party/libuv/src/unix/linux-syscalls.h
-                           third_party/libuv/src/unix/loop-watcher.c
-                           third_party/libuv/src/unix/procfs-exepath.c
-                           third_party/libuv/src/unix/proctitle.c
-                           third_party/libuv/src/unix/random-getrandom.c
-                           third_party/libuv/src/unix/random-sysctl-linux.c
+                               third_party/libuv/src/unix/linux-core.c
+                               third_party/libuv/src/unix/linux-inotify.c
+                               third_party/libuv/src/unix/linux-syscalls.c
+                               third_party/libuv/src/unix/procfs-exepath.c
+                               third_party/libuv/src/unix/proctitle.c
+                               third_party/libuv/src/unix/random-getrandom.c
+                               third_party/libuv/src/unix/random-sysctl-linux.c
+
+            include-dirs:       third_party/libuv/include
+                                third_party/libuv/src/unix
+                                third_party/libuv/src
+            cc-options:         -Wall -Wextra -march=native
+        else
+            if os(osx)
+                c-sources:          third_party/libuv/src/fs-poll.c
+                                    third_party/libuv/src/idna.c
+                                    third_party/libuv/src/inet.c
+                                    third_party/libuv/src/random.c
+                                    third_party/libuv/src/strscpy.c
+                                    third_party/libuv/src/threadpool.c
+                                    third_party/libuv/src/timer.c
+                                    third_party/libuv/src/uv-data-getter-setters.c
+                                    third_party/libuv/src/uv-common.c
+                                    third_party/libuv/src/version.c
 
 
+                                   third_party/libuv/src/unix/async.c
+                                   third_party/libuv/src/unix/core.c
+                                   third_party/libuv/src/unix/dl.c
+                                   third_party/libuv/src/unix/fs.c
+                                   third_party/libuv/src/unix/getaddrinfo.c
+                                   third_party/libuv/src/unix/getnameinfo.c
+                                   third_party/libuv/src/unix/loop.c
+                                   third_party/libuv/src/unix/loop-watcher.c
+                                   third_party/libuv/src/unix/pipe.c
+                                   third_party/libuv/src/unix/poll.c
+                                   third_party/libuv/src/unix/process.c
+                                   third_party/libuv/src/unix/random-devurandom.c
+                                   third_party/libuv/src/unix/signal.c
+                                   third_party/libuv/src/unix/stream.c
+                                   third_party/libuv/src/unix/tcp.c
+                                   third_party/libuv/src/unix/thread.c
+                                   third_party/libuv/src/unix/tty.c
+                                   third_party/libuv/src/unix/udp.c
 
-        include-dirs:       third_party/libuv/include
-                            third_party/libuv/src/unix
-                            third_party/libuv/src
-        cc-options:         -Wall -Wextra -march=native
-    --
-    --  if flag(no-pkg-config)
-    --      extra-libraries:    uv
-    --  else
-    --      pkgconfig-depends:  libuv >= 1.32
-    --
+                                   third_party/libuv/src/unix/bsd-ifaddrs.c
+                                   third_party/libuv/src/unix/darwin-proctitle.c
+                                   third_party/libuv/src/unix/darwin.c
+                                   third_party/libuv/src/unix/fsevents.c
+                                   third_party/libuv/src/unix/kqueue.c
+                                   third_party/libuv/src/unix/proctitle.c
+                                   third_party/libuv/src/unix/random-getrandom.c
+                                   
+                include-dirs:       third_party/libuv/include
+                                    third_party/libuv/src/unix
+                                    third_party/libuv/src
+                cc-options:         -Wall -Wextra -march=native
 
-    default-language:       Haskell2010
-    build-tools:            hsc2hs, hspec-discover
-    ghc-options:            -Wall
+            else
+                if flag(no-pkg-config)
+                    extra-libraries:    uv
+                else
+                    pkgconfig-depends:  libuv >= 1.32
+        
+
+        default-language:       Haskell2010
+        build-tools:            hsc2hs, hspec-discover
+        ghc-options:            -Wall
 
 test-suite Z-IO-Test
     type:                   exitcode-stdio-1.0
