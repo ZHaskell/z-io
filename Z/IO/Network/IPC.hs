@@ -128,30 +128,31 @@ startIPCServer IPCServerConfig{..} = do
 -- if backLog is reached, we resume receiving from haskell side.
 --
 -- Step 1.
--- we allocate a new uv_check_t for given uv_stream_t, with predefined checking callback
--- see hs_accept_check_cb in hs_uv_stream.c
-                throwUVIfMinus_ $ hs_uv_accept_check_init check
-                m <- getBlockMVar serverUVManager serverSlot
--- Step 2.
 -- we allocate a buffer to hold accepted FDs, pass it just like a normal reading buffer.
 -- then we can start listening.
                 acceptBuf <- newPinnedPrimArray backLog
                 let acceptBufPtr = coerce (mutablePrimArrayContents acceptBuf :: Ptr UVFD)
 
                 withUVManager' serverUVManager $ do
-                    -- We use buffersize as accepted fd counter, so we write 0 here
+                    -- We use buffersize as accepted fd count(count backwards)
                     pokeBufferTable serverUVManager serverSlot acceptBufPtr (backLog-1)
-                    throwUVIfMinus_ (hs_uv_listen serverHandle (max 4 (fromIntegral backLog)))
+                    throwUVIfMinus_ (hs_uv_listen serverHandle (fromIntegral backLog))
+-- Step 2.
+-- we initiate a uv_check_t for given uv_stream_t, with predefined checking callback
+-- see hs_accept_check_cb in hs_uv_stream.c
+                    throwUVIfMinus_ $ hs_uv_accept_check_init check
 
+                m <- getBlockMVar serverUVManager serverSlot
                 forever $ do
                     -- wait until accept some FDs
-                    !acceptCountDown <- takeMVar m
+                    _ <- takeMVar m
 -- Step 3.
 -- After uv loop finishes, if we got some FDs, copy the FD buffer, fetch accepted FDs and fork worker threads.
 
                     -- we lock uv manager here in case of next uv_run overwrite current accept buffer
                     acceptBufCopy <- withUVManager' serverUVManager $ do
                         _ <- tryTakeMVar m
+                        acceptCountDown <- peekBufferTable serverUVManager serverSlot
                         pokeBufferTable serverUVManager serverSlot acceptBufPtr (backLog-1)
 
                         -- if acceptCountDown count to -1, we should resume on haskell side

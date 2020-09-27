@@ -180,7 +180,7 @@ withUVManager :: HasCallStack => UVManager -> (Ptr UVLoop -> IO a) -> IO a
 withUVManager (UVManager _ loop loopData runningLock _) f = go
   where
     go = do
-        r <- withMVar runningLock $ \ running ->
+        r <- withMVar runningLock $ \ running -> do
             if running
             then do
                 -- if uv_run is running, it will stop

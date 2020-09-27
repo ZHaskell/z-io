@@ -34,19 +34,18 @@ spec = describe "TCP operations" $ do
 
         threadDelay 100000
 
-        replicateM_ 1000 . forkIO $
+        replicateM_  512 . forkIO $
             withResource (initTCPClient defaultTCPClientConfig{tcpRemoteAddr = addr}) $ \ tcp -> do
                 i <- newBufferedInput defaultChunkSize tcp
                 o <- newBufferedOutput defaultChunkSize tcp
 
-                replicateM_ 1000 . forkIO $ do
-                    writeBuffer o testMsg >> flushBuffer o
-                    testMsg' <- readAll' i
-                    testMsg' @=? testMsg
+                writeBuffer o testMsg >> flushBuffer o
+                testMsg' <- readExactly' (V.length testMsg) i
+                testMsg' @=? testMsg
 
-                replicateM_ 1000 . forkIO $ do
-                    writeBuffer o longMsg >> flushBuffer o
-                    longMsg' <- readAll' i
-                    longMsg' @=? longMsg
+                writeBuffer o longMsg >> flushBuffer o
+                longMsg' <- readExactly' (V.length longMsg) i
+                longMsg' @=? longMsg
 
+        threadDelay 5000000
         killThread serverThread

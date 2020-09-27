@@ -338,7 +338,7 @@ void hs_accept_check_cb(uv_check_t* check){
     uv_stream_t* server=(uv_stream_t*)check->data;
     HsInt slot = (HsInt)server->data;
     hs_loop_data* loop_data = server->loop->data;
-    // This relays on GHC ByteArray# memory layout
+    // This relys on GHC ByteArray# memory layout, ByteArray# length is recorded before content.
     HsInt* buffer_ptr = (HsInt*)loop_data->buffer_table[slot];
     HsInt backlog = *(buffer_ptr-1);
     backlog = backlog / 4; // int32_t fd

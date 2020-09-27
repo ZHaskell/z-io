@@ -54,19 +54,38 @@ extra-source-files:         ChangeLog.md
                             third_party/libuv/src/uv-data-getter-setters.c
                             third_party/libuv/src/version.c
 
+                            third_party/libuv/src/win/async.c
+                            third_party/libuv/src/win/atomicops-inl.h
+                            third_party/libuv/src/win/core.c
+                            third_party/libuv/src/win/detect-wakeup.c
+                            third_party/libuv/src/win/dl.c
+                            third_party/libuv/src/win/error.c
+                            third_party/libuv/src/win/fs.c
+                            third_party/libuv/src/win/fs-event.c
+                            third_party/libuv/src/win/getaddrinfo.c
+                            third_party/libuv/src/win/getnameinfo.c
+                            third_party/libuv/src/win/handle.c
                             third_party/libuv/src/win/handle-inl.h
                             third_party/libuv/src/win/internal.h
+                            third_party/libuv/src/win/loop-watcher.c
+                            third_party/libuv/src/win/pipe.c
+                            third_party/libuv/src/win/poll.c
+                            third_party/libuv/src/win/process.c
+                            third_party/libuv/src/win/process-stdio.c
+                            third_party/libuv/src/win/req-inl.h
+                            third_party/libuv/src/win/signal.c
+                            third_party/libuv/src/win/snprintf.c
+                            third_party/libuv/src/win/stream.c
                             third_party/libuv/src/win/stream-inl.h
+                            third_party/libuv/src/win/tcp.c
+                            third_party/libuv/src/win/thread.c
+                            third_party/libuv/src/win/tty.c
+                            third_party/libuv/src/win/udp.c
+                            third_party/libuv/src/win/util.c
+                            third_party/libuv/src/win/winapi.c
                             third_party/libuv/src/win/winapi.h
+                            third_party/libuv/src/win/winsock.c
                             third_party/libuv/src/win/winsock.h
-
-                            third_party/libuv/src/unix/atomic-ops.h
-                            third_party/libuv/src/unix/darwin-stub.h
-                            third_party/libuv/src/unix/darwin-stub.h
-                            third_party/libuv/src/unix/internal.h
-                            third_party/libuv/src/unix/linux-syscalls.h
-                            third_party/libuv/src/unix/spinlock.h
-                            third_party/libuv/src/unix/os390-syscalls.h
 
 source-repository head
     type:     git
@@ -76,26 +95,6 @@ flag no-pkg-config
     description: Don't use pkg-config to check for library dependences
     default: False
     manual: True
-
-executable http-bench
-    main-is:          Z/IO/Test.hs
-
-    -- Modules included in this executable, other than Main.
-    -- other-modules:
-
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
-    build-depends:    base >=4.14.0.0
-                    , Z-IO 
-                    , Z-Data
-                  , primitive               >= 0.7.1 && < 0.7.2
-                  , ghc-prim                >= 0.6.1 && < 0.6.2
-                  , exceptions              == 0.10.*
-                  , time                    >= 1.8 && < 2.0
-                  , stm                     == 2.5.*
-    hs-source-dirs:   ./
-    default-language: Haskell2010
-    ghc-options:  -O2 -threaded -rtsopts -eventlog -with-rtsopts=-N
 
 library
     exposed-modules:        Z.IO.FileSystem
@@ -159,7 +158,11 @@ library
                             third_party/zlib/uncompr.c
                             third_party/zlib/zutil.c
 
-                            third_party/libuv/src/fs-poll.c
+    -- Note: The c-sources list is taken from libuv's Makefile.mingw, needs to be
+    -- updated when we bump up libuv's version.
+    -- header files are ignored here, otherwise will confuse linker
+    if os(windows)
+        c-sources:          third_party/libuv/src/fs-poll.c
                             -- third_party/libuv/src/heap-inl.h
                             third_party/libuv/src/idna.c
                             third_party/libuv/src/inet.c
@@ -173,11 +176,6 @@ library
                             -- third_party/libuv/src/uv-common.h
                             third_party/libuv/src/version.c
 
-    -- Note: The c-sources list is taken from libuv's Makefile.mingw, needs to be
-    -- updated when we bump up libuv's version.
-    -- header files are ignored here, otherwise will confuse linker
-    if os(windows)
-        c-sources:
                             third_party/libuv/src/win/async.c
                             -- third_party/libuv/src/win/atomicops-inl.h
                             third_party/libuv/src/win/core.c
@@ -218,7 +216,6 @@ library
         extra-libraries:    psapi, Iphlpapi, userenv, Ws2_32
 
     else
-      if os(linux)
         c-sources:          third_party/libuv/src/fs-poll.c
                             -- third_party/libuv/src/heap-inl.h
                             third_party/libuv/src/idna.c
@@ -256,18 +253,17 @@ library
                            third_party/libuv/src/unix/linux-inotify.c
                            third_party/libuv/src/unix/linux-syscalls.c
                            third_party/libuv/src/unix/linux-syscalls.h
-                           third_party/libuv/src/unix/loop-watcher.c
                            third_party/libuv/src/unix/procfs-exepath.c
                            third_party/libuv/src/unix/proctitle.c
                            third_party/libuv/src/unix/random-getrandom.c
                            third_party/libuv/src/unix/random-sysctl-linux.c
 
+                           third_party/libuv/src/unix/loop-watcher.c
 
 
         include-dirs:       third_party/libuv/include
                             third_party/libuv/src/unix
                             third_party/libuv/src
-        cc-options:         -Wall -Wextra -march=native
     --
     --  if flag(no-pkg-config)
     --      extra-libraries:    uv
