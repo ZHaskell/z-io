@@ -30,14 +30,23 @@ extra-source-files:         ChangeLog.md
                             third_party/zlib/zutil.h
                             third_party/zlib/gzguts.h
 
-                            -- libuv C sources (for Windows)
+                            -- libuv C sources
                             third_party/libuv/include/uv.h
-                            third_party/libuv/include/uv/win.h
-                            third_party/libuv/include/uv/tree.h
+                            third_party/libuv/include/uv/aix.h
+                            third_party/libuv/include/uv/android-ifaddrs.h
+                            third_party/libuv/include/uv/bsd.h
+                            third_party/libuv/include/uv/darwin.h
                             third_party/libuv/include/uv/errno.h
-                            third_party/libuv/include/uv/threadpool.h
-                            third_party/libuv/include/uv/version.h
+                            third_party/libuv/include/uv/linux.h
+                            third_party/libuv/include/uv/os390.h
+                            third_party/libuv/include/uv/posix.h
                             third_party/libuv/include/uv/stdint-msvc2008.h
+                            third_party/libuv/include/uv/sunos.h
+                            third_party/libuv/include/uv/threadpool.h
+                            third_party/libuv/include/uv/tree.h
+                            third_party/libuv/include/uv/unix.h
+                            third_party/libuv/include/uv/version.h
+                            third_party/libuv/include/uv/win.h
 
                             third_party/libuv/src/heap-inl.h
                             third_party/libuv/src/idna.h
