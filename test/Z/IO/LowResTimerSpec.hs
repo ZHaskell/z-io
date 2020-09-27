@@ -21,7 +21,7 @@ spec = describe "low resolution timers" $ do
         running <- isLowResTimerManagerRunning lrtm
         assertEqual "timer manager should start" True running
 
-        threadDelay 1200000 -- make sure all timers are fired
+        threadDelay 1500000 -- make sure all timers are fired
         c' <- readPrimIORef c
         assertEqual "timers registration counter" 100000 c'
 
