@@ -94,7 +94,7 @@ spec = describe "filesystem (threadpool version) operations" $ do
             symlinkname  = "test-symlink"
             symlinkname2  = "test-symlink2"
 
-        it "link stat should be equal to target file" $ do
+        it "link stat should be equal to target file" $ ( do
 
             withResource (initFileT filename flags mode) $ \ file -> return ()
 
@@ -110,18 +110,19 @@ spec = describe "filesystem (threadpool version) operations" $ do
             s2 <- stat symlinkname
             s2' <- stat symlinkname2
 
-            s0 @?= s1 {stNlink = 1} -- update hard link number
-            s0 @?= s2 {stNlink = 1}
-            s0 @?= s2' {stNlink = 1}
+            s0 @=? s1 {stNlink = 1, stCtim = stCtim s0} -- update hard link number
+            s0 @=? s2 {stNlink = 1, stCtim = stCtim s0}
+            s0 @=? s2' {stNlink = 1, stCtim = stCtim s0}
 
             withResource (initFileT filename flags mode) $ \ file -> do
                 s4 <- fstat file
-                s0 @?= s4 {stNlink = 1}
-
-            unlink filename
-            unlink linkname
-            unlink symlinkname
-            unlink symlinkname2
+                s0 @?= s4 {stNlink = 1, stCtim = stCtim s0}
+            ) `finally` ( do
+                unlink filename
+                unlink linkname
+                unlink symlinkname
+                unlink symlinkname2
+            )
 
         it "utime result in stat change" $ do
             withResource (initFileT filename flags mode) $ \ file -> return ()
