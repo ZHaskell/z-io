@@ -1,8 +1,8 @@
 on: [push]
-name: osx-ci
+name: win-ci
 jobs:
   build:
-    runs-on: macOS-latest
+    runs-on: windows-latest
     strategy:
       matrix:
         ghc: ['8.10.2']
