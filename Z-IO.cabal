@@ -70,26 +70,6 @@ flag no-pkg-config
     default: False
     manual: True
 
-executable http-bench
-    main-is:          Z/IO/Test.hs
-
-    -- Modules included in this executable, other than Main.
-    -- other-modules:
-
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
-    build-depends:    base >=4.14.0.0
-                    , Z-IO 
-                    , Z-Data
-                  , primitive               >= 0.7.1 && < 0.7.2
-                  , ghc-prim                >= 0.6.1 && < 0.6.2
-                  , exceptions              == 0.10.*
-                  , time                    >= 1.8 && < 2.0
-                  , stm                     == 2.5.*
-    hs-source-dirs:   ./
-    default-language: Haskell2010
-    ghc-options:  -O2 -threaded -rtsopts -eventlog -with-rtsopts=-N
-
 library
     exposed-modules:        Z.IO.FileSystem
                             Z.IO.FileSystem.Threaded
@@ -193,7 +173,7 @@ library
                             third_party/libuv/src/win/winapi.c
                             third_party/libuv/src/win/winsock.c
 
-        cc-options:         -Wall -Wextra -Wno-unused-parameter -Wstrict-prototypes -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600 -march=native
+        cc-options:         -Wall -Wextra -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600 -march=native
         cpp-options:        -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600
         include-dirs:       third_party/libuv/include
                             third_party/libuv/src

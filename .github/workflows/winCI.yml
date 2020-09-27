@@ -6,7 +6,7 @@ jobs:
     strategy:
       matrix:
         ghc: ['8.10.2']
-        cabal: ['3.4.0.0']
+        cabal: ['3.2.0.0']
         exclude:
           # GHC 8.8+ only works with cabal v3+
           - ghc: 8.8.3
