@@ -1,6 +1,18 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
+{-| HTTP benchmark test
+
+This program read HTTP request(without parsing), and send some respond. You can use HTTP
+benchmark tools such as ab or wrk to test IO throughput, remember to add a proper heap size
+to improve performance (-Hx parammeter):
+
+ulimit -n 10000
+http-bench +RTS -H512M
+wrk -c5000 http://localhost:8888
+
+-}
+
 module Main where
 
 import Control.Monad
@@ -11,7 +23,6 @@ import Z.IO.Exception
 import qualified Z.Data.Vector as V
 import qualified Z.Foreign as FFI
 import Foreign.ForeignPtr
-import GHC.Ptr
 
 main :: IO ()
 main = do
@@ -22,9 +33,6 @@ main = do
                 catch (echo uvs recvbuf sendcontent') (\ (e::SomeException) -> return ())
         }
 
-    -- let addr = ipv4 "204.79.197.200" 80
-    -- withResource (initTCPClient defaultTCPClientConfig{tcpRemoteAddr = addr}) $ \ tcp -> print tcp
-
     startTCPServer conf
   where
     echo uvs recvbuf sendcontent' = loop
@@ -33,11 +41,10 @@ main = do
             r <- withForeignPtr recvbuf $ \ p -> do
                 readInput uvs p 2048
             when (r /= 0) $ do
-                FFI.withPrimVectorSafe. sendcontent' $ \ sendbuffp -> do
-                    writeOutput uvs (castPtr sendbuffp) sendbuffl
-                    loop
+                FFI.withPrimVectorSafe sendcontent' $ writeOutput uvs
+                loop
 
-    sendcontent = V.Bytes
+    sendcontent :: V.Bytes
     sendcontent =
         "HTTP/1.1 200 OK\r\n\
         \Content-Type: text/html; charset=UTF-8\r\n\
