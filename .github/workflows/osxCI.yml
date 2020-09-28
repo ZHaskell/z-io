@@ -38,11 +38,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.ghc }}-
 
-      - name: install hspec-discover
-        run: |
-            cabal install hspec-discover
-            export PATH=$HOME/.cabal/bin:$PATH
-
       - run: cabal v2-build $CONFIG
       - if: matrix.cabal == '2.4.1.0'
         run: cabal v2-test 
