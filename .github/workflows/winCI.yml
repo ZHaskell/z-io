@@ -5,7 +5,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        ghc: ['8.6.5', '8.8.4']     '8.10.2 have linker problem
+        ghc: ['8.6.5', '8.8.4']     #8.10.2 have linker problem
         cabal: ['2.4.1.0', '3.4.0.0']
         exclude:
           # GHC 8.8+ only works with cabal v3+
