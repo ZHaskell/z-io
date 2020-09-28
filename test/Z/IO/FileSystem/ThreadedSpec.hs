@@ -39,17 +39,17 @@ spec = describe "filesystem (threadpool version) operations" $ do
 
         it "Opens and writes a file" $ do
             withResource (initFileT filename flags mode) $ \ file -> do
-                o <- newBufferedOutput 4096 file
+                o <- newBufferedOutput' 4096 file
                 writeBuffer o content
                 flushBuffer o
 
             withResource (initFileT filename flags mode) $ \ file -> do
-                i <- newBufferedInput 4096 file
+                i <- newBufferedInput' 4096 file
                 written <- readExactly size i
                 written @?= content
 
                 fr <- newFilePtrT file 0
-                i <- newBufferedInput 4096 fr
+                i <- newBufferedInput' 4096 fr
                 written <- readExactly size i
                 written @=? content
 
@@ -57,22 +57,22 @@ spec = describe "filesystem (threadpool version) operations" $ do
 
         it "Opens and writes a file II" $ do
             withResource (initFileT filename flags mode) $ \ file -> do
-                o <- newBufferedOutput 4096 file
+                o <- newBufferedOutput' 4096 file
                 writeBuffer o content2
                 flushBuffer o
 
             withResource (initFileT filename flags mode) $ \ file -> do
-                i <- newBufferedInput 4096 file
+                i <- newBufferedInput' 4096 file
                 written <- readExactly size2 i
                 written @=? content2
 
             withResource (initFileT filename flags mode) $ \ file -> do
-                i <- newBufferedInput 4096 file
+                i <- newBufferedInput' 4096 file
                 Just firstLine <- readLine i
                 firstLine  @=? fst (V.break (== V.c2w '\n') content2)
 
                 fr <- newFilePtrT file (fromIntegral $ size2 `div` 2)
-                i <- newBufferedInput 4096 fr
+                i <- newBufferedInput' 4096 fr
                 replicateM_ 512 $ do
                     Just firstLine <- readLine i
                     firstLine  @=? fst (V.break (== V.c2w '\n') content2)

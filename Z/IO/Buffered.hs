@@ -24,6 +24,7 @@ module Z.IO.Buffered
     -- * Buffered Input
   , BufferedInput
   , newBufferedInput
+  , newBufferedInput'
   , readBuffer
   , unReadBuffer
   , readParser
@@ -34,6 +35,7 @@ module Z.IO.Buffered
     -- * Buffered Output
   , BufferedOutput
   , newBufferedOutput
+  , newBufferedOutput'
   , writeBuffer
   , writeBuilder
   , flushBuffer
@@ -117,24 +119,33 @@ data BufferedOutput o = BufferedOutput
     , outputBuffer  :: {-# UNPACK #-} !(MutablePrimArray RealWorld Word8)
     }
 
+-- | Open a new buffered input with 'V.defaultChunkSize' as buffer size.
+newBufferedInput :: i -> IO (BufferedInput i)
+newBufferedInput = newBufferedInput' V.defaultChunkSize
+
+-- | Open a new buffered output with 'V.defaultChunkSize' as buffer size.
+newBufferedOutput :: o -> IO (BufferedOutput o)
+newBufferedOutput = newBufferedOutput' V.defaultChunkSize
+
+-- | Open a new buffered output with given buffer size, e.g. 'V.defaultChunkSize'.
+newBufferedOutput' :: Int    -- ^ Output buffer size
+                   -> o
+                   -> IO (BufferedOutput o)
+newBufferedOutput' bufSiz o = do
+    index <- newPrimIORef 0
+    buf <- newPinnedPrimArray (max bufSiz 0)
+    return (BufferedOutput o index buf)
+
 -- | Open a new buffered input with given buffer size, e.g. 'V.defaultChunkSize'.
-newBufferedInput :: Int     -- ^ Input buffer size
-                 -> i
-                 -> IO (BufferedInput i)
-newBufferedInput bufSiz i = do
+newBufferedInput' :: Int     -- ^ Input buffer size
+                  -> i
+                  -> IO (BufferedInput i)
+newBufferedInput' bufSiz i = do
     pb <- newIORef V.empty
     buf <- newPinnedPrimArray (max bufSiz 0)
     inputBuffer <- newIORef buf
     return (BufferedInput i pb inputBuffer)
 
--- | Open a new buffered output with given buffer size, e.g. 'V.defaultChunkSize'.
-newBufferedOutput :: Int    -- ^ Output buffer size
-                  -> o
-                  -> IO (BufferedOutput o)
-newBufferedOutput bufSiz o = do
-    index <- newPrimIORef 0
-    buf <- newPinnedPrimArray (max bufSiz 0)
-    return (BufferedOutput o index buf)
 
 -- | Request bytes from 'BufferedInput'.
 --

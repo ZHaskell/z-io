@@ -67,7 +67,6 @@ import Data.Bits ((.&.))
 import Foreign.Storable (peek, poke)
 import Foreign.Ptr (plusPtr)
 import Foreign.C
-import GHC.Prim                 (touch#)
 import Z.Data.Array           as A
 import Z.Data.Vector.Base     as V
 import Z.Data.Vector.Extra    as V
@@ -391,48 +390,48 @@ recvUDPWith :: HasCallStack
             -> (A.MutablePrimArray RealWorld Word8, A.MutablePrimArray RealWorld (Ptr Word8))
             -> Int32
             -> IO [(Maybe SocketAddr, Bool, V.Bytes)]
-recvUDPWith udp@(UDP hdl slot uvm _ _) ((MutablePrimArray mba#), rbufArr) bufSiz = mask_ $ do
-    checkUDPClosed udp
+recvUDPWith udp@(UDP hdl slot uvm _ _) (rubf, rbufArr) bufSiz =
+    -- It's important to keep recv buffer alive, even if we don't directly use it
+    mask_ . withMutablePrimArrayContents rubf $ \ _ -> do
+        checkUDPClosed udp
 
-    rbufArrSiz <- getSizeofMutablePrimArray rbufArr
-    -- we have to reset the buffer size, during receiving it'll be overwritten
-    forM_ [0..rbufArrSiz-1] $ \ i -> do
-        p <- readPrimArray rbufArr i
-        poke (castPtr p :: Ptr Int32) bufSiz
+        rbufArrSiz <- getSizeofMutablePrimArray rbufArr
+        -- we have to reset the buffer size, during receiving it'll be overwritten
+        forM_ [0..rbufArrSiz-1] $ \ i -> do
+            p <- readPrimArray rbufArr i
+            poke (castPtr p :: Ptr Int32) bufSiz
 
-    -- reset buffer table's size with buffer array's length, during receiving it'll be decreased
-    withMutablePrimArrayContents rbufArr $ \ p ->
-        pokeBufferTable uvm slot (castPtr p) rbufArrSiz
+        -- reset buffer table's size with buffer array's length, during receiving it'll be decreased
+        withMutablePrimArrayContents rbufArr $ \ p ->
+            pokeBufferTable uvm slot (castPtr p) rbufArrSiz
 
-    m <- getBlockMVar uvm slot
-    -- clean up
-    _ <- tryTakeMVar m
+        m <- getBlockMVar uvm slot
+        -- clean up
+        _ <- tryTakeMVar m
 
-    throwUVIfMinus_ $ withUVManager' uvm (hs_uv_udp_recv_start hdl)
+        throwUVIfMinus_ $ withUVManager' uvm (hs_uv_udp_recv_start hdl)
 
-    -- since we are inside mask, this is the only place
-    -- async exceptions could possibly kick in, and we should stop reading
-    r <- takeMVar m `onException` (do
-            -- normally we call 'uv_udp_recv_stop' in C read callback
-            -- but when exception raise, here's the place to stop
-            throwUVIfMinus_ $ withUVManager' uvm (uv_udp_recv_stop hdl)
-            void (tryTakeMVar m))
+        -- since we are inside mask, this is the only place
+        -- async exceptions could possibly kick in, and we should stop reading
+        r <- takeMVar m `onException` (do
+                -- normally we call 'uv_udp_recv_stop' in C read callback
+                -- but when exception raise, here's the place to stop
+                throwUVIfMinus_ $ withUVManager' uvm (uv_udp_recv_stop hdl)
+                void (tryTakeMVar m))
 
-    if r < rbufArrSiz
-    then forM [rbufArrSiz-1, rbufArrSiz-2 .. r] $ \ i -> do
-        p        <- readPrimArray rbufArr i
-        -- see the buffer struct diagram above
-        result   <- throwUVIfMinus (fromIntegral <$> peek @Int32 (castPtr p))
-        flag     <- peek @Int32 (castPtr (p `plusPtr` 4))
-        addrFlag <- peek @Int32 (castPtr (p `plusPtr` 8))
-        !addr <- if addrFlag == 1
-            then Just <$> peekSocketAddr (castPtr (p `plusPtr` 12))
-            else return Nothing
-        let !partial = flag .&. UV_UDP_PARTIAL /= 0
-        mba <- A.newPrimArray result
-        copyPtrToMutablePrimArray mba 0 (p `plusPtr` 140) result
-        ba <- A.unsafeFreezePrimArray mba
-        -- It's important to keep recv buffer alive
-        primitive_ (touch# mba#)
-        return (addr, partial, V.PrimVector ba 0 result)
-    else return []
+        if r < rbufArrSiz
+        then forM [rbufArrSiz-1, rbufArrSiz-2 .. r] $ \ i -> do
+            p        <- readPrimArray rbufArr i
+            -- see the buffer struct diagram above
+            result   <- throwUVIfMinus (fromIntegral <$> peek @Int32 (castPtr p))
+            flag     <- peek @Int32 (castPtr (p `plusPtr` 4))
+            addrFlag <- peek @Int32 (castPtr (p `plusPtr` 8))
+            !addr <- if addrFlag == 1
+                then Just <$> peekSocketAddr (castPtr (p `plusPtr` 12))
+                else return Nothing
+            let !partial = flag .&. UV_UDP_PARTIAL /= 0
+            mba <- A.newPrimArray result
+            copyPtrToMutablePrimArray mba 0 (p `plusPtr` 140) result
+            ba <- A.unsafeFreezePrimArray mba
+            return (addr, partial, V.PrimVector ba 0 result)
+        else return []

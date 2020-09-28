@@ -8,7 +8,8 @@ import Z.IO.Network
 import Z.IO.Resource
 import Z.IO.Buffered
 import Z.IO.Exception
-import qualified Z.Data.CBytes as CBytes
+import qualified Z.Data.Vector as V
+import qualified Z.Foreign as FFI
 import Foreign.ForeignPtr
 import GHC.Ptr
 
@@ -17,12 +18,8 @@ main = do
     let conf = defaultTCPServerConfig{
             tcpServerWorker = \ uvs ->  do
                 recvbuf <- mallocForeignPtrBytes 2048
-                -- we reuse buffer as golang does,
-                -- since node use slab, which is in fact a memory pool
-                -- this is more fair
-
-                -- do not print ECONNRESET for fairness
-                catch (echo uvs recvbuf) (\ (e::SomeException) -> return ())
+                sendcontent' <- FFI.pinPrimVector sendcontent
+                catch (echo uvs recvbuf sendcontent') (\ (e::SomeException) -> return ())
         }
 
     -- let addr = ipv4 "204.79.197.200" 80
@@ -30,23 +27,23 @@ main = do
 
     startTCPServer conf
   where
-    echo uvs recvbuf = loop
+    echo uvs recvbuf sendcontent' = loop
       where
         loop = do
             r <- withForeignPtr recvbuf $ \ p -> do
                 readInput uvs p 2048
             when (r /= 0) $ do
-                CBytes.withCBytes sendbuff $ \ sendbuffp -> do
+                FFI.withPrimVectorSafe. sendcontent' $ \ sendbuffp -> do
                     writeOutput uvs (castPtr sendbuffp) sendbuffl
                     loop
 
-    sendbuffl = CBytes.length sendbuff
-    sendbuff =
+    sendcontent = V.Bytes
+    sendcontent =
         "HTTP/1.1 200 OK\r\n\
         \Content-Type: text/html; charset=UTF-8\r\n\
         \Content-Length: 500\r\n\
         \Connection: Keep-Alive\r\n\
-        \\r\n" `CBytes.append` (CBytes.pack $ replicate 500 '0')
+        \\r\n" `V.append` (V.pack $ replicate 500 48)
 
 
 

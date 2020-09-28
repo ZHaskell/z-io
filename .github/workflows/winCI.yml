@@ -5,11 +5,13 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        ghc: ['8.10.2']
-        cabal: ['3.2.0.0']
+        ghc: ['8.6.5', '8.8.4']     '8.10.2 have linker problem
+        cabal: ['2.4.1.0', '3.4.0.0']
         exclude:
           # GHC 8.8+ only works with cabal v3+
-          - ghc: 8.8.3
+          - ghc: 8.8.4
+            cabal: 2.4.1.0
+          - ghc: 8.10.2
             cabal: 2.4.1.0
     name: Haskell GHC ${{ matrix.ghc }} sample
     env:
@@ -26,7 +28,7 @@ jobs:
           cabal-version: ${{ matrix.cabal }}
 
       - run: cabal v2-update
-
+      - run: cabal v2-freeze $CONFIG
       - uses: actions/cache@v2
         with:
           path: |
@@ -40,6 +42,9 @@ jobs:
         run: cabal install --install-method=copy hspec-discover
 
       - run: cabal v2-build $CONFIG
-      - run: cabal v2-test --test-show-details=direct
+      - if: matrix.cabal == '2.4.1.0'
+        run: cabal v2-test 
+      - if: matrix.cabal == '3.4.0.0'
+        run: cabal v2-test --test-show-details=direct
       - run: cabal v2-haddock
       - run: cabal v2-sdist

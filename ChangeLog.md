@@ -1,5 +1,10 @@
 # Revision history for Z-IO
 
+## 0.1.3.0  -- 2020-09-28
+* Rename `newBufferedInput/Output` to `newBufferedInput'/Output'`, add default chunk `newBufferedInput/Output`.
+* Remove `ghc-pirm` depends.
+* Make library works with GHC 8.6 and 8.8 again.
+
 ## 0.1.2.0  -- 2020-09-28
 
 * Add file offset interface back, see `FilePtr` and `FilePtrT`.

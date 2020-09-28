@@ -27,8 +27,8 @@ spec = describe "IPC operations" $ do
         serverThread <- forkIO $ startIPCServer defaultIPCServerConfig{
                 ipcListenName = addr
             ,   ipcServerWorker = \ ipc -> do
-                    i <- newBufferedInput defaultChunkSize ipc
-                    o <- newBufferedOutput defaultChunkSize ipc
+                    i <- newBufferedInput ipc
+                    o <- newBufferedOutput ipc
                     forever $ readBuffer i >>= writeBuffer o >> flushBuffer o
             }
 
@@ -36,8 +36,8 @@ spec = describe "IPC operations" $ do
 
         replicateM_ 1000 . forkIO $
             withResource (initIPCClient defaultIPCClientConfig{ipcTargetName = addr}) $ \ ipc -> do
-                i <- newBufferedInput defaultChunkSize ipc
-                o <- newBufferedOutput defaultChunkSize ipc
+                i <- newBufferedInput ipc
+                o <- newBufferedOutput ipc
 
                 replicateM_ 1000 . forkIO $ do
                     writeBuffer o testMsg >> flushBuffer o

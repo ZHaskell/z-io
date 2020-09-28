@@ -1,9 +1,10 @@
+cabal-version:              2.4
 name:                       Z-IO
-version:                    0.1.2.0
+version:                    0.1.3.0
 synopsis:                   Simple and high performance IO toolkit for Haskell
 description:                Simple and high performance IO toolkit for Haskell, including
                             file system, network, ipc and more!
-license:                    BSD3
+license:                    BSD-3-Clause
 license-file:               LICENSE
 author:                     Dong Han, Tao He
 maintainer:                 winterland1989@gmail.com
@@ -11,7 +12,6 @@ copyright:                  (c) Dong Han, 2017-2020
                             (c) Tao He, 2017-2019
 category:                   Data
 build-type:                 Simple
-cabal-version:              >=1.10
 homepage:                   https://github.com/haskell-Z/Z-IO
 bug-reports:                https://github.com/haskell-Z/Z-IO/issues
 
@@ -103,15 +103,14 @@ library
                             Z.Compression.Zlib
 
     build-depends:          base                    >= 4.12 && <5.0
-                          , Z-Data                  >= 0.1.3.1 && < 0.1.4
+                          , Z-Data                  >= 0.1.4
                           , primitive               >= 0.7.1 && < 0.7.2
-                          , ghc-prim                >= 0.6.1 && < 0.6.2
                           , exceptions              == 0.10.*
                           , time                    >= 1.8 && < 2.0
                           , stm                     == 2.5.*
 
     default-language:       Haskell2010
-    build-tools:            hsc2hs, hspec-discover
+    build-tool-depends:     hsc2hs:hsc2hs, hspec-discover:hspec-discover
     ghc-options:            -Wall
 
     include-dirs:           include
@@ -192,7 +191,6 @@ library
                             third_party/libuv/src
         -- The C runtime dependencies are imposed by libuv.
         extra-libraries:    psapi, Iphlpapi, userenv, Ws2_32
-
     else
         if os(linux)
             c-sources:          third_party/libuv/src/fs-poll.c
@@ -206,33 +204,32 @@ library
                                 third_party/libuv/src/uv-common.c
                                 third_party/libuv/src/version.c
 
+                                third_party/libuv/src/unix/async.c
+                                third_party/libuv/src/unix/core.c
+                                third_party/libuv/src/unix/dl.c
+                                third_party/libuv/src/unix/fs.c
+                                third_party/libuv/src/unix/getaddrinfo.c
+                                third_party/libuv/src/unix/getnameinfo.c
+                                third_party/libuv/src/unix/loop.c
+                                third_party/libuv/src/unix/loop-watcher.c
+                                third_party/libuv/src/unix/pipe.c
+                                third_party/libuv/src/unix/poll.c
+                                third_party/libuv/src/unix/process.c
+                                third_party/libuv/src/unix/random-devurandom.c
+                                third_party/libuv/src/unix/signal.c
+                                third_party/libuv/src/unix/stream.c
+                                third_party/libuv/src/unix/tcp.c
+                                third_party/libuv/src/unix/thread.c
+                                third_party/libuv/src/unix/tty.c
+                                third_party/libuv/src/unix/udp.c
 
-                               third_party/libuv/src/unix/async.c
-                               third_party/libuv/src/unix/core.c
-                               third_party/libuv/src/unix/dl.c
-                               third_party/libuv/src/unix/fs.c
-                               third_party/libuv/src/unix/getaddrinfo.c
-                               third_party/libuv/src/unix/getnameinfo.c
-                               third_party/libuv/src/unix/loop.c
-                               third_party/libuv/src/unix/loop-watcher.c
-                               third_party/libuv/src/unix/pipe.c
-                               third_party/libuv/src/unix/poll.c
-                               third_party/libuv/src/unix/process.c
-                               third_party/libuv/src/unix/random-devurandom.c
-                               third_party/libuv/src/unix/signal.c
-                               third_party/libuv/src/unix/stream.c
-                               third_party/libuv/src/unix/tcp.c
-                               third_party/libuv/src/unix/thread.c
-                               third_party/libuv/src/unix/tty.c
-                               third_party/libuv/src/unix/udp.c
-
-                               third_party/libuv/src/unix/linux-core.c
-                               third_party/libuv/src/unix/linux-inotify.c
-                               third_party/libuv/src/unix/linux-syscalls.c
-                               third_party/libuv/src/unix/procfs-exepath.c
-                               third_party/libuv/src/unix/proctitle.c
-                               third_party/libuv/src/unix/random-getrandom.c
-                               third_party/libuv/src/unix/random-sysctl-linux.c
+                                third_party/libuv/src/unix/linux-core.c
+                                third_party/libuv/src/unix/linux-inotify.c
+                                third_party/libuv/src/unix/linux-syscalls.c
+                                third_party/libuv/src/unix/procfs-exepath.c
+                                third_party/libuv/src/unix/proctitle.c
+                                third_party/libuv/src/unix/random-getrandom.c
+                                third_party/libuv/src/unix/random-sysctl-linux.c
 
             include-dirs:       third_party/libuv/include
                                 third_party/libuv/src/unix
@@ -251,33 +248,32 @@ library
                                     third_party/libuv/src/uv-common.c
                                     third_party/libuv/src/version.c
 
+                                    third_party/libuv/src/unix/async.c
+                                    third_party/libuv/src/unix/core.c
+                                    third_party/libuv/src/unix/dl.c
+                                    third_party/libuv/src/unix/fs.c
+                                    third_party/libuv/src/unix/getaddrinfo.c
+                                    third_party/libuv/src/unix/getnameinfo.c
+                                    third_party/libuv/src/unix/loop.c
+                                    third_party/libuv/src/unix/loop-watcher.c
+                                    third_party/libuv/src/unix/pipe.c
+                                    third_party/libuv/src/unix/poll.c
+                                    third_party/libuv/src/unix/process.c
+                                    third_party/libuv/src/unix/random-devurandom.c
+                                    third_party/libuv/src/unix/signal.c
+                                    third_party/libuv/src/unix/stream.c
+                                    third_party/libuv/src/unix/tcp.c
+                                    third_party/libuv/src/unix/thread.c
+                                    third_party/libuv/src/unix/tty.c
+                                    third_party/libuv/src/unix/udp.c
 
-                                   third_party/libuv/src/unix/async.c
-                                   third_party/libuv/src/unix/core.c
-                                   third_party/libuv/src/unix/dl.c
-                                   third_party/libuv/src/unix/fs.c
-                                   third_party/libuv/src/unix/getaddrinfo.c
-                                   third_party/libuv/src/unix/getnameinfo.c
-                                   third_party/libuv/src/unix/loop.c
-                                   third_party/libuv/src/unix/loop-watcher.c
-                                   third_party/libuv/src/unix/pipe.c
-                                   third_party/libuv/src/unix/poll.c
-                                   third_party/libuv/src/unix/process.c
-                                   third_party/libuv/src/unix/random-devurandom.c
-                                   third_party/libuv/src/unix/signal.c
-                                   third_party/libuv/src/unix/stream.c
-                                   third_party/libuv/src/unix/tcp.c
-                                   third_party/libuv/src/unix/thread.c
-                                   third_party/libuv/src/unix/tty.c
-                                   third_party/libuv/src/unix/udp.c
-
-                                   third_party/libuv/src/unix/bsd-ifaddrs.c
-                                   third_party/libuv/src/unix/darwin-proctitle.c
-                                   third_party/libuv/src/unix/darwin.c
-                                   third_party/libuv/src/unix/fsevents.c
-                                   third_party/libuv/src/unix/kqueue.c
-                                   third_party/libuv/src/unix/proctitle.c
-                                   third_party/libuv/src/unix/random-getrandom.c
+                                    third_party/libuv/src/unix/bsd-ifaddrs.c
+                                    third_party/libuv/src/unix/darwin-proctitle.c
+                                    third_party/libuv/src/unix/darwin.c
+                                    third_party/libuv/src/unix/fsevents.c
+                                    third_party/libuv/src/unix/kqueue.c
+                                    third_party/libuv/src/unix/proctitle.c
+                                    third_party/libuv/src/unix/random-getrandom.c
                                    
                 include-dirs:       third_party/libuv/include
                                     third_party/libuv/src/unix

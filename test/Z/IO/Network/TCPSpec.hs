@@ -27,8 +27,8 @@ spec = describe "TCP operations" $ do
         serverThread <- forkIO $ startTCPServer defaultTCPServerConfig{
                 tcpListenAddr = addr
             ,   tcpServerWorker = \ tcp -> do
-                    i <- newBufferedInput defaultChunkSize tcp
-                    o <- newBufferedOutput defaultChunkSize tcp
+                    i <- newBufferedInput tcp
+                    o <- newBufferedOutput tcp
                     forever $ readBuffer i >>= writeBuffer o >> flushBuffer o
             }
 
@@ -36,8 +36,8 @@ spec = describe "TCP operations" $ do
 
         replicateM_  512 . forkIO $
             withResource (initTCPClient defaultTCPClientConfig{tcpRemoteAddr = addr}) $ \ tcp -> do
-                i <- newBufferedInput defaultChunkSize tcp
-                o <- newBufferedOutput defaultChunkSize tcp
+                i <- newBufferedInput tcp
+                o <- newBufferedOutput tcp
 
                 writeBuffer o testMsg >> flushBuffer o
                 testMsg' <- readExactly' (V.length testMsg) i

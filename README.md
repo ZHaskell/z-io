@@ -17,7 +17,7 @@ This package provides basic IO operations:
 
 ## Requirements
 
-* A working haskell compiler system, GHC(>=8.10.2), cabal-install(>=3.4).
+* A working haskell compiler system, GHC(>=8.6), cabal-install(>=2.4), hsc2hs.
 
 * Tests need  [hspec-discover](https://hackage.haskell.org/package/hspec-discover).
 
@@ -39,8 +39,8 @@ AddrInfo {addrFlags = [AI_ADDRCONFIG,AI_V4MAPPED], addrFamily = SocketFamily 2, 
 | let addr = SocketAddrInet 80 (tupleToInetAddr (13,107,21,200))
 | -- addr = ipv4 "13.107.21.200" 80
 | in withResource (initTCPClient defaultTCPClientConfig{ tcpRemoteAddr = addr}) $ \ tcp -> do
-|     i <- newBufferedInput defaultChunkSize tcp 
-|     o <- newBufferedOutput defaultChunkSize tcp
+|     i <- newBufferedInput tcp 
+|     o <- newBufferedOutput tcp
 |     writeBuffer o "GET http://www.bing.com HTTP/1.1\r\nHost: www.bing.com\r\n\r\n"
 |     flushBuffer o
 |     readBuffer i >>= pure . T.validate
@@ -52,8 +52,8 @@ AddrInfo {addrFlags = [AI_ADDRCONFIG,AI_V4MAPPED], addrFamily = SocketFamily 2, 
 | startTCPServer defaultTCPServerConfig{
 | tcpListenAddr = SocketAddrInet 8080 inetLoopback,
 | tcpServerWorker = \ tcp -> do
-|     i <- newBufferedInput defaultChunkSize tcp 
-|     o <- newBufferedOutput defaultChunkSize tcp
+|     i <- newBufferedInput tcp 
+|     o <- newBufferedOutput tcp
 |     forever $ readBuffer i >>= writeBuffer o >> flushBuffer o
 | }
 | :}
