@@ -5,6 +5,7 @@ module Z.IO.Network.UDPSpec where
 import           Control.Concurrent
 import           Control.Monad
 import           Data.Bits
+import           Data.IORef
 import           Z.Data.Vector         as V
 import           Z.Data.Vector.Base    as V
 import           Data.List               as List
@@ -23,7 +24,7 @@ spec = describe "UDP operations" $ do
             longMsg = V.replicate 2048 48
             addr = SocketAddrInet 12345 inetLoopback
         withResource (initUDP defaultUDPConfig{udpSendMsgSize = 2048}) $ \ c ->
-            withResource (initUDP defaultUDPConfig{udpLocalAddr = Just (addr,UV_UDP_DEFAULT)}) $ \ s -> do
+            withResource (initUDP defaultUDPConfig{udpLocalAddr = Just (addr,UDP_DEFAULT)}) $ \ s -> do
                 forkIO $ sendUDP c addr testMsg
                 [(_, partial, rcvMsg)]<- recvUDP defaultUDPRecvConfig s
                 partial @=? False
@@ -39,8 +40,8 @@ spec = describe "UDP operations" $ do
         let testMsg = V.replicate 256 48
             addr = SocketAddrInet 12346 inetLoopback
             addr' = SocketAddrInet 12347 inetLoopback
-        withResource (initUDP defaultUDPConfig{udpLocalAddr = Just (addr,UV_UDP_DEFAULT)}) $ \ c ->
-            withResource (initUDP defaultUDPConfig{udpLocalAddr = Just (addr',UV_UDP_DEFAULT)}) $ \ s -> do
+        withResource (initUDP defaultUDPConfig{udpLocalAddr = Just (addr,UDP_DEFAULT)}) $ \ c ->
+            withResource (initUDP defaultUDPConfig{udpLocalAddr = Just (addr',UDP_DEFAULT)}) $ \ s -> do
                 forkIO $ sendUDP c addr' testMsg
                 [(rcvAddr, _, _)]<- recvUDP defaultUDPRecvConfig s
                 Just addr @=? rcvAddr
@@ -51,3 +52,15 @@ spec = describe "UDP operations" $ do
         withResource (initUDP defaultUDPConfig) $ \ c ->
             withResource (initUDP defaultUDPConfig) $ \ s -> do
                 sendUDP c addr testMsg `shouldThrow` anyException
+
+    it "batch receiving(multiple messages)" $ do
+        let testMsg = V.replicate 256 48
+            addr = SocketAddrInet 12346 inetLoopback
+        msgList <- newIORef []
+        forkIO $ withResource (initUDP defaultUDPConfig{udpLocalAddr = Just (addr,UDP_DEFAULT)}) $ \ s -> do
+            recvUDPLoop defaultUDPRecvConfig s $ \ msgs ->
+                modifyIORef msgList (msgs:)
+        withResource (initUDP defaultUDPConfig) $ \ c -> replicateM_ 100 $ sendUDP c addr testMsg
+        msgs <- readIORef msgList
+        True @=? (List.length msgs > 90)    -- ^ udp packet may get lost
+        forM_ msgs $ \ (_,_,msg) -> testMsg @=? msg

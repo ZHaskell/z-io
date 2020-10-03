@@ -1,4 +1,5 @@
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE BangPatterns #-}
@@ -32,7 +33,7 @@ module Z.IO.Network.UDP (
   , initUDP
   , UDPConfig(..)
   , defaultUDPConfig
-  , UVUDPFlag(UV_UDP_DEFAULT, UV_UDP_IPV6ONLY, UV_UDP_REUSEADDR)
+  , UDPFlag(UDP_DEFAULT, UDP_IPV6ONLY, UDP_REUSEADDR)
   , sendUDP
   , UDPRecvConfig(..)
   , defaultUDPRecvConfig
@@ -46,7 +47,7 @@ module Z.IO.Network.UDP (
   , getPeerName
   , sendConnectedUDP
   -- * multicast and broadcast
-  , UVMembership(UV_JOIN_GROUP, UV_LEAVE_GROUP)
+  , Membership(JOIN_GROUP, LEAVE_GROUP)
   , setMembership
   , setSourceMembership
   , setMulticastLoop
@@ -56,7 +57,7 @@ module Z.IO.Network.UDP (
   , setTTL
   ) where
 
-import Control.Concurrent.MVar
+import Control.Concurrent
 import Control.Monad
 import Control.Monad.Primitive  (primitive_)
 import Data.Primitive.PrimArray as A
@@ -105,9 +106,9 @@ instance Show UDP where
 -- could be more likely dropped by routers,
 -- usually a packet(IPV4) with a payload <= 508 bytes is considered safe.
 data UDPConfig = UDPConfig
-    { udpSendMsgSize :: {-# UNPACK #-} !Int           -- ^ maximum size of sending buffer
-    , udpLocalAddr :: Maybe (SocketAddr, UVUDPFlag) -- ^ do we want bind a local address before receiving & sending?
-                                                   --   set to Nothing to let OS pick a random one.
+    { udpSendMsgSize :: {-# UNPACK #-} !Int         -- ^ maximum size of sending buffer
+    , udpLocalAddr :: Maybe (SocketAddr, UDPFlag)   -- ^ do we want bind a local address before receiving & sending?
+                                                    --   set to Nothing to let OS pick a random one.
     } deriving (Show, Eq, Ord)
 
 -- | @UDPConfig 512 Nothing@
@@ -279,7 +280,7 @@ setMembership :: HasCallStack
               => UDP
               -> CBytes             -- ^ Multicast address to set membership for.
               -> CBytes             -- ^ Interface address.
-              -> UVMembership       -- ^ UV_JOIN_GROUP | UV_LEAVE_GROUP
+              -> Membership       -- ^ UV_JOIN_GROUP | UV_LEAVE_GROUP
               -> IO ()
 setMembership udp@(UDP hdl _ _ _ _) gaddr iaddr member = do
     checkUDPClosed udp
@@ -293,7 +294,7 @@ setSourceMembership :: HasCallStack
                     -> CBytes           -- ^ Multicast address to set membership for.
                     -> CBytes           -- ^ Interface address.
                     -> CBytes           -- ^ Source address.
-                    -> UVMembership     -- ^ UV_JOIN_GROUP | UV_LEAVE_GROUP
+                    -> Membership     -- ^ UV_JOIN_GROUP | UV_LEAVE_GROUP
                     -> IO ()
 setSourceMembership udp@(UDP hdl _ _ _ _) gaddr iaddr source member = do
     checkUDPClosed udp
@@ -371,67 +372,79 @@ recvUDPLoop :: HasCallStack
             -> UDP
             -> ((Maybe SocketAddr, Bool, V.Bytes) -> IO a)
             -> IO ()
-recvUDPLoop (UDPRecvConfig bufSiz bufArrSiz) udp worker = do
-    buf <- newRecvBuf bufSiz bufArrSiz
-    forever $ do
-        msgs <- recvUDPWith udp buf bufSiz
-        forM_ msgs worker
+recvUDPLoop (UDPRecvConfig bufSiz bufArrSiz) udp@(UDP hdl slot uvm _ _) worker = do
+    bracket
+        (throwOOMIfNull $ hs_uv_udp_check_alloc hdl)
+        hs_uv_udp_check_close $
+        \ check -> do
+            buf@(_, rbufArr) <- newRecvBuf bufSiz bufArrSiz
+            withMutablePrimArrayContents rbufArr $ \ p -> do
+                pokeBufferTable uvm slot (castPtr p) (bufArrSiz-1)
+                -- init uv_check_t must come after poking buffer
+                throwUVIfMinus_ $ hs_uv_udp_check_init check
+            forever $ do
+                msgs <- recvUDPWith udp check buf bufSiz
+                withMutablePrimArrayContents rbufArr $ \ p ->
+                    pokeBufferTable uvm slot (castPtr p) (bufArrSiz-1)
+                forM_ msgs worker
 
 -- | Recv messages from UDP socket, return source address if available, and a `Bool`
 -- to indicate if the message is partial (larger than receive buffer size).
 --
 recvUDP :: HasCallStack => UDPRecvConfig -> UDP -> IO [(Maybe SocketAddr, Bool, V.Bytes)]
-recvUDP (UDPRecvConfig bufSiz bufArrSiz) udp = do
-    buf <- newRecvBuf bufSiz bufArrSiz
-    recvUDPWith udp buf bufSiz
+recvUDP (UDPRecvConfig bufSiz bufArrSiz) udp@(UDP hdl slot uvm _ _)  = do
+    bracket
+        (throwOOMIfNull $ hs_uv_udp_check_alloc hdl)
+        hs_uv_udp_check_close $
+        \ check -> do
+            buf@(_, rbufArr) <- newRecvBuf bufSiz bufArrSiz
+            withMutablePrimArrayContents rbufArr $ \ p -> do
+                pokeBufferTable uvm slot (castPtr p) (bufArrSiz-1)
+                -- init uv_check_t must come after poking buffer
+                throwUVIfMinus_ $ hs_uv_udp_check_init check
+            recvUDPWith udp check buf bufSiz
 
 recvUDPWith :: HasCallStack
             => UDP
+            -> Ptr UVHandle -- ^ uv_check_t
             -> (A.MutablePrimArray RealWorld Word8, A.MutablePrimArray RealWorld (Ptr Word8))
             -> Int32
             -> IO [(Maybe SocketAddr, Bool, V.Bytes)]
-recvUDPWith udp@(UDP hdl slot uvm _ _) (rubf, rbufArr) bufSiz =
+recvUDPWith udp@(UDP hdl slot uvm _ _) check (rubf, rbufArr) bufSiz =
     -- It's important to keep recv buffer alive, even if we don't directly use it
     mask_ . withMutablePrimArrayContents rubf $ \ _ -> do
         checkUDPClosed udp
 
-        rbufArrSiz <- getSizeofMutablePrimArray rbufArr
+        bufArrSiz <- getSizeofMutablePrimArray rbufArr
         -- we have to reset the buffer size, during receiving it'll be overwritten
-        forM_ [0..rbufArrSiz-1] $ \ i -> do
+        forM_ [0..bufArrSiz-1] $ \ i -> do
             p <- readPrimArray rbufArr i
             poke (castPtr p :: Ptr Int32) bufSiz
 
-        -- reset buffer table's size with buffer array's length, during receiving it'll be decreased
-        withMutablePrimArrayContents rbufArr $ \ p ->
-            pokeBufferTable uvm slot (castPtr p) rbufArrSiz
-
         m <- getBlockMVar uvm slot
-        -- clean up
-        _ <- tryTakeMVar m
 
-        throwUVIfMinus_ $ withUVManager' uvm (hs_uv_udp_recv_start hdl)
+        throwUVIfMinus_ . withUVManager' uvm $ do
+            -- clean up
+            _ <- tryTakeMVar m
+            hs_uv_udp_recv_start hdl
 
-        -- since we are inside mask, this is the only place
-        -- async exceptions could possibly kick in, and we should stop reading
         r <- takeMVar m `onException` (do
                 -- normally we call 'uv_udp_recv_stop' in C read callback
                 -- but when exception raise, here's the place to stop
                 throwUVIfMinus_ $ withUVManager' uvm (uv_udp_recv_stop hdl)
                 void (tryTakeMVar m))
 
-        if r < rbufArrSiz
-        then forM [rbufArrSiz-1, rbufArrSiz-2 .. r] $ \ i -> do
+        forM [r+1..bufArrSiz-1] $ \ i -> do
             p        <- readPrimArray rbufArr i
             -- see the buffer struct diagram above
             result   <- throwUVIfMinus (fromIntegral <$> peek @Int32 (castPtr p))
             flag     <- peek @Int32 (castPtr (p `plusPtr` 4))
             addrFlag <- peek @Int32 (castPtr (p `plusPtr` 8))
             !addr <- if addrFlag == 1
-                then Just <$> peekSocketAddr (castPtr (p `plusPtr` 12))
+                then Just <$!> peekSocketAddr (castPtr (p `plusPtr` 12))
                 else return Nothing
             let !partial = flag .&. UV_UDP_PARTIAL /= 0
             mba <- A.newPrimArray result
             copyPtrToMutablePrimArray mba 0 (p `plusPtr` 140) result
             ba <- A.unsafeFreezePrimArray mba
             return (addr, partial, V.PrimVector ba 0 result)
-        else return []

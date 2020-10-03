@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE UnliftedFFITypes #-}
 {-# LANGUAGE PatternSynonyms    #-}
+{-# LANGUAGE TypeApplications   #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE UnboxedTuples #-}
@@ -117,14 +118,6 @@ instance Show SocketAddr where
     showsPrec _ (SocketAddrInet6 port _ ia6 _)
        = ('[':) . shows ia6 . showString "]:" . shows port
 
--- Taken from showIPv6 in Data.IP.Addr.
-
--- | Show an IPv6 address in the most appropriate notation, based on recommended
--- representation proposed by <http://tools.ietf.org/html/rfc5952 RFC 5952>.
---
--- /The implementation is completely compatible with the current implementation
--- of the `inet_ntop` function in glibc./
---
 sockAddrFamily :: SocketAddr -> SocketFamily
 sockAddrFamily (SocketAddrInet _ _) = AF_INET
 sockAddrFamily (SocketAddrInet6 _ _ _ _) = AF_INET6
@@ -400,11 +393,13 @@ withSocketAddr sa@(SocketAddrInet6 _ _ _ _) f = do
 --
 withSocketAddrUnsafe :: SocketAddr -> (MBA## SocketAddr -> IO a) -> IO a
 withSocketAddrUnsafe sa@(SocketAddrInet _ _) f = do
-    allocMutableByteArrayUnsafe (#size struct sockaddr_in) $ \ p ->
-        pokeSocketAddrMBA p sa >> f p
+    (MutableByteArray p) <- newByteArray (#size struct sockaddr_in) 
+    pokeSocketAddrMBA p sa 
+    f p
 withSocketAddrUnsafe sa@(SocketAddrInet6 _ _ _ _) f = do
-    allocMutableByteArrayUnsafe (#size struct sockaddr_in6) $ \ p ->
-        pokeSocketAddrMBA p sa >> f p
+    (MutableByteArray p) <- newByteArray (#size struct sockaddr_in6) 
+    pokeSocketAddrMBA p sa 
+    f p
 
 sizeOfSocketAddr :: SocketAddr -> CSize
 sizeOfSocketAddr (SocketAddrInet _ _) = #size struct sockaddr_in
@@ -423,8 +418,9 @@ withSocketAddrStorage f = do
 --
 withSocketAddrStorageUnsafe :: (MBA## SocketAddr -> IO ()) -> IO SocketAddr
 withSocketAddrStorageUnsafe f = do
-    allocMutableByteArrayUnsafe (#size struct sockaddr_storage) $ \ p ->
-        f p >> peekSocketAddrMBA p
+    (MutableByteArray p) <- newByteArray (#size struct sockaddr_storage) 
+    f p
+    peekSocketAddrMBA p
 
 sizeOfSocketAddrStorage :: CSize
 sizeOfSocketAddrStorage = (#size struct sockaddr_storage)

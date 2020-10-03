@@ -1,5 +1,12 @@
 # Revision history for Z-IO
 
+## 0.1.3.0  -- 2020-10-02
+
+* Add `Z.IO.Environment` module.
+* Fix a UDP batch receiving bug.
+* Remove `UV` prefix in config data types(`Z.IO.FileSystem`, `Z.IO.UDP`).
+* `Logger` type rework, colorful logger are possible.
+
 ## 0.1.3.0  -- 2020-09-28
 * Rename `newBufferedInput/Output` to `newBufferedInput'/Output'`, add default chunk `newBufferedInput/Output`.
 * Remove `ghc-pirm` depends.

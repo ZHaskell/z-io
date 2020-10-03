@@ -44,7 +44,7 @@ module Z.IO.StdStream
   ( -- * Standard input & output streams
     StdStream
   , isStdStreamTTY
-  , UVTTYMode(UV_TTY_MODE_NORMAL, UV_TTY_MODE_RAW)
+  , TTYMode(TTY_MODE_NORMAL, TTY_MODE_RAW)
   , setStdinTTYMode
   , getStdoutWinSize
   , stdin, stdout, stderr
@@ -178,7 +178,7 @@ makeStdStream fd = do
     else return (StdFile fd)
 
 -- | Change terminal's mode if stdin is connected to a terminal.
-setStdinTTYMode :: UVTTYMode -> IO ()
+setStdinTTYMode :: TTYMode -> IO ()
 setStdinTTYMode mode = case stdin of
     StdTTY hdl _ uvm ->
         withUVManager' uvm . throwUVIfMinus_ $ uv_tty_set_mode hdl mode

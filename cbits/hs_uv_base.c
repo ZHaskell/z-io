@@ -293,3 +293,34 @@ void hs_uv_cancel(uv_loop_t* loop, HsInt slot){
             uv_cancel(req);
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// random
+
+// non thread pool version of random
+HsInt hs_uv_random(char* buf, size_t len, unsigned int flags){
+    return (HsInt)uv_random(NULL, NULL, (void*)buf, len, flags, NULL);
+}
+void hs_uv_random_callback(uv_random_t* req, int status, void* buf, size_t buflen){
+    uv_loop_t* loop = req->loop;
+    hs_loop_data* loop_data = loop->data;
+    HsInt slot = (HsInt)req->data; 
+    // push the slot to event queue
+    loop_data->buffer_size_table[slot] = status;
+    loop_data->event_queue[loop_data->event_counter] = slot;
+    loop_data->event_counter += 1;
+    free_slot(loop_data, slot);  // free the uv_req_t
+}
+HsInt hs_uv_random_threaded(char* buf, size_t len, unsigned int flags, uv_loop_t* loop){
+    hs_loop_data* loop_data = loop->data;
+    HsInt slot = alloc_slot(loop_data);
+    if (slot < 0) return UV_ENOMEM;
+    uv_random_t* req = 
+        (uv_random_t*)fetch_uv_struct(loop_data, slot);
+    req->data = (void*)slot;
+    int r = uv_random(loop, req, buf, len, flags, hs_uv_random_callback);
+    if (r < 0) {
+        free_slot(loop_data, slot);
+        return (HsInt)r;
+    } else return slot;
+}

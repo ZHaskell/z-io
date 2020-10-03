@@ -24,6 +24,7 @@ On Windows, the local domain is implemented using a named pipe. The path must re
 module Z.IO.Network.IPC (
   -- * IPC Client
     IPCClientConfig(..)
+  , UVStream
   , defaultIPCClientConfig
   , initIPCClient
   -- * IPC Server
