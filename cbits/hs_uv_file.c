@@ -209,6 +209,13 @@ HsInt hs_uv_fs_futime(int32_t file, double atime, double mtime){
     return (HsInt)req.result;
 }
 
+HsInt hs_uv_fs_lutime(const char* path, double atime, double mtime){
+    uv_fs_t req;
+    uv_fs_lutime(NULL, &req, path, atime, mtime, NULL);
+    uv_fs_req_cleanup(&req);    // maybe not neccessary
+    return (HsInt)req.result;
+}
+
 HsInt hs_uv_fs_link(const char* path, const char* path2){
     uv_fs_t req;
     uv_fs_link(NULL, &req, path, path2, NULL);
@@ -646,6 +653,20 @@ HsInt hs_uv_fs_futime_threaded(int32_t file, double atime, double mtime, uv_loop
         (uv_fs_t*)fetch_uv_struct(loop_data, slot);
     req->data = (void*)slot;
     int r = uv_fs_futime(loop, req, file, atime, mtime, hs_uv_fs_callback);
+    if (r < 0) {
+        free_slot(loop_data, slot);
+        return (HsInt)r;
+    } else return slot;
+}
+
+HsInt hs_uv_fs_lutime_threaded(const char* path, double atime, double mtime, uv_loop_t* loop){
+    hs_loop_data* loop_data = loop->data;
+    HsInt slot = alloc_slot(loop_data);
+    if (slot < 0) return UV_ENOMEM;
+    uv_fs_t* req = 
+        (uv_fs_t*)fetch_uv_struct(loop_data, slot);
+    req->data = (void*)slot;
+    int r = uv_fs_lutime(loop, req, path, atime, mtime, hs_uv_fs_callback);
     if (r < 0) {
         free_slot(loop_data, slot);
         return (HsInt)r;

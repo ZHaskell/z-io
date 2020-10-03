@@ -35,17 +35,16 @@
 // udp
 
 // We do batch read per uv_run, the buffer index keep decreasing until hit zero
-// then we call uv_udp_recv_stop to stop receiving.
 void hs_udp_alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf){
     HsInt slot = (HsInt)handle->data;
     hs_loop_data* loop_data = handle->loop->data;
     // fetch buffer_table from buffer_table table
     // the first 12 + 128 bytes is reserved for sockaddr and flag
     char** buffer_array = (char**)loop_data->buffer_table[slot];
-    (loop_data->buffer_size_table[slot])--;
     ssize_t buffer_index = loop_data->buffer_size_table[slot];
     if (buffer_index < 0) {
-        uv_udp_recv_stop((uv_udp_t*)handle);
+        //will be called in hs_udp_check_cb
+        //uv_udp_recv_stop((uv_udp_t*)handle);
         buf->base = NULL;
         buf->len  = 0;
     } else {
@@ -59,6 +58,14 @@ void hs_udp_recv_cb (uv_udp_t* udp, ssize_t nread, const uv_buf_t* _buf
     if (nread ==0 && addr == NULL) return;
     HsInt slot = (HsInt)udp->data;
     hs_loop_data* loop_data = udp->loop->data;
+
+    // no bufs are available
+    if (_buf->base == NULL) return;
+    // EAGAIN, EWOULDBLOCK
+    if (addr == NULL && nread == 0) return;
+    
+    // move buffer_index
+    (loop_data->buffer_size_table[slot])--;
 
     char* buf = (char*)(_buf->base)-140;  
     struct sockaddr* addr_buf =  (struct sockaddr*)(buf+12);
@@ -82,17 +89,49 @@ void hs_udp_recv_cb (uv_udp_t* udp, ssize_t nread, const uv_buf_t* _buf
             memcpy(addr_buf, addr, sizeof(struct sockaddr));
         }
     }
-    if (nread != 0) {
-        loop_data->event_queue[loop_data->event_counter] = slot; // push the slot to event queue
-        loop_data->event_counter += 1;
-        uv_udp_recv_stop(udp);
-    }
 }
 
 int hs_uv_udp_recv_start(uv_udp_t* handle){
     return uv_udp_recv_start(handle, hs_udp_alloc_cb, hs_udp_recv_cb);
 }
 
+// Check if the socket's udp buffer is filled with messages, if so, unlock the udp thread
+//
+void hs_udp_check_cb(uv_check_t* check){
+    uv_udp_t* server=(uv_udp_t*)check->data;
+    HsInt slot = (HsInt)server->data;
+    hs_loop_data* loop_data = server->loop->data;
+    ssize_t buffer_index = loop_data->buffer_size_table[slot];
+    // This relys on GHC ByteArray# memory layout, ByteArray# length is recorded before content.
+    HsInt* buffer_ptr = (HsInt*)loop_data->buffer_table[slot];
+    HsInt buffer_total_len = *(buffer_ptr-1)/(sizeof(void*));
+    if (buffer_index < buffer_total_len -1 ) {
+        // we stopped if we got some messages, will resume from haskell
+        uv_udp_recv_stop(server);
+        loop_data->event_queue[loop_data->event_counter] = slot; // push the slot to event queue
+        loop_data->event_counter += 1;
+    }
+}
+
+// It's hard to arrange receiving notification without check handler, we can't
+// do it in recv's callback, since it'll be called multiple times during uv_run.
+uv_check_t* hs_uv_udp_check_alloc(uv_udp_t* server){
+    uv_check_t* check = malloc(sizeof(uv_check_t));
+    if (check == NULL) return NULL;
+    check->data = (void*)server;    // we link server to check's data field
+    return check;
+}
+
+int hs_uv_udp_check_init(uv_check_t* check){
+    uv_udp_t* server = check->data;
+    int r = uv_check_init(server->loop, check);
+    if (r < 0) return r;
+    return uv_check_start(check, hs_udp_check_cb);
+}
+
+void hs_uv_udp_check_close(uv_check_t* check){
+    uv_close((uv_handle_t*)check, (uv_close_cb)free);
+}
 void hs_uv_udp_send_cb(uv_udp_send_t* req, int status){
     HsInt slot = (HsInt)req->data;
     uv_loop_t* loop = req->handle->loop;

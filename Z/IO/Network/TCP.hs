@@ -21,6 +21,7 @@ This module provides an API for creating TCP servers and clients.
 module Z.IO.Network.TCP (
   -- * TCP Client
     TCPClientConfig(..)
+  , UVStream
   , defaultTCPClientConfig
   , initTCPClient
   , getTCPSockName
@@ -29,6 +30,8 @@ module Z.IO.Network.TCP (
   , defaultTCPServerConfig
   , startTCPServer
   , getTCPPeerName
+  , helloWorldWorker
+  , echoWorker
   -- * Internal helper
   , setTCPNoDelay
   , setTCPKeepAlive
@@ -97,13 +100,12 @@ data TCPServerConfig = TCPServerConfig
     , tcpListenBacklog    :: Int           -- ^ listening socket's backlog size, should be large enough(>128)
     , tcpServerWorkerNoDelay :: Bool       -- ^ if we want to use @TCP_NODELAY@
     , tcpServerWorkerKeepAlive :: CUInt    -- ^ set keepalive delay for worker socket, see 'setTCPKeepAlive'
-    , tcpServerWorker     :: UVStream -> IO ()  -- ^ worker which get an accepted TCP stream,
-                                            -- the socket will be closed upon exception or worker finishes.
     }
 
 -- | A default hello world server on localhost:8888
 --
--- Test it with @main = startTCPServer defaultTCPServerConfig@, now try @nc -v 127.0.0.1 8888@
+-- Test it with @main = startTCPServer defaultTCPServerConfig helloWorldWorker@ or
+-- @main = startTCPServer defaultTCPServerConfig echoWorker@, now try @nc -v 127.0.0.1 8888@
 --
 defaultTCPServerConfig :: TCPServerConfig
 defaultTCPServerConfig = TCPServerConfig
@@ -111,14 +113,29 @@ defaultTCPServerConfig = TCPServerConfig
     128
     True
     30
-    (\ uvs -> writeOutput uvs (Ptr "hello world"#) 11)
+
+-- | A server worker output "hello world" and close the connection.
+helloWorldWorker :: UVStream -> IO ()
+helloWorldWorker uvs = writeOutput uvs (Ptr "hello world"#) 11
+
+-- | A server worker echo whatever received bytes.
+echoWorker :: UVStream -> IO ()
+echoWorker uvs = do
+    i <- newBufferedInput uvs
+    o <- newBufferedOutput uvs
+    forever $ readBuffer i >>= writeBuffer o >> flushBuffer o
 
 -- | Start a server
 --
 -- Fork new worker thread upon a new connection.
 --
-startTCPServer :: HasCallStack => TCPServerConfig -> IO ()
-startTCPServer TCPServerConfig{..} = do
+startTCPServer :: HasCallStack
+               => TCPServerConfig
+               -> (UVStream -> IO ())   -- ^ worker which will get an accepted TCP stream and
+                                        -- run in a seperated haskell thread,
+                                        -- the socket will be closed upon exception or worker finishes.
+               -> IO ()
+startTCPServer TCPServerConfig{..} tcpServerWorker = do
     let backLog = max tcpListenBacklog 128
     serverUVManager <- getUVManager
     withResource (initTCPStream serverUVManager) $ \ (UVStream serverHandle serverSlot _ _) -> do

@@ -38,19 +38,19 @@ module Z.IO.FileSystem
   , rmdir
   , DirEntType(..)
   , scandir
-  , UVStat(..), UVTimeSpec(..)
+  , FStat(..), UVTimeSpec(..)
   , stat, lstat, fstat
   , rename
   , fsync, fdatasync
   , ftruncate
-  , UVCopyFileFlag(COPYFILE_DEFAULT, COPYFILE_EXCL, COPYFILE_FICLONE)
+  , CopyFileFlag(COPYFILE_DEFAULT, COPYFILE_EXCL, COPYFILE_FICLONE)
   , copyfile
-  , UVAccessMode(F_OK, R_OK, W_OK, X_OK)
+  , AccessMode(F_OK, R_OK, W_OK, X_OK)
   , AccessResult(..)
   , access
   , chmod, fchmod
   , utime, futime
-  , UVSymlinkFlag(SYMLINK_DEFAULT, SYMLINK_DIR, SYMLINK_JUNCTION)
+  , SymlinkFlag(SYMLINK_DEFAULT, SYMLINK_DIR, SYMLINK_JUNCTION)
   , link, symlink
   , readlink, realpath
   ) where
@@ -222,10 +222,10 @@ unlink path = throwUVIfMinus_ (withCBytes path hs_uv_fs_unlink)
 mkdtemp :: HasCallStack => CBytes -> IO CBytes
 mkdtemp path = do
     let size = CBytes.length path
-    withCBytes path $ \ p ->
-        CBytes.create (size+7) $ \ p' -> do  -- we append "XXXXXX\NUL" in C
+    withCBytes path $ \ p -> do
+        (p',_) <- CBytes.allocCBytes (size+7) $ \ p' -> do  -- we append "XXXXXX\NUL" in C
             throwUVIfMinus_ (hs_uv_fs_mkdtemp p size p')
-            return (size+6)
+        return p'
 
 -- | Equivalent to <http://linux.die.net/man/2/rmdir rmdir(2)>.
 rmdir :: HasCallStack => CBytes -> IO ()
@@ -253,21 +253,21 @@ scandir path = do
 --------------------------------------------------------------------------------
 
 -- | Equivalent to <http://linux.die.net/man/2/stat stat(2)>
-stat :: HasCallStack => CBytes -> IO UVStat
+stat :: HasCallStack => CBytes -> IO FStat
 stat path = withCBytes path $ \ p ->
      allocaBytes uvStatSize $ \ s -> do
         throwUVIfMinus_ (hs_uv_fs_stat p s)
         peekUVStat s
 
 -- | Equivalent to <http://linux.die.net/man/2/lstat lstat(2)>
-lstat :: HasCallStack => CBytes -> IO UVStat
+lstat :: HasCallStack => CBytes -> IO FStat
 lstat path = withCBytes path $ \ p ->
      allocaBytes uvStatSize $ \ s -> do
         throwUVIfMinus_ (hs_uv_fs_lstat p s)
         peekUVStat s
 
 -- | Equivalent to <http://linux.die.net/man/2/fstat fstat(2)>
-fstat :: HasCallStack => File -> IO UVStat
+fstat :: HasCallStack => File -> IO FStat
 fstat uvf = checkFileClosed uvf $ \ fd ->
     allocaBytes uvStatSize $ \ s -> do
         throwUVIfMinus_ (hs_uv_fs_fstat fd s)
@@ -297,13 +297,13 @@ ftruncate uvf off = checkFileClosed uvf $ \ fd -> throwUVIfMinus_ $ hs_uv_fs_ftr
 -- | Copies a file from path to new_path.
 --
 -- Warning: If the destination path is created, but an error occurs while copying the data, then the destination path is removed. There is a brief window of time between closing and removing the file where another process could access the file.
-copyfile :: HasCallStack => CBytes -> CBytes -> UVCopyFileFlag -> IO ()
+copyfile :: HasCallStack => CBytes -> CBytes -> CopyFileFlag -> IO ()
 copyfile path path' flag = throwUVIfMinus_ . withCBytes path $ \ p ->
     withCBytes path' $ \ p' -> hs_uv_fs_copyfile p p' flag
 
 -- | Equivalent to <http://linux.die.net/man/2/access access(2)> on Unix.
 -- Windows uses GetFileAttributesW().
-access :: HasCallStack => CBytes -> UVAccessMode -> IO AccessResult
+access :: HasCallStack => CBytes -> AccessMode -> IO AccessResult
 access path mode = do
      r <- withCBytes path $ \ p -> fromIntegral <$> hs_uv_fs_access p mode
      if | r == 0           -> return AccessOK
@@ -324,15 +324,7 @@ fchmod uvf mode = checkFileClosed uvf $ \ fd -> throwUVIfMinus_ $ hs_uv_fs_fchmo
 
 -- | Equivalent to <http://linux.die.net/man/2/utime utime(2)>.
 --
--- libuv choose 'Double' type due to cross platform concerns, we only provide micro-second precision:
---
---   * second     = v
---   * nanosecond = (v * 1000000) % 1000000 * 1000;
---
--- second and nanosecond are fields in 'UVTimeSpec' respectively.
---
--- Note libuv prior to v1.23.1 have issues which may result in nanosecond not set, 'futime' doesn't have
--- that issue.
+-- libuv choose 'Double' type due to cross platform concerns, we only provide micro-second precision.
 utime :: HasCallStack
       => CBytes
       -> Double     -- ^ atime, i.e. access time
@@ -340,12 +332,22 @@ utime :: HasCallStack
       -> IO ()
 utime path atime mtime = throwUVIfMinus_ . withCBytes path $ \ p -> hs_uv_fs_utime p atime mtime
 
--- | Equivalent to <http://linux.die.net/man/2/futime futime(2)>.
+-- | Equivalent to <https://man7.org/linux/man-pages/man3/futimes.3.html futime(3)>.
 --
 -- Same precision notes with 'utime'.
 futime :: HasCallStack => File -> Double -> Double -> IO ()
 futime uvf atime mtime = checkFileClosed uvf $ \ fd ->
     throwUVIfMinus_ (hs_uv_fs_futime fd atime mtime)
+
+-- | Equivalent to <https://man7.org/linux/man-pages/man3/lutimes.3.html lutime(3)>.
+--
+-- Same precision notes with 'utime'.
+lutime :: HasCallStack
+       => CBytes
+       -> Double     -- ^ atime, i.e. access time
+       -> Double     -- ^ mtime, i.e. modify time
+       -> IO ()
+lutime path atime mtime = throwUVIfMinus_ . withCBytes path $ \ p -> hs_uv_fs_lutime p atime mtime
 
 -- | Equivalent to <http://linux.die.net/man/2/link link(2)>.
 link :: HasCallStack => CBytes -> CBytes -> IO ()
@@ -360,7 +362,7 @@ link path path' = throwUVIfMinus_ . withCBytes path $ \ p ->
 --   * 'SYMLINK_JUNCTION': request that the symlink is created using junction points.
 --
 -- On other platforms these flags are ignored.
-symlink :: HasCallStack => CBytes -> CBytes -> UVSymlinkFlag -> IO ()
+symlink :: HasCallStack => CBytes -> CBytes -> SymlinkFlag -> IO ()
 symlink path path' flag = throwUVIfMinus_ . withCBytes path $ \ p ->
     withCBytes path' $ \ p' -> hs_uv_fs_symlink p p' flag
 

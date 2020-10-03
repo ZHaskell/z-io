@@ -76,9 +76,10 @@ int uv_translate_sys_error(int sys_errno);
 //
 // the memory pool item struct, we use the largest possible value,
 // except uv_getnameinfo_t, which is too large than average :(
+// anyway we don't do getaddrinfo or getaddrname in libuv's thread pool
 //
 // following size data is from libuv v1.12, in bytes
-//                         win  unix
+//                     win  unix
 // uv_timer_t        : 160  152
 // uv_prepare_t      : 120  120
 // uv_check_t        : 120  120
@@ -102,6 +103,7 @@ int uv_translate_sys_error(int sys_errno);
 // uv_udp_send_t     : 128  320
 // uv_fs_t           : 456  440
 // uv_work_t         : 176  128
+// uv_random_t       : 144  144
 typedef union {
     uv_timer_t          timer_t      ;
     uv_prepare_t        prepare_t    ;
@@ -118,14 +120,15 @@ typedef union {
     uv_fs_event_t       fs_event_t   ;
     uv_fs_poll_t        fs_poll_t    ;
     uv_req_t            req_t        ;
-    uv_getaddrinfo_t    getaddrinfo_t;
-//   uv_getnameinfo_t    getnameinfo_t; !too large
+//    uv_getaddrinfo_t    getaddrinfo_t;
+//    uv_getnameinfo_t    getnameinfo_t; !too large
     uv_shutdown_t       shutdown_t   ;
     uv_write_t          write_t      ;
     uv_connect_t        connect_t    ;
     uv_udp_send_t       udp_send_t   ;
     uv_fs_t             fs_t         ;
     uv_work_t           work_t       ;
+    uv_random_t         random_t     ;
 } hs_uv_struct;
 
 typedef struct {
@@ -295,6 +298,9 @@ void uv__io_start(uv_loop_t* loop, uv__io_t* w, unsigned int events);
 int hs_uv_udp_recv_start(uv_udp_t* handle);
 HsInt hs_uv_udp_send_connected(uv_udp_t* handle, char* buf, HsInt buf_siz);
 HsInt hs_uv_upd_send(uv_udp_t* handle, const struct sockaddr* addr, char* buf, HsInt buf_siz);
+uv_check_t* hs_uv_udp_check_alloc(uv_udp_t* server);
+int hs_uv_udp_check_init(uv_check_t* check);
+void hs_uv_udp_check_close(uv_check_t* check);
 
 ////////////////////////////////////////////////////////////////////////////////
 // fs
@@ -604,6 +610,7 @@ HsInt hs_uv_fs_chmod(const char* path, int mode);
 HsInt hs_uv_fs_fchmod(int32_t file, int mode);
 HsInt hs_uv_fs_utime(const char* path, double atime, double mtime);
 HsInt hs_uv_fs_futime(int32_t file, double atime, double mtime);
+HsInt hs_uv_fs_lutime(const char* path, double atime, double mtime);
 HsInt hs_uv_fs_link(const char* path, const char* path2);
 HsInt hs_uv_fs_symlink(const char* path, const char* path2, int flag);
 HsInt hs_uv_fs_readlink(const char* path, char** result_path);
@@ -634,6 +641,7 @@ HsInt hs_uv_fs_chmod_threaded(const char* path, int mode, uv_loop_t* loop);
 HsInt hs_uv_fs_fchmod_threaded(int32_t file, int mode, uv_loop_t* loop);
 HsInt hs_uv_fs_utime_threaded(const char* path, double atime, double mtime, uv_loop_t* loop);
 HsInt hs_uv_fs_futime_threaded(int32_t file, double atime, double mtime, uv_loop_t* loop);
+HsInt hs_uv_fs_lutime_threaded(const char* path, double atime, double mtime, uv_loop_t* loop);
 HsInt hs_uv_fs_link_threaded(const char* path, const char* path2, uv_loop_t* loop);
 HsInt hs_uv_fs_symlink_threaded(const char* path, const char* path2, int flag, uv_loop_t* loop);
 HsInt hs_uv_fs_readlink_threaded(const char* path, char** result_path, uv_loop_t* loop);
@@ -648,3 +656,8 @@ HsInt hs_getaddrinfo(const char *node, const char *service,
 HsInt hs_getnameinfo(const struct sockaddr *addr, socklen_t addrlen,
                      char *host, socklen_t hostlen,
                      char *serv, socklen_t servlen, int flags);
+
+////////////////////////////////////////////////////////////////////////////////
+// random
+HsInt hs_uv_random(char* buf, size_t len, unsigned int flags);
+HsInt hs_uv_random_threaded(char* buf, size_t len, unsigned int flags, uv_loop_t* loop);

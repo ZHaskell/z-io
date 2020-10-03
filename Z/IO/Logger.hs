@@ -37,13 +37,12 @@ main = withStdLogger $ do
 
 module Z.IO.Logger
   ( -- * A simple Logger type
-    Logger
+    Logger(..)
   , LoggerConfig(..)
-  , newLogger
-  , loggerFlush
   , setStdLogger
   , getStdLogger
   , withStdLogger
+  , newLogger
     -- * logging functions
   , debug
   , info
@@ -51,11 +50,15 @@ module Z.IO.Logger
   , fatal
   , otherLevel
     -- * logging functions with specific logger
-  , debugWith
-  , infoWith
-  , warnWith
-  , fatalWith
-  , otherLevelWith
+  , debugTo
+  , infoTo
+  , warnTo
+  , fatalTo
+  , otherLevelTo
+    -- * Helper to write new logger
+  , defaultTSCache
+  , defaultFmtCallStack
+  , flushLog
   ) where
 
 import Control.Monad
@@ -67,37 +70,45 @@ import System.IO.Unsafe (unsafePerformIO)
 import Z.IO.Exception
 import Data.IORef
 import Control.Concurrent.MVar
-import qualified Z.Data.Builder.Base as B
+import GHC.Stack
+import qualified Z.Data.Builder as B
 import qualified Data.Time as Time
 
 data Logger = Logger
-    { loggerFlush           :: IO ()                -- ^ flush logger's buffer to output device
-    , loggerThrottledFlush  :: IO ()
-    , loggerBytesList       :: {-# UNPACK #-} !(IORef [V.Bytes])
-    , loggerConfig          :: {-# UNPACK #-} !LoggerConfig
+    { loggerPushBuilder     :: B.Builder () -> IO () -- ^ push log into buffer
+    , flushLogger           :: IO ()                -- ^ flush logger's buffer to output device
+    , flushLoggerThrottled  :: IO ()                -- ^ throttled flush, e.g. use 'throttleTrailing_' from "Z.IO.LowResTimer"
+    , loggerTSCache         :: IO (Maybe (B.Builder ())) -- ^ A IO action return a formatted date/time string
+    , loggerFmt             :: Maybe (B.Builder ()) -- ^ data/time string
+                            -> B.Builder ()         -- ^ log level
+                            -> B.Builder ()         -- ^ log content
+                            -> CallStack
+                            -> B.Builder ()
     }
 
 data LoggerConfig = LoggerConfig
     { loggerMinFlushInterval :: {-# UNPACK #-} !Int -- ^ Minimal flush interval, see Notes on 'debug'
-    , loggerTsCache          :: IO (B.Builder ())   -- ^ A IO action return a formatted date/time string
     , loggerLineBufSize      :: {-# UNPACK #-} !Int -- ^ Buffer size to build each log/line
     , loggerShowDebug        :: Bool                -- ^ Set to 'False' to filter debug logs
     , loggerShowTS           :: Bool                -- ^ Set to 'False' to disable auto data/time string prepending
+    , loggerShowSourceLoc    :: Bool                -- ^ Set to 'True' to enable source location line
     }
 
 -- | A default logger config with
 --
 --   * debug ON
 --   * 0.1s minimal flush interval
---   * defaultTSCache
 --   * line buffer size 128 bytes
 --   * show debug True
 --   * show timestamp True
---   * 'BufferedOutput' buffer size equals to 'V.defaultChunkSize'.
+--   * don't show source location
+--   * buffer size equals to 'V.defaultChunkSize'.
 defaultLoggerConfig :: LoggerConfig
-defaultLoggerConfig = LoggerConfig 1 defaultTSCache 128 True True
+defaultLoggerConfig = LoggerConfig 1 128 True True True
 
 -- | A default timestamp cache with format @%Y-%m-%dT%H:%M:%S%Z@
+--
+-- The timestamp will updated in 0.1s granularity to ensure a seconds level precision.
 defaultTSCache :: IO (B.Builder ())
 {-# NOINLINE defaultTSCache #-}
 defaultTSCache = unsafePerformIO $ do
@@ -106,6 +117,15 @@ defaultTSCache = unsafePerformIO $ do
         return . B.string8 $
             Time.formatTime Time.defaultTimeLocale "%Y-%m-%dT%H:%M:%S%Z" t
 
+-- | Use this function to implement a simple 'IORef' based concurrent logger.
+--
+-- @
+-- bList <- newIORef []
+-- let flush = flushLog buffered bList
+-- ..
+-- return $ Logger (pushLog bList) flush ...
+-- @
+--
 flushLog :: (HasCallStack, Output o) => MVar (BufferedOutput o) -> IORef [V.Bytes] -> IO ()
 flushLog oLock bList =
     withMVar oLock $ \ o -> do
@@ -113,7 +133,7 @@ flushLog oLock bList =
         forM_ (reverse bss) (writeBuffer o)
         flushBuffer o
 
--- | Make a new logger
+-- | Make a new simple logger.
 newLogger :: Output o
           => LoggerConfig
           -> MVar (BufferedOutput o)
@@ -122,7 +142,34 @@ newLogger config oLock = do
     bList <- newIORef []
     let flush = flushLog oLock bList
     throttledFlush <- throttleTrailing_ (loggerMinFlushInterval config) flush
-    return $ Logger flush throttledFlush bList config
+    return $ Logger (pushLog bList) flush throttledFlush tsCache fmt
+  where
+    tsCache = if (loggerShowTS config) then Just <$> defaultTSCache else pure Nothing
+    pushLog bList b = do
+        let !bs = B.buildBytesWith (loggerLineBufSize config) b
+        atomicModifyIORef' bList (\ bss -> (bs:bss, ()))
+
+    fmt :: Maybe (B.Builder ()) -- ^ data/time string
+        -> B.Builder ()         -- ^ log level
+        -> B.Builder ()         -- ^ log content
+        -> CallStack
+        -> B.Builder ()
+    fmt maybeTS level content cstack = do
+        B.square level
+        forM_ maybeTS $ \ ts -> B.square ts
+        when (loggerShowSourceLoc config) (B.square $ defaultFmtCallStack cstack)
+        content
+
+defaultFmtCallStack :: CallStack -> B.Builder ()
+defaultFmtCallStack cs =
+ case reverse $ getCallStack cs of
+   [] -> "<no call stack found>"
+   (_, loc):_ -> do
+      B.string8 (srcLocFile loc)
+      B.char8 ':'
+      B.int (srcLocStartLine loc)
+      B.char8 ':'
+      B.int (srcLocStartCol loc)
 
 globalLogger :: IORef Logger
 {-# NOINLINE globalLogger #-}
@@ -139,12 +186,7 @@ getStdLogger = readIORef globalLogger
 
 -- | Manually flush stderr logger.
 flushDefaultLogger :: IO ()
-flushDefaultLogger = getStdLogger >>= loggerFlush
-
-pushLog :: IORef [V.Bytes] -> Int -> B.Builder () -> IO ()
-pushLog blist bfsiz b = do
-    let !bs = B.buildBytesWith bfsiz b
-    atomicModifyIORef' blist (\ bss -> (bs:bss, ()))
+flushDefaultLogger = getStdLogger >>= flushLogger
 
 -- | Flush stderr logger when program exits.
 withStdLogger :: IO () -> IO ()
@@ -152,54 +194,57 @@ withStdLogger = (`finally` flushDefaultLogger)
 
 --------------------------------------------------------------------------------
 
-debug :: B.Builder () -> IO ()
-debug = otherLevel "DEBUG" False
+debug :: HasCallStack => B.Builder () -> IO ()
+debug = otherLevel_ "DEBUG" False callStack
 
-info :: B.Builder () -> IO ()
-info = otherLevel "INFO" False
+info :: HasCallStack => B.Builder () -> IO ()
+info = otherLevel_ "INFO" False callStack
 
-warn :: B.Builder () -> IO ()
-warn = otherLevel "WARN" False
+warn :: HasCallStack => B.Builder () -> IO ()
+warn = otherLevel_ "WARN" False callStack
 
-fatal :: B.Builder () -> IO ()
-fatal = otherLevel "FATAL" True
+fatal :: HasCallStack => B.Builder () -> IO ()
+fatal = otherLevel_ "FATAL" True callStack
 
-otherLevel :: B.Builder ()      -- ^ log level
+otherLevel :: HasCallStack
+           => B.Builder ()      -- ^ log level
            -> Bool              -- ^ flush immediately?
            -> B.Builder ()      -- ^ log content
            -> IO ()
-otherLevel level flushNow b =
-    getStdLogger >>= \ logger -> otherLevelWith logger level flushNow b
+otherLevel level flushNow bu = otherLevel_ level flushNow callStack bu
+
+otherLevel_ :: B.Builder () -> Bool -> CallStack -> B.Builder () -> IO ()
+otherLevel_ level flushNow cstack bu = do
+    logger <- getStdLogger
+    otherLevelTo_ level flushNow cstack logger bu
 
 --------------------------------------------------------------------------------
 
-debugWith :: Logger -> B.Builder () -> IO ()
-debugWith logger = otherLevelWith logger "DEBUG" False
+debugTo :: HasCallStack => Logger -> B.Builder () -> IO ()
+debugTo = otherLevelTo_ "DEBUG" False callStack
 
-infoWith :: Logger -> B.Builder () -> IO ()
-infoWith logger = otherLevelWith logger "INFO" False
+infoTo :: HasCallStack => Logger -> B.Builder () -> IO ()
+infoTo = otherLevelTo_ "INFO" False callStack
 
-warnWith :: Logger -> B.Builder () -> IO ()
-warnWith logger = otherLevelWith logger "WARN" False
+warnTo :: HasCallStack => Logger -> B.Builder () -> IO ()
+warnTo = otherLevelTo_ "WARN" False callStack
 
-fatalWith :: Logger -> B.Builder () -> IO ()
-fatalWith logger = otherLevelWith logger "FATAL" True
+fatalTo :: HasCallStack => Logger -> B.Builder () -> IO ()
+fatalTo = otherLevelTo_ "FATAL" True callStack
 
-otherLevelWith :: Logger
-               -> B.Builder ()      -- ^ log level
-               -> Bool              -- ^ flush immediately?
-               -> B.Builder ()      -- ^ log content
-               -> IO ()
-otherLevelWith logger level flushNow b = case logger of
-    (Logger flush throttledFlush blist (LoggerConfig _ tscache lbsiz showdebug showts)) -> do
-        ts <- if showts then tscache else return ""
-        when showdebug $ do
-            pushLog blist lbsiz $ do
-                B.char8 '['
-                level
-                B.char8 ']'
-                B.char8 ' '
-                when showts $ ts >> B.char8 ' '
-                b
-                B.char8 '\n'
-            if flushNow then flush else throttledFlush
+otherLevelTo :: HasCallStack
+             => Logger
+             -> B.Builder ()      -- ^ log level
+             -> Bool              -- ^ flush immediately?
+             -> B.Builder ()      -- ^ log content
+             -> IO ()
+otherLevelTo logger level flushNow =
+    otherLevelTo_ level flushNow callStack logger
+
+otherLevelTo_ :: B.Builder () -> Bool -> CallStack -> Logger -> B.Builder () -> IO ()
+otherLevelTo_ level flushNow cstack logger bu = do
+    ts <- loggerTSCache logger
+    (loggerPushBuilder logger) $ (loggerFmt logger) ts level bu cstack
+    if flushNow
+    then flushLogger logger
+    else flushLoggerThrottled logger

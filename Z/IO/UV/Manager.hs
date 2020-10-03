@@ -256,13 +256,13 @@ startUVManager uvm@(UVManager _ _ _ runningLock _) = poll -- use a closure captu
                 tryPutMVar lock r
             return c
 
--- | Run a libuv FFI to get a 'UVSlotUnSafe' (which may exceed block table size),
+-- | Run a libuv FFI to get a 'UVSlotUnsafe' (which may exceed block table size),
 -- resize the block table in that case, so that the returned slot always has an
 -- accompanying 'MVar' in block table.
 --
 -- Always use this function to turn an 'UVSlotUnsafe' into 'UVSlot', so that the block
 -- table size synchronize with libuv side's slot table.
-getUVSlot :: HasCallStack => UVManager -> IO UVSlotUnSafe -> IO UVSlot
+getUVSlot :: HasCallStack => UVManager -> IO UVSlotUnsafe -> IO UVSlot
 {-# INLINE getUVSlot #-}
 getUVSlot (UVManager blockTableRef _ _ _ _) f = do
     slot <- throwUVIfMinus (unsafeGetSlot <$> f)
@@ -301,7 +301,7 @@ cancelUVReq uvm slot extra_cleanup = withUVManager uvm $ \ loop -> do
 -- is received, in later case we will call 'cancelUVReq' to cancel the on-going
 -- async function with best efforts,
 withUVRequest :: HasCallStack
-              => UVManager -> (Ptr UVLoop -> IO UVSlotUnSafe) -> IO Int
+              => UVManager -> (Ptr UVLoop -> IO UVSlotUnsafe) -> IO Int
 withUVRequest uvm f = do
     (slot, m) <- withUVManager uvm $ \ loop -> mask_ $ do
         slot <- getUVSlot uvm (f loop)
@@ -313,7 +313,7 @@ withUVRequest uvm f = do
 
 -- | Same with 'withUVRequest' but disgard the result.
 withUVRequest_ :: HasCallStack
-               => UVManager -> (Ptr UVLoop -> IO UVSlotUnSafe) -> IO ()
+               => UVManager -> (Ptr UVLoop -> IO UVSlotUnsafe) -> IO ()
 withUVRequest_ uvm f = void (withUVRequest uvm f)
 
 -- | Same with 'withUVRequest' but apply an convert function to result.
@@ -323,7 +323,7 @@ withUVRequest_ uvm f = void (withUVRequest uvm f)
 -- if appropriate.
 withUVRequest' :: HasCallStack
                => UVManager
-               -> (Ptr UVLoop -> IO UVSlotUnSafe)
+               -> (Ptr UVLoop -> IO UVSlotUnsafe)
                -> (Int -> IO b)     -- ^ convert function
                -> IO b
 withUVRequest' uvm f g = do
@@ -340,7 +340,7 @@ withUVRequest' uvm f g = do
 -- if async exception hit this thread but the async action is already successfully performed,
 -- e.g. release result memory.
 withUVRequestEx :: HasCallStack
-                => UVManager -> (Ptr UVLoop -> IO UVSlotUnSafe) -> (Int -> IO ()) -> IO Int
+                => UVManager -> (Ptr UVLoop -> IO UVSlotUnsafe) -> (Int -> IO ()) -> IO Int
 withUVRequestEx uvm f extra_cleanup = do
     (slot, m) <- withUVManager uvm $ \ loop -> mask_ $ do
         slot <- getUVSlot uvm (f loop)
