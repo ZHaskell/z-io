@@ -105,7 +105,7 @@ library
                             Z.Compression.Zlib
 
     build-depends:          base                    >= 4.12 && <5.0
-                          , Z-Data                  >= 0.1.5 && <0.1.6
+                          , Z-Data                  >= 0.1.6 && <0.1.7
                           , primitive               >= 0.7.1 && < 0.7.2
                           , exceptions              == 0.10.*
                           , time                    >= 1.8 && < 2.0

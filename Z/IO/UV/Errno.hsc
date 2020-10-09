@@ -16,16 +16,17 @@ module Z.IO.UV.Errno where
 
 import Foreign.C.Types
 import Foreign.C.String
+import Z.Data.CBytes
 
 #include "hs_uv.h"
 
-uvStdError :: CInt -> IO String
-uvStdError errno = peekCString =<< uv_strerror errno
+uvStdError :: CInt -> IO CBytes
+uvStdError errno = fromCString =<< uv_strerror errno
 
 foreign import ccall unsafe uv_strerror :: CInt -> IO CString
 
-uvErrName :: CInt -> IO String
-uvErrName errno = peekCString =<< uv_err_name errno
+uvErrName :: CInt -> IO CBytes
+uvErrName errno = fromCString =<< uv_err_name errno
 
 foreign import ccall unsafe uv_err_name :: CInt -> IO CString
 
