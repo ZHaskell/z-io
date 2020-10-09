@@ -30,6 +30,7 @@
 
 #include <zlib.h>
 #include <stdlib.h>
+#include <HsFFI.h>
 
 z_stream * create_z_stream(void){
     z_stream *stream = malloc(sizeof(z_stream));
@@ -65,4 +66,12 @@ void free_z_stream_inflate (z_stream *stream)
 {
 	inflateEnd(stream);
 	free(stream);
+}
+
+uint deflate_set_dictionary (z_stream* stream, const unsigned char* dict, HsInt off, HsInt len){
+    return deflateSetDictionary(stream, dict+off, (uint)len);
+}
+
+uint inflate_set_dictionary (z_stream* stream, const unsigned char* dict, HsInt off, HsInt len){
+    return inflateSetDictionary(stream, dict+off, (uint)len);
 }

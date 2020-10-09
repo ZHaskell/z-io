@@ -49,7 +49,7 @@ module Z.IO.FileSystem
   , AccessResult(..)
   , access
   , chmod, fchmod
-  , utime, futime
+  , utime, futime, lutime
   , SymlinkFlag(SYMLINK_DEFAULT, SYMLINK_DIR, SYMLINK_JUNCTION)
   , link, symlink
   , readlink, realpath
@@ -185,7 +185,7 @@ initFile :: HasCallStack
            -> Resource File
 initFile path flags mode =
     initResource
-        (do !fd <- withCBytes path $ \ p ->
+        (do !fd <- withCBytesUnsafe path $ \ p ->
                 throwUVIfMinus $ hs_uv_fs_open p flags mode
             File fd <$> newIORef False)
         (\ (File fd closedRef) -> do
@@ -200,12 +200,12 @@ initFile path flags mode =
 --
 -- Note mode is currently not implemented on Windows.
 mkdir :: HasCallStack => CBytes -> FileMode -> IO ()
-mkdir path mode = throwUVIfMinus_ . withCBytes path $ \ p ->
+mkdir path mode = throwUVIfMinus_ . withCBytesUnsafe path $ \ p ->
      hs_uv_fs_mkdir p mode
 
 -- | Equivalent to <http://linux.die.net/man/2/unlink unlink(2)>.
 unlink :: HasCallStack => CBytes -> IO ()
-unlink path = throwUVIfMinus_ (withCBytes path hs_uv_fs_unlink)
+unlink path = throwUVIfMinus_ (withCBytesUnsafe path hs_uv_fs_unlink)
 
 
 -- | Equivalent to <mkdtemp http://linux.die.net/man/3/mkdtemp>
@@ -222,14 +222,14 @@ unlink path = throwUVIfMinus_ (withCBytes path hs_uv_fs_unlink)
 mkdtemp :: HasCallStack => CBytes -> IO CBytes
 mkdtemp path = do
     let size = CBytes.length path
-    withCBytes path $ \ p -> do
-        (p',_) <- CBytes.allocCBytes (size+7) $ \ p' -> do  -- we append "XXXXXX\NUL" in C
+    withCBytesUnsafe path $ \ p -> do
+        (p',_) <- CBytes.allocCBytesUnsafe (size+7) $ \ p' -> do  -- we append "XXXXXX\NUL" in C
             throwUVIfMinus_ (hs_uv_fs_mkdtemp p size p')
         return p'
 
 -- | Equivalent to <http://linux.die.net/man/2/rmdir rmdir(2)>.
 rmdir :: HasCallStack => CBytes -> IO ()
-rmdir path = throwUVIfMinus_ (withCBytes path hs_uv_fs_rmdir)
+rmdir path = throwUVIfMinus_ (withCBytesUnsafe path hs_uv_fs_rmdir)
 
 -- | Equivalent to <http://linux.die.net/man/3/scandir scandir(3)>.
 --
@@ -239,7 +239,7 @@ rmdir path = throwUVIfMinus_ (withCBytes path hs_uv_fs_rmdir)
 scandir :: HasCallStack => CBytes -> IO [(CBytes, DirEntType)]
 scandir path = do
     bracket
-        (withCBytes path $ \ p ->
+        (withCBytesUnsafe path $ \ p ->
             allocPrimUnsafe $ \ dents ->
                 throwUVIfMinus (hs_uv_fs_scandir p dents))
         (\ (dents, n) -> hs_uv_fs_scandir_cleanup dents n)
@@ -254,14 +254,14 @@ scandir path = do
 
 -- | Equivalent to <http://linux.die.net/man/2/stat stat(2)>
 stat :: HasCallStack => CBytes -> IO FStat
-stat path = withCBytes path $ \ p ->
+stat path = withCBytesUnsafe path $ \ p ->
      allocaBytes uvStatSize $ \ s -> do
         throwUVIfMinus_ (hs_uv_fs_stat p s)
         peekUVStat s
 
 -- | Equivalent to <http://linux.die.net/man/2/lstat lstat(2)>
 lstat :: HasCallStack => CBytes -> IO FStat
-lstat path = withCBytes path $ \ p ->
+lstat path = withCBytesUnsafe path $ \ p ->
      allocaBytes uvStatSize $ \ s -> do
         throwUVIfMinus_ (hs_uv_fs_lstat p s)
         peekUVStat s
@@ -279,8 +279,8 @@ fstat uvf = checkFileClosed uvf $ \ fd ->
 --
 -- Note On Windows if this function fails with UV_EBUSY, UV_EPERM or UV_EACCES, it will retry to rename the file up to four times with 250ms wait between attempts before giving up. If both path and new_path are existing directories this function will work only if target directory is empty.
 rename :: HasCallStack => CBytes -> CBytes -> IO ()
-rename path path' = throwUVIfMinus_ . withCBytes path $ \ p ->
-    withCBytes path' (hs_uv_fs_rename p)
+rename path path' = throwUVIfMinus_ . withCBytesUnsafe path $ \ p ->
+    withCBytesUnsafe path' (hs_uv_fs_rename p)
 
 -- | Equivalent to <http://linux.die.net/man/2/fsync fsync(2)>.
 fsync :: HasCallStack => File -> IO ()
@@ -298,14 +298,14 @@ ftruncate uvf off = checkFileClosed uvf $ \ fd -> throwUVIfMinus_ $ hs_uv_fs_ftr
 --
 -- Warning: If the destination path is created, but an error occurs while copying the data, then the destination path is removed. There is a brief window of time between closing and removing the file where another process could access the file.
 copyfile :: HasCallStack => CBytes -> CBytes -> CopyFileFlag -> IO ()
-copyfile path path' flag = throwUVIfMinus_ . withCBytes path $ \ p ->
-    withCBytes path' $ \ p' -> hs_uv_fs_copyfile p p' flag
+copyfile path path' flag = throwUVIfMinus_ . withCBytesUnsafe path $ \ p ->
+    withCBytesUnsafe path' $ \ p' -> hs_uv_fs_copyfile p p' flag
 
 -- | Equivalent to <http://linux.die.net/man/2/access access(2)> on Unix.
 -- Windows uses GetFileAttributesW().
 access :: HasCallStack => CBytes -> AccessMode -> IO AccessResult
 access path mode = do
-     r <- withCBytes path $ \ p -> fromIntegral <$> hs_uv_fs_access p mode
+     r <- withCBytesUnsafe path $ \ p -> fromIntegral <$> hs_uv_fs_access p mode
      if | r == 0           -> return AccessOK
         | r == UV_ENOENT   -> return NoExistence
         | r == UV_EACCES   -> return NoPermission
@@ -316,7 +316,7 @@ access path mode = do
 
 -- | Equivalent to <http://linux.die.net/man/2/chmod chmod(2)>.
 chmod :: HasCallStack => CBytes -> FileMode -> IO ()
-chmod path mode = throwUVIfMinus_ . withCBytes path $ \ p -> hs_uv_fs_chmod p mode
+chmod path mode = throwUVIfMinus_ . withCBytesUnsafe path $ \ p -> hs_uv_fs_chmod p mode
 
 -- | Equivalent to <http://linux.die.net/man/2/fchmod fchmod(2)>.
 fchmod :: HasCallStack => File -> FileMode -> IO ()
@@ -330,7 +330,7 @@ utime :: HasCallStack
       -> Double     -- ^ atime, i.e. access time
       -> Double     -- ^ mtime, i.e. modify time
       -> IO ()
-utime path atime mtime = throwUVIfMinus_ . withCBytes path $ \ p -> hs_uv_fs_utime p atime mtime
+utime path atime mtime = throwUVIfMinus_ . withCBytesUnsafe path $ \ p -> hs_uv_fs_utime p atime mtime
 
 -- | Equivalent to <https://man7.org/linux/man-pages/man3/futimes.3.html futime(3)>.
 --
@@ -347,12 +347,12 @@ lutime :: HasCallStack
        -> Double     -- ^ atime, i.e. access time
        -> Double     -- ^ mtime, i.e. modify time
        -> IO ()
-lutime path atime mtime = throwUVIfMinus_ . withCBytes path $ \ p -> hs_uv_fs_lutime p atime mtime
+lutime path atime mtime = throwUVIfMinus_ . withCBytesUnsafe path $ \ p -> hs_uv_fs_lutime p atime mtime
 
 -- | Equivalent to <http://linux.die.net/man/2/link link(2)>.
 link :: HasCallStack => CBytes -> CBytes -> IO ()
-link path path' = throwUVIfMinus_ . withCBytes path $ \ p ->
-    withCBytes path' $ hs_uv_fs_link p
+link path path' = throwUVIfMinus_ . withCBytesUnsafe path $ \ p ->
+    withCBytesUnsafe path' $ hs_uv_fs_link p
 
 -- | Equivalent to <http://linux.die.net/man/2/symlink symlink(2)>.
 --
@@ -363,14 +363,14 @@ link path path' = throwUVIfMinus_ . withCBytes path $ \ p ->
 --
 -- On other platforms these flags are ignored.
 symlink :: HasCallStack => CBytes -> CBytes -> SymlinkFlag -> IO ()
-symlink path path' flag = throwUVIfMinus_ . withCBytes path $ \ p ->
-    withCBytes path' $ \ p' -> hs_uv_fs_symlink p p' flag
+symlink path path' flag = throwUVIfMinus_ . withCBytesUnsafe path $ \ p ->
+    withCBytesUnsafe path' $ \ p' -> hs_uv_fs_symlink p p' flag
 
 -- | Equivalent to <http://linux.die.net/man/2/readlink readlink(2)>.
 readlink :: HasCallStack => CBytes -> IO CBytes
 readlink path = do
     bracket
-        (withCBytes path $ \ p ->
+        (withCBytesUnsafe path $ \ p ->
             allocPrimUnsafe $ \ p' ->
                 throwUVIfMinus (hs_uv_fs_readlink p p'))
         (hs_uv_fs_readlink_cleanup . fst)
@@ -397,7 +397,7 @@ readlink path = do
 realpath :: HasCallStack => CBytes -> IO CBytes
 realpath path = do
     bracket
-        (withCBytes path $ \ p ->
+        (withCBytesUnsafe path $ \ p ->
             allocPrimUnsafe $ \ p' ->
                 throwUVIfMinus (hs_uv_fs_realpath p p'))
         (hs_uv_fs_readlink_cleanup . fst)

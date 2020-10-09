@@ -101,14 +101,14 @@ data CompressConfig = CompressConfig
     { compressLevel :: CompressLevel
     , compressWindowBits :: WindowBits
     , compressMemoryLevel :: MemLevel
-    , compressDictionary :: CBytes
+    , compressDictionary :: V.Bytes
     , compressStrategy :: Strategy
     }
 
 defaultCompressConfig :: CompressConfig
 defaultCompressConfig =
     CompressConfig Z_DEFAULT_COMPRESSION  defaultWindowBits
-        defaultMemLevel CBytes.empty Z_DEFAULT_STRATEGY
+        defaultMemLevel V.empty Z_DEFAULT_STRATEGY
 
 -- | Compress all the data written to a output.
 --
@@ -124,9 +124,9 @@ compressSink (CompressConfig level windowBits memLevel dict strategy) (write, fl
 
     withForeignPtr zs $ \ ps -> do
         throwZlibIfMinus_ $ deflate_init2 ps level windowBits memLevel strategy
-        unless (CBytes.null dict) $
-            throwZlibIfMinus_ . withCBytes dict $ \ pdict ->
-            deflateSetDictionary ps pdict (fromIntegral $ CBytes.length dict)
+        unless (V.null dict) $
+            throwZlibIfMinus_ . withPrimVectorUnsafe dict $ \ pdict off len ->
+            deflate_set_dictionary ps pdict off (fromIntegral $ len)
 
     return (zwrite zs bufRef, zflush zs bufRef)
 
@@ -187,11 +187,11 @@ compressBuilderStream :: HasCallStack
 
 data DecompressConfig = DecompressConfig
     { decompressWindowBits :: WindowBits
-    , decompressDictionary :: CBytes
+    , decompressDictionary :: V.Bytes
     }
 
 defaultDecompressConfig :: DecompressConfig
-defaultDecompressConfig = DecompressConfig defaultWindowBits CBytes.empty
+defaultDecompressConfig = DecompressConfig defaultWindowBits V.empty
 
 -- | Decompress bytes from source.
 decompressSource :: DecompressConfig
@@ -235,9 +235,9 @@ decompressSource (DecompressConfig windowBits dict) source = do
                     set_avail_in zs input' (V.length input')
                     withForeignPtr zs $ \ ps -> do
                         r <- throwZlibIfMinus (inflate ps (#const Z_NO_FLUSH))
-                        when (r == (#const Z_NEED_DICT) && not (CBytes.null dict)) $ do
-                            throwZlibIfMinus_ . withCBytes dict $ \ pdict ->
-                                inflateSetDictionary ps pdict (fromIntegral $ CBytes.length dict)
+                        when (r == (#const Z_NEED_DICT) && not (V.null dict)) $ do
+                            throwZlibIfMinus_ . withPrimVectorUnsafe dict $ \ pdict off len ->
+                                inflate_set_dictionary ps pdict off (fromIntegral len)
                     zread zs bufRef 
                 _ -> zfinish zs bufRef []
         else do
@@ -314,7 +314,7 @@ foreign import ccall unsafe
     deflate_init2 :: Ptr ZStream -> CompressLevel -> WindowBits -> MemLevel -> Strategy -> IO CInt
 
 foreign import ccall unsafe
-    deflateSetDictionary :: Ptr ZStream -> CString -> CUInt -> IO CInt
+    deflate_set_dictionary :: Ptr ZStream -> BA## Word8 -> Int -> Int -> IO CInt
 
 foreign import ccall unsafe
     deflate :: Ptr ZStream -> CInt -> IO CInt
@@ -323,14 +323,10 @@ foreign import ccall unsafe
     inflate_init2 :: Ptr ZStream -> WindowBits -> IO CInt
 
 foreign import ccall unsafe
-    inflateSetDictionary :: Ptr ZStream -> CString -> CUInt -> IO CInt
+    inflate_set_dictionary :: Ptr ZStream -> BA## Word8 -> Int -> Int -> IO CInt
 
 foreign import ccall unsafe
     inflate :: Ptr ZStream -> CInt -> IO CInt
-
-foreign import ccall unsafe
-    inflateEnd :: Ptr ZStream -> IO CInt
-
 
 set_avail_in :: ForeignPtr ZStream -> V.Bytes -> Int -> IO ()
 set_avail_in zs buf buflen = do

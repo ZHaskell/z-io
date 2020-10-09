@@ -54,7 +54,7 @@ module Z.IO.FileSystem.Threaded
   , AccessResult(..)
   , access
   , chmod, fchmod
-  , utime, futime
+  , utime, futime, lutime
   , SymlinkFlag(SYMLINK_DEFAULT, SYMLINK_DIR, SYMLINK_JUNCTION)
   , link, symlink
   , readlink, realpath
@@ -203,7 +203,7 @@ initFileT :: HasCallStack
 initFileT path flags mode =
     initResource
         (do uvm <- getUVManager
-            fd <- withCBytes path $ \ p ->
+            fd <- withCBytesUnsafe path $ \ p ->
                 withUVRequest uvm (hs_uv_fs_open_threaded p flags mode)
             FileT (fromIntegral fd) <$> newIORef False)
         (\ (FileT fd closedRef) -> do
@@ -220,14 +220,14 @@ initFileT path flags mode =
 mkdir :: HasCallStack => CBytes -> FileMode -> IO ()
 mkdir path mode = do
     uvm <- getUVManager
-    withCBytes path $ \ p ->
+    withCBytesUnsafe path $ \ p ->
         withUVRequest_ uvm (hs_uv_fs_mkdir_threaded p mode)
 
 -- | Equivalent to <http://linux.die.net/man/2/unlink unlink(2)>.
 unlink :: HasCallStack => CBytes -> IO ()
 unlink path = do
     uvm <- getUVManager
-    withCBytes path $ \ p ->
+    withCBytesUnsafe path $ \ p ->
         withUVRequest_ uvm (hs_uv_fs_unlink_threaded p)
 
 -- | Equivalent to <mkdtemp http://linux.die.net/man/3/mkdtemp>
@@ -243,8 +243,8 @@ unlink path = do
 mkdtemp :: HasCallStack => CBytes -> IO CBytes
 mkdtemp path = do
     let size = CBytes.length path
-    withCBytes path $ \ p -> do
-        (p'', _) <- CBytes.allocCBytes (size+7) $ \ p' -> do  -- we append "XXXXXX\NUL" in C
+    withCBytesUnsafe path $ \ p -> do
+        (p'', _) <- CBytes.allocCBytesUnsafe (size+7) $ \ p' -> do  -- we append "XXXXXX\NUL" in C
             uvm <- getUVManager
             withUVRequest_ uvm (hs_uv_fs_mkdtemp_threaded p size p')
         return p''
@@ -253,7 +253,7 @@ mkdtemp path = do
 rmdir :: HasCallStack => CBytes -> IO ()
 rmdir path = do
     uvm <- getUVManager
-    withCBytes path (void . withUVRequest uvm . hs_uv_fs_rmdir_threaded)
+    withCBytesUnsafe path (\ p -> void . withUVRequest uvm $ hs_uv_fs_rmdir_threaded p)
 
 --------------------------------------------------------------------------------
 
@@ -266,7 +266,7 @@ scandir :: HasCallStack => CBytes -> IO [(CBytes, DirEntType)]
 scandir path = do
     uvm <- getUVManager
     bracket
-        (withCBytes path $ \ p ->
+        (withCBytesUnsafe path $ \ p ->
             allocPrimSafe $ \ dents ->
                 withUVRequestEx uvm
                     (hs_uv_fs_scandir_threaded p dents)
@@ -284,7 +284,7 @@ scandir path = do
 -- | Equivalent to <http://linux.die.net/man/2/stat stat(2)>
 stat :: HasCallStack => CBytes -> IO FStat
 stat path = do
-    withCBytes path $ \ p ->
+    withCBytesUnsafe path $ \ p ->
          allocaBytes uvStatSize $ \ s -> do
             uvm <- getUVManager
             withUVRequest_ uvm (hs_uv_fs_stat_threaded p s)
@@ -293,7 +293,7 @@ stat path = do
 -- | Equivalent to <http://linux.die.net/man/2/lstat lstat(2)>
 lstat :: HasCallStack => CBytes -> IO FStat
 lstat path =
-    withCBytes path $ \ p ->
+    withCBytesUnsafe path $ \ p ->
          allocaBytes uvStatSize $ \ s -> do
             uvm <- getUVManager
             withUVRequest_ uvm (hs_uv_fs_lstat_threaded p s)
@@ -315,8 +315,8 @@ fstat uvf = checkFileTClosed uvf $ \ fd ->
 rename :: HasCallStack => CBytes -> CBytes -> IO ()
 rename path path' = do
     uvm <- getUVManager
-    withCBytes path $ \ p ->
-        withCBytes path' $ \ p' ->
+    withCBytesUnsafe path $ \ p ->
+        withCBytesUnsafe path' $ \ p' ->
             withUVRequest_ uvm (hs_uv_fs_rename_threaded p p')
 
 -- | Equivalent to <http://linux.die.net/man/2/fsync fsync(2)>.
@@ -343,8 +343,8 @@ ftruncate uvf off = checkFileTClosed uvf $ \ fd -> do
 copyfile :: HasCallStack => CBytes -> CBytes -> CopyFileFlag -> IO ()
 copyfile path path' flag = do
     uvm <- getUVManager
-    withCBytes path $ \ p ->
-        withCBytes path' $ \ p' ->
+    withCBytesUnsafe path $ \ p ->
+        withCBytesUnsafe path' $ \ p' ->
             withUVRequest_ uvm (hs_uv_fs_copyfile_threaded p p' flag)
 
 -- | Equivalent to <http://linux.die.net/man/2/access access(2)> on Unix.
@@ -352,7 +352,7 @@ copyfile path path' flag = do
 access :: HasCallStack => CBytes -> AccessMode -> IO AccessResult
 access path mode = do
     uvm <- getUVManager
-    withCBytes path $ \ p ->
+    withCBytesUnsafe path $ \ p ->
         withUVRequest' uvm (hs_uv_fs_access_threaded p mode) (handleResult . fromIntegral)
   where
     handleResult r
@@ -368,7 +368,7 @@ access path mode = do
 chmod :: HasCallStack => CBytes -> FileMode -> IO ()
 chmod path mode = do
     uvm <- getUVManager
-    withCBytes path $ \ p ->
+    withCBytesUnsafe path $ \ p ->
         withUVRequest_ uvm (hs_uv_fs_chmod_threaded p mode)
 
 -- | Equivalent to <http://linux.die.net/man/2/fchmod fchmod(2)>.
@@ -388,7 +388,7 @@ utime :: HasCallStack
       -> IO ()
 utime path atime mtime = do
     uvm <- getUVManager
-    withCBytes path $ \ p ->
+    withCBytesUnsafe path $ \ p ->
         withUVRequest_ uvm (hs_uv_fs_utime_threaded p atime mtime)
 
 -- | Equivalent to <https://man7.org/linux/man-pages/man3/futimes.3.html futime(3)>.
@@ -409,15 +409,15 @@ lutime :: HasCallStack
        -> IO ()
 lutime path atime mtime = do
     uvm <- getUVManager
-    withCBytes path $ \ p ->
+    withCBytesUnsafe path $ \ p ->
         withUVRequest_ uvm (hs_uv_fs_lutime_threaded p atime mtime)
 
 -- | Equivalent to <http://linux.die.net/man/2/link link(2)>.
 link :: HasCallStack => CBytes -> CBytes -> IO ()
 link path path' = do
     uvm <- getUVManager
-    withCBytes path $ \ p ->
-        withCBytes path' $ \ p' ->
+    withCBytesUnsafe path $ \ p ->
+        withCBytesUnsafe path' $ \ p' ->
             withUVRequest_ uvm (hs_uv_fs_link_threaded p p')
 
 -- | Equivalent to <http://linux.die.net/man/2/symlink symlink(2)>.
@@ -431,8 +431,8 @@ link path path' = do
 symlink :: HasCallStack => CBytes -> CBytes -> SymlinkFlag -> IO ()
 symlink path path' flag = do
     uvm <- getUVManager
-    withCBytes path $ \ p ->
-        withCBytes path' $ \ p' ->
+    withCBytesUnsafe path $ \ p ->
+        withCBytesUnsafe path' $ \ p' ->
             withUVRequest_ uvm (hs_uv_fs_symlink_threaded p p' flag)
 
 -- | Equivalent to <http://linux.die.net/man/2/readlink readlink(2)>.
@@ -440,7 +440,7 @@ readlink :: HasCallStack => CBytes -> IO CBytes
 readlink path = do
     uvm <- getUVManager
     bracket
-        (withCBytes path $ \ p ->
+        (withCBytesUnsafe path $ \ p ->
             allocPrimSafe $ \ p' ->
                 withUVRequestEx uvm
                     (hs_uv_fs_readlink_threaded p p')
@@ -469,7 +469,7 @@ realpath :: HasCallStack => CBytes -> IO CBytes
 realpath path = do
     uvm <- getUVManager
     bracket
-        (withCBytes path $ \ p ->
+        (withCBytesUnsafe path $ \ p ->
             allocPrimSafe $ \ p' ->
                 withUVRequestEx uvm
                     (hs_uv_fs_realpath_threaded p p')

@@ -257,7 +257,7 @@ setMulticastTTL udp@(UDP hdl _ _ _ _) ttl = do
 setMulticastInterface :: HasCallStack => UDP -> CBytes ->IO ()
 setMulticastInterface udp@(UDP hdl _ _ _ _) iaddr = do
     checkUDPClosed udp
-    withCBytes iaddr $ \ iaddrp ->
+    withCBytesUnsafe iaddr $ \ iaddrp ->
         throwUVIfMinus_ (uv_udp_set_multicast_interface hdl iaddrp)
 
 -- | Set broadcast on or off.
@@ -284,8 +284,8 @@ setMembership :: HasCallStack
               -> IO ()
 setMembership udp@(UDP hdl _ _ _ _) gaddr iaddr member = do
     checkUDPClosed udp
-    withCBytes gaddr $ \ gaddrp ->
-        withCBytes iaddr $ \ iaddrp ->
+    withCBytesUnsafe gaddr $ \ gaddrp ->
+        withCBytesUnsafe iaddr $ \ iaddrp ->
             throwUVIfMinus_ (uv_udp_set_membership hdl gaddrp iaddrp member)
 
 -- | Set membership for a source-specific multicast group.
@@ -298,9 +298,9 @@ setSourceMembership :: HasCallStack
                     -> IO ()
 setSourceMembership udp@(UDP hdl _ _ _ _) gaddr iaddr source member = do
     checkUDPClosed udp
-    withCBytes gaddr $ \ gaddrp ->
-        withCBytes iaddr $ \ iaddrp ->
-            withCBytes source $ \ sourcep ->
+    withCBytesUnsafe gaddr $ \ gaddrp ->
+        withCBytesUnsafe iaddr $ \ iaddrp ->
+            withCBytesUnsafe source $ \ sourcep ->
                 throwUVIfMinus_ (uv_udp_set_source_membership hdl gaddrp iaddrp sourcep member)
 
 --------------------------------------------------------------------------------

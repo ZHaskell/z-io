@@ -49,15 +49,12 @@ module Z.IO.Environment
 import Control.Monad
 import Data.Word
 import Z.Data.Vector.Base as V
-import Z.Data.Text        as T
 import Z.Data.CBytes
 import Z.Foreign
 import Z.IO.Exception
 import Z.IO.UV.Errno
 import Z.IO.UV.Manager
 import Foreign.Storable
-import Foreign.Ptr
-import Foreign.C.String
 import Z.IO.UV.FFI
 
 -- | Computation 'getArgs' returns a list of the program's command
@@ -97,8 +94,8 @@ getEnv k = go 512
   where
     go siz = do
         (siz', (v, r))<- withPrimUnsafe siz $ \ p_siz ->
-            withCBytes k $ \ p_k ->
-                allocCBytes siz $ \ p_v ->
+            withCBytesUnsafe k $ \ p_k ->
+                allocCBytesUnsafe siz $ \ p_v ->
                     uv_os_getenv p_k p_v p_siz
         case r of
             UV_ENOBUFS -> go siz'
@@ -119,15 +116,15 @@ getEnv' k = getEnv k >>= \ mv -> case mv of
 --
 -- Warning: This function is not thread safe.
 setEnv :: HasCallStack => CBytes -> CBytes -> IO ()
-setEnv k v = withCBytes k $ \ p_k ->
-    withCBytes v $ \ p_v ->
+setEnv k v = withCBytesUnsafe k $ \ p_k ->
+    withCBytesUnsafe v $ \ p_v ->
         throwUVIfMinus_ (uv_os_setenv p_k p_v)
 
 -- | Deletes the environment variable specified by name if such environment variable exists.
 --
 -- Warning: This function is not thread safe.
 unsetEnv :: HasCallStack => CBytes -> IO ()
-unsetEnv k = withCBytes k $ throwUVIfMinus_ . uv_os_unsetenv
+unsetEnv k = void . withCBytesUnsafe k $ \ p -> throwUVIfMinus_ (uv_os_unsetenv p)
 
 -- | Gets the resident set size (RSS) for the current process.
 getResidentSetMemory :: HasCallStack => IO CSize
@@ -191,7 +188,7 @@ setPriority pid p = throwUVIfMinus_ (uv_os_setpriority pid p)
 --
 getHostname :: HasCallStack => IO CBytes
 getHostname = do
-    (n, _) <- allocCBytes (fromIntegral UV_MAXHOSTNAMESIZE) $ \ p_n ->
+    (n, _) <- allocCBytesUnsafe (fromIntegral UV_MAXHOSTNAMESIZE) $ \ p_n ->
         withPrimUnsafe UV_MAXHOSTNAMESIZE $ \ p_siz ->
             throwUVIfMinus_ (uv_os_gethostname p_n p_siz)
     return n
