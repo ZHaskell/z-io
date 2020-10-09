@@ -130,14 +130,14 @@ type ScopeID = Word32
 -- This is partial function, wrong address will throw 'InvalidArgument' exception.
 ipv4:: HasCallStack => CBytes -> PortNumber -> SocketAddr
 ipv4 str (PortNumber port) = unsafeDupablePerformIO . withSocketAddrStorageUnsafe $ \ p ->
-    withCBytes str $ \ cstr -> throwUVIfMinus_ $ uv_ip4_addr cstr (fromIntegral port) p
+    withCBytesUnsafe str $ \ cstr -> throwUVIfMinus_ $ uv_ip4_addr cstr (fromIntegral port) p
 
 -- | Convert a string containing an IPv6 addresses to a binary structure
 --
 -- This is partial function, wrong address will throw 'InvalidArgument' exception.
 ipv6:: HasCallStack => CBytes -> PortNumber -> SocketAddr
 ipv6 str (PortNumber port) = unsafeDupablePerformIO . withSocketAddrStorageUnsafe $ \ p ->
-    withCBytes str $ \ cstr -> throwUVIfMinus_ $ uv_ip6_addr cstr (fromIntegral port) p
+    withCBytesUnsafe str $ \ cstr -> throwUVIfMinus_ $ uv_ip6_addr cstr (fromIntegral port) p
 
 --------------------------------------------------------------------------------
 
@@ -180,13 +180,13 @@ inetMaxLocalGroup   :: InetAddr
 inetMaxLocalGroup    = tupleToInetAddr (224,  0,  0,255)
 
 instance Storable InetAddr where
-    sizeOf _ = sizeOf (undefined :: Word32)
+    sizeOf _ = 4
     alignment _ = alignment (undefined :: Word32) 
     peek p = (InetAddr . ntohl) `fmap` peekByteOff p 0
     poke p (InetAddr ia) = pokeByteOff p 0 (htonl ia)
 
-instance UnalignedAccess InetAddr where
-    unalignedSize = UnalignedSize 4
+instance Unaligned InetAddr where
+    unalignedSize _ = 4
     pokeMBA p off x = pokeMBA p off (htonl (getInetAddr x))
     peekMBA p off = InetAddr . ntohl <$> peekMBA p off
     indexBA p off = InetAddr (ntohl (indexBA p off))
@@ -306,8 +306,8 @@ poke32 p i0 a = do
     pokeByte 2 (a `sr`  8)
     pokeByte 3 (a `sr`  0)
 
-instance UnalignedAccess Inet6Addr where
-    unalignedSize   = UnalignedSize (#size struct in6_addr)
+instance Unaligned Inet6Addr where
+    unalignedSize _ = (#size struct in6_addr)
 
     indexBA p off = 
         let a = indexBA p (off + s6_addr_offset + 0)
@@ -507,8 +507,8 @@ instance Storable PortNumber where
    poke p (PortNumber po) = poke (castPtr p) (htons po)
    peek p = PortNumber . ntohs <$> peek (castPtr p)
 
-instance UnalignedAccess PortNumber where
-   unalignedSize = UnalignedSize 2
+instance Unaligned PortNumber where
+   unalignedSize _ = 2
    indexBA p off = PortNumber . ntohs $ indexBA p off
    pokeMBA p off (PortNumber po) = pokeMBA p off (htons po)
    peekMBA p off = PortNumber . ntohs <$> peekMBA p off
@@ -580,5 +580,5 @@ foreign import #{CALLCONV} unsafe "htons" htons :: Word16 -> Word16
 foreign import #{CALLCONV} unsafe "ntohl" ntohl :: Word32 -> Word32
 foreign import #{CALLCONV} unsafe "htonl" htonl :: Word32 -> Word32
 
-foreign import ccall unsafe uv_ip4_addr :: CString -> CInt -> MBA## SocketAddr -> IO CInt
-foreign import ccall unsafe uv_ip6_addr :: CString -> CInt -> MBA## SocketAddr -> IO CInt
+foreign import ccall unsafe uv_ip4_addr :: BA## Word8 -> CInt -> MBA## SocketAddr -> IO CInt
+foreign import ccall unsafe uv_ip6_addr :: BA## Word8 -> CInt -> MBA## SocketAddr -> IO CInt

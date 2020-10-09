@@ -28,7 +28,7 @@ module Z.IO.Network.DNS (
 
 import           Data.Bits
 import           Data.List as List
-import           Foreign.C.String
+import           Data.Word
 import           Foreign.C.Types
 import           Foreign.Marshal.Utils
 import           Foreign.Ptr
@@ -356,11 +356,11 @@ unpackBits ((k,v):xs) r
 
 -----------------------------------------------------------------------------
 foreign import ccall safe "hs_getaddrinfo"
-    hs_getaddrinfo :: CString -- ^ host 
-                      -> CString -- ^ service
-                      -> Ptr AddrInfo   -- ^ hints
-                      -> Ptr (Ptr AddrInfo) -- ^ output addrinfo linked list
-                      -> IO Int
+    hs_getaddrinfo :: Ptr Word8 -- ^ host 
+                   -> Ptr Word8 -- ^ service
+                   -> Ptr AddrInfo   -- ^ hints
+                   -> Ptr (Ptr AddrInfo) -- ^ output addrinfo linked list
+                   -> IO Int
 
 foreign import ccall unsafe "freeaddrinfo" freeaddrinfo :: Ptr AddrInfo -> IO ()
 

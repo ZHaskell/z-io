@@ -71,10 +71,10 @@ initIPCClient (IPCClientConfig cname tname) = do
     let hdl = uvsHandle client
     liftIO $ do
         forM_ cname $ \ cname' ->
-            withCBytes cname' $ \ cname_p ->
+            withCBytesUnsafe cname' $ \ cname_p ->
                 -- bind is safe without withUVManager
                 throwUVIfMinus_ (uv_pipe_bind hdl cname_p)
-        withCBytes tname $ \ tname_p -> do
+        withCBytesUnsafe tname $ \ tname_p -> do
             void . withUVRequest uvm $ \ _ -> hs_uv_pipe_connect hdl tname_p
     return client
 
@@ -108,7 +108,7 @@ startIPCServer IPCServerConfig{..} = do
     let backLog = max ipcListenBacklog 128
     serverUVManager <- getUVManager
     withResource (initIPCStream serverUVManager) $ \ (UVStream serverHandle serverSlot _ _) -> do
-        withCBytes ipcListenName $ \ name_p -> do
+        withCBytesUnsafe ipcListenName $ \ name_p -> do
             throwUVIfMinus_ (uv_pipe_bind serverHandle name_p)
         bracket
             (throwOOMIfNull $ hs_uv_accept_check_alloc serverHandle)

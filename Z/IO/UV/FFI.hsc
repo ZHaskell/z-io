@@ -30,7 +30,7 @@ import           Foreign.C.String
 import           Foreign.C.Types
 import           Foreign.Ptr
 import           Foreign.Storable
-import           Z.Data.Array.UnalignedAccess
+import           Z.Data.Array.Unaligned
 import qualified Z.Data.Array  as A 
 import qualified Z.Data.Vector as V
 import qualified Z.Data.Vector.Base as V
@@ -166,8 +166,8 @@ foreign import ccall unsafe hs_set_socket_reuse :: Ptr UVHandle -> IO CInt
 
 foreign import ccall unsafe hs_uv_pipe_open :: Ptr UVHandle -> UVFD -> IO CInt
 foreign import ccall unsafe uv_pipe_init :: Ptr UVLoop -> Ptr UVHandle -> CInt -> IO CInt
-foreign import ccall unsafe uv_pipe_bind :: Ptr UVHandle -> CString -> IO CInt
-foreign import ccall unsafe hs_uv_pipe_connect :: Ptr UVHandle -> CString -> IO UVSlotUnsafe
+foreign import ccall unsafe uv_pipe_bind :: Ptr UVHandle -> BA## Word8 -> IO CInt
+foreign import ccall unsafe hs_uv_pipe_connect :: Ptr UVHandle -> BA## Word8 -> IO UVSlotUnsafe
 
 --------------------------------------------------------------------------------
 -- udp
@@ -202,13 +202,13 @@ foreign import ccall unsafe "uv_udp_connect" uv_udp_disconnect
     :: Ptr UVHandle -> Ptr SocketAddr -> IO CInt
 
 foreign import ccall unsafe uv_udp_set_membership ::
-    Ptr UVHandle -> CString -> CString -> Membership -> IO CInt
+    Ptr UVHandle -> BA## Word8 -> BA## Word8 -> Membership -> IO CInt
 foreign import ccall unsafe uv_udp_set_source_membership ::
-    Ptr UVHandle -> CString -> CString -> CString -> Membership -> IO CInt
+    Ptr UVHandle -> BA## Word8 -> BA## Word8 -> BA## Word8 -> Membership -> IO CInt
 
 foreign import ccall unsafe uv_udp_set_multicast_loop :: Ptr UVHandle -> CInt -> IO CInt
 foreign import ccall unsafe uv_udp_set_multicast_ttl :: Ptr UVHandle -> CInt -> IO CInt
-foreign import ccall unsafe uv_udp_set_multicast_interface :: Ptr UVHandle -> CString -> IO CInt
+foreign import ccall unsafe uv_udp_set_multicast_interface :: Ptr UVHandle -> BA## Word8 -> IO CInt
 foreign import ccall unsafe uv_udp_set_broadcast :: Ptr UVHandle -> CInt -> IO CInt
 foreign import ccall unsafe uv_udp_set_ttl :: Ptr UVHandle -> CInt -> IO CInt
 
@@ -310,18 +310,18 @@ pattern DEFAULT_MODE :: FileMode
 pattern DEFAULT_MODE = FileMode 0o666
 
 -- non-threaded functions
-foreign import ccall unsafe hs_uv_fs_open    :: CString -> FileFlag -> FileMode -> IO UVFD
+foreign import ccall unsafe hs_uv_fs_open    :: BA## Word8 -> FileFlag -> FileMode -> IO UVFD
 foreign import ccall unsafe hs_uv_fs_close   :: UVFD -> IO Int
 foreign import ccall unsafe hs_uv_fs_read    :: UVFD -> Ptr Word8 -> Int -> Int64 -> IO Int
 foreign import ccall unsafe hs_uv_fs_write   :: UVFD -> Ptr Word8 -> Int -> Int64 -> IO Int
-foreign import ccall unsafe hs_uv_fs_unlink  :: CString -> IO Int
-foreign import ccall unsafe hs_uv_fs_mkdir   :: CString -> FileMode -> IO Int
-foreign import ccall unsafe hs_uv_fs_rmdir   :: CString -> IO Int
-foreign import ccall unsafe hs_uv_fs_mkdtemp :: CString -> Int -> CString -> IO Int
+foreign import ccall unsafe hs_uv_fs_unlink  :: BA## Word8 -> IO Int
+foreign import ccall unsafe hs_uv_fs_mkdir   :: BA## Word8 -> FileMode -> IO Int
+foreign import ccall unsafe hs_uv_fs_rmdir   :: BA## Word8 -> IO Int
+foreign import ccall unsafe hs_uv_fs_mkdtemp :: BA## Word8 -> Int -> MBA## Word8 -> IO Int
 
 -- threaded functions
 foreign import ccall unsafe hs_uv_fs_open_threaded 
-    :: CString -> FileFlag -> FileMode -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: BA## Word8 -> FileFlag -> FileMode -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_close_threaded 
     :: UVFD -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_read_threaded  
@@ -329,13 +329,13 @@ foreign import ccall unsafe hs_uv_fs_read_threaded
 foreign import ccall unsafe hs_uv_fs_write_threaded 
     :: UVFD -> Ptr Word8 -> Int -> Int64 -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_unlink_threaded
-    :: CString -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: BA## Word8 -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_mkdir_threaded 
-    :: CString -> FileMode -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: BA## Word8 -> FileMode -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_rmdir_threaded 
-    :: CString -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: BA## Word8 -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_mkdtemp_threaded 
-    :: CString -> Int -> CString -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: BA## Word8 -> Int -> MBA## Word8 -> Ptr UVLoop -> IO UVSlotUnsafe
 
 newtype FileFlag = FileFlag CInt
     deriving (Eq, Ord, Show, FiniteBits, Bits, Storable, Num)
@@ -504,11 +504,11 @@ peekUVDirEnt p = return ((#{ptr hs_uv__dirent_t,  d_name } p), #{const DT_UNKNOW
 foreign import ccall unsafe hs_uv_fs_scandir_cleanup
     :: Ptr (Ptr UVDirEnt) -> Int -> IO ()
 foreign import ccall unsafe hs_uv_fs_scandir
-    :: CString -> MBA## (Ptr UVDirEnt) -> IO Int
+    :: BA## Word8 -> MBA## (Ptr UVDirEnt) -> IO Int
 foreign import ccall unsafe hs_uv_fs_scandir_extra_cleanup 
     :: Ptr (Ptr (Ptr UVDirEnt)) -> Int -> IO ()
 foreign import ccall unsafe hs_uv_fs_scandir_threaded
-    :: CString -> Ptr (Ptr (Ptr UVDirEnt)) -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: BA## Word8 -> Ptr (Ptr (Ptr UVDirEnt)) -> Ptr UVLoop -> IO UVSlotUnsafe
 
 data UVTimeSpec = UVTimeSpec 
     { uvtSecond     :: {-# UNPACK #-} !CLong
@@ -565,22 +565,22 @@ peekUVStat p = FStat
     <*> (#{peek uv_stat_t, st_ctim         } p)
     <*> (#{peek uv_stat_t, st_birthtim     } p)
 
-foreign import ccall unsafe hs_uv_fs_stat :: CString -> Ptr FStat -> IO Int
+foreign import ccall unsafe hs_uv_fs_stat :: BA## Word8 -> Ptr FStat -> IO Int
 foreign import ccall unsafe hs_uv_fs_fstat :: UVFD -> Ptr FStat -> IO Int
-foreign import ccall unsafe hs_uv_fs_lstat :: CString -> Ptr FStat -> IO Int
-foreign import ccall unsafe hs_uv_fs_rename :: CString -> CString -> IO Int
+foreign import ccall unsafe hs_uv_fs_lstat :: BA## Word8 -> Ptr FStat -> IO Int
+foreign import ccall unsafe hs_uv_fs_rename :: BA## Word8 -> BA## Word8 -> IO Int
 foreign import ccall unsafe hs_uv_fs_fsync :: UVFD -> IO Int
 foreign import ccall unsafe hs_uv_fs_fdatasync :: UVFD -> IO Int
 foreign import ccall unsafe hs_uv_fs_ftruncate :: UVFD -> Int64 -> IO Int
 
 foreign import ccall unsafe hs_uv_fs_stat_threaded
-    :: CString -> Ptr FStat -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: BA## Word8 -> Ptr FStat -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_fstat_threaded
     :: UVFD -> Ptr FStat -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_lstat_threaded
-    :: CString -> Ptr FStat -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: BA## Word8 -> Ptr FStat -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_rename_threaded
-    :: CString -> CString -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: BA## Word8 -> BA## Word8 -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_fsync_threaded
     :: UVFD -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_fdatasync_threaded
@@ -609,9 +609,9 @@ pattern COPYFILE_FICLONE = CopyFileFlag #{const UV_FS_COPYFILE_FICLONE}
 pattern COPYFILE_FICLONE = CopyFileFlag 0   -- fallback to normal copy.
 #endif
 
-foreign import ccall unsafe hs_uv_fs_copyfile :: CString -> CString -> CopyFileFlag -> IO Int
+foreign import ccall unsafe hs_uv_fs_copyfile :: BA## Word8 -> BA## Word8 -> CopyFileFlag -> IO Int
 foreign import ccall unsafe hs_uv_fs_copyfile_threaded
-    :: CString -> CString -> CopyFileFlag -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: BA## Word8 -> BA## Word8 -> CopyFileFlag -> Ptr UVLoop -> IO UVSlotUnsafe
 
 newtype AccessMode = AccessMode CInt
     deriving (Eq, Ord, Show, FiniteBits, Bits, Storable, Num)
@@ -627,29 +627,29 @@ pattern X_OK = AccessMode #{const X_OK}
 
 data AccessResult = NoExistence | NoPermission | AccessOK deriving (Show, Eq, Ord)
 
-foreign import ccall unsafe hs_uv_fs_access :: CString -> AccessMode -> IO Int
+foreign import ccall unsafe hs_uv_fs_access :: BA## Word8 -> AccessMode -> IO Int
 foreign import ccall unsafe hs_uv_fs_access_threaded
-    :: CString -> AccessMode -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: BA## Word8 -> AccessMode -> Ptr UVLoop -> IO UVSlotUnsafe
 
-foreign import ccall unsafe hs_uv_fs_chmod :: CString -> FileMode -> IO Int
+foreign import ccall unsafe hs_uv_fs_chmod :: BA## Word8 -> FileMode -> IO Int
 foreign import ccall unsafe hs_uv_fs_chmod_threaded
-    :: CString -> FileMode -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: BA## Word8 -> FileMode -> Ptr UVLoop -> IO UVSlotUnsafe
 
 foreign import ccall unsafe hs_uv_fs_fchmod :: UVFD -> FileMode -> IO Int
 foreign import ccall unsafe hs_uv_fs_fchmod_threaded
     :: UVFD -> FileMode -> Ptr UVLoop -> IO UVSlotUnsafe
 
-foreign import ccall unsafe hs_uv_fs_utime :: CString -> Double -> Double -> IO Int
+foreign import ccall unsafe hs_uv_fs_utime :: BA## Word8 -> Double -> Double -> IO Int
 foreign import ccall unsafe hs_uv_fs_utime_threaded
-    :: CString -> Double -> Double -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: BA## Word8 -> Double -> Double -> Ptr UVLoop -> IO UVSlotUnsafe
 
 foreign import ccall unsafe hs_uv_fs_futime :: UVFD -> Double -> Double -> IO Int
 foreign import ccall unsafe hs_uv_fs_futime_threaded
     :: UVFD -> Double -> Double -> Ptr UVLoop -> IO UVSlotUnsafe
 
-foreign import ccall unsafe hs_uv_fs_lutime :: CString -> Double -> Double -> IO Int
+foreign import ccall unsafe hs_uv_fs_lutime :: BA## Word8 -> Double -> Double -> IO Int
 foreign import ccall unsafe hs_uv_fs_lutime_threaded
-    :: CString -> Double -> Double -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: BA## Word8 -> Double -> Double -> Ptr UVLoop -> IO UVSlotUnsafe
 
 newtype SymlinkFlag = SymlinkFlag CInt
     deriving (Eq, Ord, Show, FiniteBits, Bits, Storable, Num)
@@ -663,27 +663,27 @@ pattern SYMLINK_DIR = SymlinkFlag #{const UV_FS_SYMLINK_DIR}
 pattern SYMLINK_JUNCTION :: SymlinkFlag
 pattern SYMLINK_JUNCTION = SymlinkFlag #{const UV_FS_SYMLINK_JUNCTION}
 
-foreign import ccall unsafe hs_uv_fs_link :: CString -> CString -> IO Int
+foreign import ccall unsafe hs_uv_fs_link :: BA## Word8 -> BA## Word8 -> IO Int
 foreign import ccall unsafe hs_uv_fs_link_threaded
-    :: CString -> CString -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: BA## Word8 -> BA## Word8 -> Ptr UVLoop -> IO UVSlotUnsafe
 
-foreign import ccall unsafe hs_uv_fs_symlink :: CString -> CString -> SymlinkFlag -> IO Int
+foreign import ccall unsafe hs_uv_fs_symlink :: BA## Word8 -> BA## Word8 -> SymlinkFlag -> IO Int
 foreign import ccall unsafe hs_uv_fs_symlink_threaded
-    :: CString -> CString -> SymlinkFlag -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: BA## Word8 -> BA## Word8 -> SymlinkFlag -> Ptr UVLoop -> IO UVSlotUnsafe
 
 -- readlink and realpath share the same cleanup and callback
 foreign import ccall unsafe hs_uv_fs_readlink_cleanup
     :: CString -> IO ()
 foreign import ccall unsafe hs_uv_fs_readlink
-    :: CString -> MBA## CString -> IO Int
+    :: BA## Word8 -> MBA## CString -> IO Int
 foreign import ccall unsafe hs_uv_fs_realpath
-    :: CString -> MBA## CString -> IO Int
+    :: BA## Word8  -> MBA## CString -> IO Int
 foreign import ccall unsafe hs_uv_fs_readlink_extra_cleanup 
     :: Ptr CString -> IO ()
 foreign import ccall unsafe hs_uv_fs_readlink_threaded
-    :: CString -> Ptr CString -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: BA## Word8  -> Ptr CString -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_realpath_threaded
-    :: CString -> Ptr CString -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: BA## Word8  -> Ptr CString -> Ptr UVLoop -> IO UVSlotUnsafe
 
 --------------------------------------------------------------------------------
 -- misc
@@ -814,13 +814,13 @@ foreign import ccall unsafe uv_hrtime :: IO Word64
 
 foreign import ccall unsafe uv_os_environ :: MBA## (Ptr a) -> MBA## CInt -> IO CInt
 foreign import ccall unsafe uv_os_free_environ :: Ptr a -> CInt -> IO ()
-foreign import ccall unsafe uv_os_getenv :: CString -> CString -> MBA## CSize -> IO CInt
-foreign import ccall unsafe uv_os_setenv :: CString -> CString -> IO CInt
-foreign import ccall unsafe uv_os_unsetenv :: CString -> IO CInt
+foreign import ccall unsafe uv_os_getenv :: BA## Word8 -> MBA## Word8 -> MBA## CSize -> IO CInt
+foreign import ccall unsafe uv_os_setenv :: BA## Word8 -> BA## Word8 -> IO CInt
+foreign import ccall unsafe uv_os_unsetenv :: BA## Word8 -> IO CInt
 
 pattern UV_MAXHOSTNAMESIZE :: CSize
 pattern UV_MAXHOSTNAMESIZE = #const UV_MAXHOSTNAMESIZE
-foreign import ccall unsafe uv_os_gethostname :: CString -> MBA## CSize -> IO CInt
+foreign import ccall unsafe uv_os_gethostname :: MBA## Word8 -> MBA## CSize -> IO CInt
 
 data OSName = OSName
     { os_sysname :: T.Text

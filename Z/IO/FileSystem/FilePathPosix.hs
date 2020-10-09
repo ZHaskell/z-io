@@ -170,11 +170,11 @@ extSeparator = DOT
 -- > Windows: splitSearchPath "File1;File2;File3"  == ["File1","File2","File3"]
 -- > Windows: splitSearchPath "File1;;File2;File3" == ["File1","File2","File3"]
 -- > Windows: splitSearchPath "File1;\"File2\";File3" == ["File1","File2","File3"]
-splitSearchPath :: Bytes -> [Bytes]
+splitSearchPath :: CBytes -> [CBytes]
 splitSearchPath = f
     where
-    f :: Bytes -> [Bytes]
-    f bs = case V.break (== searchPathSeparator) bs of
+    f :: CBytes -> [CBytes]
+    f (CB bs) = case V.break (== searchPathSeparator) bs of
         (p, rest)
             | V.null rest -> []
             | otherwise -> g p : f (V.drop 1 rest)

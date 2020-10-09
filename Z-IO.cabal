@@ -82,8 +82,6 @@ flag no-pkg-config
 library
     exposed-modules:        Z.IO.FileSystem
                             Z.IO.FileSystem.Threaded
-                            Z.IO.FileSystem.FilePath
-                            Z.IO.FileSystem.FilePathPosix
                             Z.IO.Network.SocketAddr
                             Z.IO.Network.DNS
                             Z.IO.Network.TCP
@@ -107,7 +105,7 @@ library
                             Z.Compression.Zlib
 
     build-depends:          base                    >= 4.12 && <5.0
-                          , Z-Data                  >= 0.1.4.2
+                          , Z-Data                  >= 0.1.5 && <0.1.6
                           , primitive               >= 0.7.1 && < 0.7.2
                           , exceptions              == 0.10.*
                           , time                    >= 1.8 && < 2.0
@@ -277,7 +275,7 @@ library
                                     third_party/libuv/src/unix/fsevents.c
                                     third_party/libuv/src/unix/kqueue.c
                                     third_party/libuv/src/unix/proctitle.c
-                                    third_party/libuv/src/unix/random-getrandom.c
+                                    third_party/libuv/src/unix/random-getentropy.c
                                    
                 include-dirs:       third_party/libuv/include
                                     third_party/libuv/src/unix
