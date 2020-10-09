@@ -39,7 +39,6 @@ module Z.IO.Network.TCP (
   ) where
 
 import           Control.Concurrent.MVar
-import           Control.Monad.Primitive
 import           Control.Monad
 import           Control.Monad.IO.Class
 import           Data.Primitive.PrimArray
