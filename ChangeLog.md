@@ -1,6 +1,6 @@
 # Revision history for Z-IO
 
-## 0.1.3.0  -- 2020-10-02
+## 0.1.4.0  -- 2020-10-02
 
 * Add `Z.IO.Environment` module.
 * Fix a UDP batch receiving bug.
