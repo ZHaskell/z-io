@@ -68,10 +68,10 @@ void free_z_stream_inflate (z_stream *stream)
 	free(stream);
 }
 
-uint deflate_set_dictionary (z_stream* stream, const unsigned char* dict, HsInt off, HsInt len){
+unsigned int deflate_set_dictionary (z_stream* stream, const unsigned char* dict, HsInt off, HsInt len){
     return deflateSetDictionary(stream, dict+off, (unsigned int)len);
 }
 
-uint inflate_set_dictionary (z_stream* stream, const unsigned char* dict, HsInt off, HsInt len){
+unsigned int inflate_set_dictionary (z_stream* stream, const unsigned char* dict, HsInt off, HsInt len){
     return inflateSetDictionary(stream, dict+off, (unsigned int)len);
 }
