@@ -1,6 +1,3 @@
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE OverloadedStrings #-}
-
 -- Module      :  Z.IO.FileSystem.FilePathPosix
 -- Copyright   :  (c) Neil Mitchell 2005-2014, (C) Dong Han 2020
 -- License     :  BSD3

@@ -1,7 +1,3 @@
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 {-|
 Module      : Z.IO.LowResTimer
 Description : Low resolution (0.1s) timing wheel

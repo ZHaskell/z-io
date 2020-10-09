@@ -1,17 +1,3 @@
-{-# LANGUAGE CPP                        #-}
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE DeriveAnyClass             #-}
-{-# LANGUAGE DerivingStrategies         #-}
-{-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE StandaloneDeriving         #-}
-{-# LANGUAGE MagicHash                  #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE PatternSynonyms            #-}
-{-# LANGUAGE UnliftedFFITypes           #-}
-{-# LANGUAGE UnboxedTuples              #-}
-
 {-|
 Module      : Z.IO.UV
 Description : libuv operations
@@ -41,6 +27,7 @@ import qualified Z.Data.Vector.Base as V
 import qualified Z.Data.Text   as T
 import           Z.Data.Text.ShowT   (ShowT(..))
 import           Z.Data.JSON         (EncodeJSON, ToValue, FromValue)
+import           Z.Data.CBytes
 import           Z.Foreign
 import           Z.IO.Exception (throwUVIfMinus_)
 import           Z.IO.Network.SocketAddr    (SocketAddr)
@@ -867,14 +854,12 @@ data OSName = OSName
 
 getOSName :: IO OSName
 getOSName = do
-    mpa@(A.MutablePrimArray mba##) <- A.newArr (#size uv_utsname_t)
+    (A.MutablePrimArray mba## :: A.MutablePrimArray A.RealWorld Word8) <- A.newArr (#size uv_utsname_t)
     throwUVIfMinus_ (uv_os_uname mba##)
-    pa <- A.unsafeFreezeArr mpa
-    let v  = V.PrimVector pa 0 (#size uv_utsname_t)
-        sn = T.validate . V.takeWhile (/= 0) $ (V.drop (#offset uv_utsname_t, sysname)) v
-        re = T.validate . V.takeWhile (/= 0) $ (V.drop (#offset uv_utsname_t, release)) v
-        ve = T.validate . V.takeWhile (/= 0) $ (V.drop (#offset uv_utsname_t, version)) v
-        ma = T.validate . V.takeWhile (/= 0) $ (V.drop (#offset uv_utsname_t, machine)) v
+    sn <- toText <$> peekMBA mba## (#offset uv_utsname_t, sysname)
+    re <- toText <$> peekMBA mba## (#offset uv_utsname_t, release)
+    ve <- toText <$> peekMBA mba## (#offset uv_utsname_t, version)
+    ma <- toText <$> peekMBA mba##  (#offset uv_utsname_t, machine) 
     return (OSName sn re ve ma)
     
 foreign import ccall unsafe uv_os_uname :: MBA## OSName -> IO CInt

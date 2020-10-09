@@ -1,14 +1,3 @@
-{-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE MagicHash #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE UnliftedFFITypes #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE OverloadedStrings #-}
-
-
 {-|
 Module      : Z.IO.Environment
 Description : Miscellaneous functions(environment variables, metrics, etc.)

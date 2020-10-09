@@ -1,9 +1,3 @@
-{-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE OverloadedStrings #-}
-
-
 {-|
 Module      : Z.IO.StdStream
 Description : TTY devices

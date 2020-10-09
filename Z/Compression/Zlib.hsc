@@ -1,13 +1,3 @@
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE MagicHash #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE UnliftedFFITypes #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 {-|
 Module      : Z.Compression.Zlib
 Description : The zlib
@@ -44,18 +34,20 @@ import           Data.Typeable
 import           Data.Word
 import           Foreign            hiding (void)
 import           Foreign.C
-import           GHC.Stack
+import           GHC.Generics
 import           System.IO.Unsafe   (unsafePerformIO)
 import           Z.Data.Array       as A
 import           Z.Data.CBytes      as CBytes
 import           Z.Data.Vector.Base as V
+import           Z.Data.Text.ShowT  (ShowT)
 import           Z.Foreign
 import           Z.IO.Buffered
 import           Z.IO.Exception
 
 #include "zlib.h"
 
-newtype Strategy = Strategy CInt deriving (Eq, Ord, Show, Typeable)
+newtype Strategy = Strategy CInt deriving (Eq, Ord, Show, Generic)
+                                    deriving anyclass ShowT
 
 pattern Z_FILTERED           :: Strategy
 pattern Z_HUFFMAN_ONLY       :: Strategy
@@ -69,7 +61,8 @@ pattern Z_FIXED              = Strategy (#const Z_FIXED           )
 pattern Z_DEFAULT_STRATEGY   = Strategy (#const Z_DEFAULT_STRATEGY)
 
 
-newtype CompressLevel = CompressLevel CInt deriving (Eq, Ord, Show, Typeable)
+newtype CompressLevel = CompressLevel CInt deriving (Eq, Ord, Show, Generic)
+                                            deriving anyclass ShowT
 
 -- pattern Z_NO_COMPRESSION       =  CompressLevel (#const Z_NO_COMPRESSION     )
 pattern Z_BEST_SPEED          :: CompressLevel
@@ -85,14 +78,18 @@ windowBits can also be –8..–15 for raw inflate. In this case, -windowBits de
 windowBits can also be greater than 15 for optional gzip decoding. Add 32 to windowBits to enable zlib and gzip decoding with automatic header detection, or add 16 to decode only the gzip format.
 -}
 newtype WindowBits = WindowBits CInt
-    deriving (Eq, Ord, Read, Show, Num, Typeable)
+    deriving (Eq, Ord, Read, Show, Generic)
+        deriving newtype Num
+        deriving anyclass ShowT
 
 defaultWindowBits :: WindowBits
 defaultWindowBits = WindowBits 15
 
 -- | The 'MemLevel' specifies how much memory should be allocated for the internal compression state. 1 uses minimum memory but is slow and reduces compression ratio; 9 uses maximum memory for optimal speed. The default value is 8.
 newtype MemLevel = MemLevel CInt
-    deriving (Eq, Ord, Read, Show, Num, Typeable)
+    deriving (Eq, Ord, Read, Show, Generic)
+        deriving newtype Num
+        deriving anyclass ShowT
 
 defaultMemLevel :: MemLevel
 defaultMemLevel = MemLevel 9

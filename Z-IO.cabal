@@ -112,6 +112,42 @@ library
                           , stm                     == 2.5.*
 
     default-language:       Haskell2010
+    default-extensions:     BangPatterns
+                            CApiFFI
+                            ConstraintKinds
+                            CPP 
+                            DerivingStrategies
+                            DeriveGeneric
+                            DeriveAnyClass
+                            DefaultSignatures
+                            DataKinds
+                            ExistentialQuantification
+                            FlexibleContexts
+                            FlexibleInstances
+                            GeneralizedNewtypeDeriving 
+                            KindSignatures
+                            MagicHash
+                            MultiParamTypeClasses
+                            MultiWayIf
+                            PartialTypeSignatures
+                            PatternSynonyms 
+                            PolyKinds
+                            QuantifiedConstraints
+                            QuasiQuotes
+                            OverloadedStrings
+                            RankNTypes
+                            RecordWildCards
+                            ScopedTypeVariables 
+                            StandaloneDeriving
+                            TemplateHaskell
+                            TypeApplications
+                            TypeFamilyDependencies
+                            TypeFamilies
+                            TypeOperators
+                            TupleSections
+                            UnboxedTuples 
+                            UnliftedFFITypes 
+                            ViewPatterns
     build-tool-depends:     hsc2hs:hsc2hs, hspec-discover:hspec-discover
     ghc-options:            -Wall
 
