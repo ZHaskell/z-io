@@ -58,6 +58,7 @@ module Z.IO.Logger
     -- * Helper to write new logger
   , defaultTSCache
   , defaultFmtCallStack
+  , LogFormatter, defaultFmt
   , flushLog
   ) where
 
@@ -74,16 +75,18 @@ import GHC.Stack
 import qualified Z.Data.Builder as B
 import qualified Data.Time as Time
 
+type LogFormatter = Maybe (B.Builder ())     -- ^ data/time string
+                    -> B.Builder ()          -- ^ log level
+                    -> B.Builder ()          -- ^ log content
+                    -> CallStack             -- ^ call stack trace
+                    -> B.Builder ()
+
 data Logger = Logger
     { loggerPushBuilder     :: B.Builder () -> IO () -- ^ push log into buffer
     , flushLogger           :: IO ()                -- ^ flush logger's buffer to output device
     , flushLoggerThrottled  :: IO ()                -- ^ throttled flush, e.g. use 'throttleTrailing_' from "Z.IO.LowResTimer"
     , loggerTSCache         :: IO (Maybe (B.Builder ())) -- ^ A IO action return a formatted date/time string
-    , loggerFmt             :: Maybe (B.Builder ()) -- ^ data/time string
-                            -> B.Builder ()         -- ^ log level
-                            -> B.Builder ()         -- ^ log content
-                            -> CallStack
-                            -> B.Builder ()
+    , loggerFmt             :: LogFormatter
     }
 
 data LoggerConfig = LoggerConfig
@@ -142,24 +145,25 @@ newLogger config oLock = do
     bList <- newIORef []
     let flush = flushLog oLock bList
     throttledFlush <- throttleTrailing_ (loggerMinFlushInterval config) flush
-    return $ Logger (pushLog bList) flush throttledFlush tsCache fmt
+    return $ Logger (pushLog bList) flush throttledFlush tsCache (defaultFmt (loggerShowSourceLoc config))
   where
     tsCache = if (loggerShowTS config) then Just <$> defaultTSCache else pure Nothing
     pushLog bList b = do
         let !bs = B.buildBytesWith (loggerLineBufSize config) b
         atomicModifyIORef' bList (\ bss -> (bs:bss, ()))
 
-    fmt :: Maybe (B.Builder ()) -- ^ data/time string
-        -> B.Builder ()         -- ^ log level
-        -> B.Builder ()         -- ^ log content
-        -> CallStack
-        -> B.Builder ()
-    fmt maybeTS level content cstack = do
-        B.square level
-        forM_ maybeTS $ \ ts -> B.square ts
-        when (loggerShowSourceLoc config) (B.square $ defaultFmtCallStack cstack)
-        content
+-- | A default log formatter
+--
+-- @ [DEBUG][2020-10-09T07:44:14UTC][<interactive>:7:1]This a debug message@
+defaultFmt :: Bool          -- ^ show call stack info?
+           -> LogFormatter
+defaultFmt showcstack maybeTS level content cstack = do
+    B.square level
+    forM_ maybeTS $ \ ts -> B.square ts
+    when showcstack (B.square $ defaultFmtCallStack cstack)
+    content
 
+-- | Default stack formatter which fetch the logging source and location.
 defaultFmtCallStack :: CallStack -> B.Builder ()
 defaultFmtCallStack cs =
  case reverse $ getCallStack cs of

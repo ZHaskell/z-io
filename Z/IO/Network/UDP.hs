@@ -59,7 +59,6 @@ module Z.IO.Network.UDP (
 
 import Control.Concurrent
 import Control.Monad
-import Control.Monad.Primitive  (primitive_)
 import Data.Primitive.PrimArray as A
 import Data.IORef
 import Data.Word
