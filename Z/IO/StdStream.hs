@@ -1,6 +1,7 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 
 {-|
@@ -63,7 +64,7 @@ import Foreign.Ptr
 import System.IO.Unsafe
 import Z.Data.Builder as B
 import Z.Data.Vector as V
-import Z.Data.Text.Builder (ToText, toBuilder)
+import Z.Data.Text.ShowT (ShowT, toBuilder)
 import Z.IO.UV.FFI
 import Z.IO.UV.Manager
 import Z.IO.UV.Errno
@@ -197,8 +198,8 @@ getStdoutWinSize = case stdout of
 
 --------------------------------------------------------------------------------
 
--- | print a 'ToText' and flush to stdout.
-printStd :: HasCallStack => ToText a => a -> IO ()
+-- | print a 'ShowT' and flush to stdout.
+printStd :: HasCallStack => ShowT a => a -> IO ()
 printStd s = putStd (toBuilder s)
 
 -- | print a 'Builder' and flush to stdout.

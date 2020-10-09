@@ -6,6 +6,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 
 {-|

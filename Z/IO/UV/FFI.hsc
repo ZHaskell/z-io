@@ -39,7 +39,8 @@ import qualified Z.Data.Array  as A
 import qualified Z.Data.Vector as V
 import qualified Z.Data.Vector.Base as V
 import qualified Z.Data.Text   as T
-import           Z.Data.Text.Builder   (ToText)
+import           Z.Data.Text.ShowT   (ShowT(..))
+import           Z.Data.JSON         (EncodeJSON, ToValue, FromValue)
 import           Z.Foreign
 import           Z.IO.Exception (throwUVIfMinus_)
 import           Z.IO.Network.SocketAddr    (SocketAddr)
@@ -92,7 +93,7 @@ peekUVBufferTable p = (,)
     <*> (#{peek hs_loop_data, buffer_size_table     } p)
 
 newtype UVRunMode = UVRunMode CInt deriving (Show, Eq, Ord, Generic)
-                                   deriving anyclass ToText 
+                                   deriving anyclass ShowT 
 
 pattern UV_RUN_DEFAULT :: UVRunMode
 pattern UV_RUN_DEFAULT = UVRunMode #{const UV_RUN_DEFAULT}
@@ -183,7 +184,8 @@ foreign import ccall unsafe uv_udp_open :: Ptr UVHandle -> UVFD -> IO CInt
 foreign import ccall unsafe uv_udp_bind :: Ptr UVHandle -> MBA## SocketAddr -> UDPFlag -> IO CInt
 
 newtype Membership = Membership CInt deriving (Show, Eq, Ord, Generic)
-                                        deriving anyclass ToText
+                                        deriving newtype (EncodeJSON, ToValue, FromValue)
+                                        deriving anyclass ShowT
 
 pattern LEAVE_GROUP :: Membership
 pattern LEAVE_GROUP = Membership #{const UV_LEAVE_GROUP}
@@ -191,8 +193,8 @@ pattern JOIN_GROUP :: Membership
 pattern JOIN_GROUP = Membership #{const UV_JOIN_GROUP}
 
 newtype UDPFlag = UDPFlag CInt deriving (Show, Eq, Ord, Generic)
-                                deriving newtype (Storable, Unaligned, Bits, FiniteBits, Num)
-                                deriving anyclass ToText
+                                deriving newtype (Storable, Unaligned, Bits, FiniteBits, Num, EncodeJSON, ToValue, FromValue)
+                                deriving anyclass ShowT
 
 pattern UDP_DEFAULT        :: UDPFlag
 pattern UDP_DEFAULT         = UDPFlag 0
@@ -248,8 +250,8 @@ foreign import ccall unsafe uv_udp_getpeername
 -- including echoing input characters. Note that CTRL+C will no longer cause a SIGINT when in this mode.
 newtype TTYMode = TTYMode CInt
     deriving (Eq, Ord, Show, Generic)
-    deriving newtype (Storable, Unaligned, Bits, FiniteBits, Num)
-    deriving anyclass ToText
+    deriving newtype (Storable, Unaligned, Bits, FiniteBits, Num, EncodeJSON, ToValue, FromValue)
+    deriving anyclass ShowT
 
 pattern TTY_MODE_NORMAL :: TTYMode
 pattern TTY_MODE_NORMAL = TTYMode #{const UV_TTY_MODE_NORMAL}
@@ -267,8 +269,8 @@ foreign import ccall unsafe uv_tty_get_winsize :: Ptr UVHandle -> MBA## CInt -> 
 
 newtype FileMode = FileMode CInt
     deriving (Eq, Ord, Show, Generic)
-    deriving newtype (Storable, Unaligned, Bits, FiniteBits, Num)
-    deriving anyclass ToText
+    deriving newtype (Storable, Unaligned, Bits, FiniteBits, Num, EncodeJSON, ToValue, FromValue)
+    deriving anyclass ShowT
 
 -- | 00700 user (file owner) has read, write and execute permission
 pattern S_IRWXU :: FileMode
@@ -352,8 +354,8 @@ foreign import ccall unsafe hs_uv_fs_mkdtemp_threaded
 
 newtype FileFlag = FileFlag CInt
     deriving (Eq, Ord, Show, Generic)
-    deriving newtype (Storable, Unaligned, Bits, FiniteBits, Num)
-    deriving anyclass ToText
+    deriving newtype (Storable, Unaligned, Bits, FiniteBits, Num, EncodeJSON, ToValue, FromValue)
+    deriving anyclass ShowT
 
 -- | The file is opened in append mode. Before each write, the file offset is positioned at the end of the file.
 pattern O_APPEND :: FileFlag
@@ -475,8 +477,8 @@ newtype UVDirEntType = UVDirEntType CInt
 newtype UVDirEntType = UVDirEntType CChar
 #endif
     deriving (Eq, Ord, Show, Generic)
-    deriving newtype (Storable, Unaligned, Bits, FiniteBits, Num)
-    deriving anyclass ToText
+    deriving newtype (Storable, Unaligned, Bits, FiniteBits, Num, EncodeJSON, ToValue, FromValue)
+    deriving anyclass ShowT
 
 data DirEntType
     = DirEntUnknown
@@ -488,7 +490,7 @@ data DirEntType
     | DirEntChar
     | DirEntBlock
   deriving (Read, Show, Eq, Ord, Generic)
-    deriving anyclass ToText
+    deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 fromUVDirEntType :: UVDirEntType -> DirEntType
 fromUVDirEntType t
@@ -532,7 +534,7 @@ data UVTimeSpec = UVTimeSpec
     { uvtSecond     :: {-# UNPACK #-} !CLong
     , uvtNanoSecond :: {-# UNPACK #-} !CLong
     } deriving (Show, Read, Eq, Ord, Generic)
-        deriving anyclass ToText
+        deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 instance Storable UVTimeSpec where
     sizeOf _  = #{size uv_timespec_t}
@@ -561,7 +563,7 @@ data FStat = FStat
     , stCtim     :: {-# UNPACK #-} !UVTimeSpec
     , stBirthtim :: {-# UNPACK #-} !UVTimeSpec
     } deriving (Show, Read, Eq, Ord, Generic)
-        deriving anyclass ToText
+        deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 uvStatSize :: Int
 uvStatSize = #{size uv_stat_t}
@@ -615,8 +617,8 @@ foreign import ccall unsafe hs_uv_fs_ftruncate_threaded
 -- 
 newtype CopyFileFlag = CopyFileFlag CInt
     deriving (Eq, Ord, Show, Generic)
-    deriving newtype (Storable, Unaligned, Bits, FiniteBits, Num)
-    deriving anyclass ToText
+    deriving newtype (Storable, Unaligned, Bits, FiniteBits, Num, EncodeJSON, ToValue, FromValue)
+    deriving anyclass ShowT
 
 pattern COPYFILE_DEFAULT :: CopyFileFlag
 pattern COPYFILE_DEFAULT = CopyFileFlag 0
@@ -637,8 +639,8 @@ foreign import ccall unsafe hs_uv_fs_copyfile_threaded
 
 newtype AccessMode = AccessMode CInt
     deriving (Eq, Ord, Show, Generic)
-    deriving newtype (Storable, Unaligned, Bits, FiniteBits, Num)
-    deriving anyclass ToText
+    deriving newtype (Storable, Unaligned, Bits, FiniteBits, Num, EncodeJSON, ToValue, FromValue)
+    deriving anyclass ShowT
 
 pattern F_OK :: AccessMode
 pattern F_OK = AccessMode #{const F_OK}
@@ -650,7 +652,7 @@ pattern X_OK :: AccessMode
 pattern X_OK = AccessMode #{const X_OK}
 
 data AccessResult = NoExistence | NoPermission | AccessOK deriving (Show, Eq, Ord, Generic)
-                                                          deriving anyclass ToText
+                                                          deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 foreign import ccall unsafe hs_uv_fs_access :: BA## Word8 -> AccessMode -> IO Int
 foreign import ccall unsafe hs_uv_fs_access_threaded
@@ -678,8 +680,8 @@ foreign import ccall unsafe hs_uv_fs_lutime_threaded
 
 newtype SymlinkFlag = SymlinkFlag CInt
     deriving (Eq, Ord, Show, Generic)
-    deriving newtype (Storable, Unaligned, Bits, FiniteBits, Num)
-    deriving anyclass ToText
+    deriving newtype (Storable, Unaligned, Bits, FiniteBits, Num, EncodeJSON, ToValue, FromValue)
+    deriving anyclass ShowT
 
 pattern SYMLINK_DEFAULT :: SymlinkFlag
 pattern SYMLINK_DEFAULT = SymlinkFlag 0
@@ -716,8 +718,8 @@ foreign import ccall unsafe hs_uv_fs_realpath_threaded
 -- misc
 
 newtype UVHandleType = UVHandleType CInt deriving (Eq, Ord, Show, Generic)
-                                         deriving newtype (Storable, Unaligned)
-                                         deriving anyclass ToText
+                                         deriving newtype (Storable, Unaligned, EncodeJSON, ToValue, FromValue)
+                                         deriving anyclass ShowT
 
 pattern UV_UNKNOWN_HANDLE :: UVHandleType
 pattern UV_UNKNOWN_HANDLE = UVHandleType #{const UV_UNKNOWN_HANDLE}
@@ -768,7 +770,7 @@ data TimeVal = TimeVal
     { tv_sec  :: {-# UNPACK #-} !CLong
     , tv_usec :: {-# UNPACK #-} !CLong
     } deriving (Show, Read, Eq, Ord, Generic)
-      deriving anyclass ToText
+      deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 -- | Data type for resource usage results.
 --
@@ -792,7 +794,7 @@ data ResUsage = ResUsage
     , ru_nvcsw    :: {-# UNPACK #-} !Word64    -- ^  voluntary context switches (X)
     , ru_nivcsw   :: {-# UNPACK #-} !Word64    -- ^  involuntary context switches (X)
     } deriving (Show, Read, Eq, Ord, Generic)
-      deriving anyclass ToText
+      deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 sizeOfResUsage :: Int
 sizeOfResUsage = #size uv_rusage_t
@@ -827,8 +829,8 @@ foreign import ccall unsafe uv_os_getpriority :: PID -> MBA## CInt -> IO CInt
 foreign import ccall unsafe uv_os_setpriority :: PID -> CInt -> IO CInt
 
 newtype PID = PID CInt deriving (Eq, Ord, Show, Generic)
-                       deriving newtype (Storable, Unaligned)
-                       deriving anyclass ToText
+                       deriving newtype (Storable, Unaligned, EncodeJSON, ToValue, FromValue)
+                       deriving anyclass ShowT
 
 pattern PRIORITY_LOW          :: CInt
 pattern PRIORITY_BELOW_NORMAL :: CInt
@@ -861,7 +863,7 @@ data OSName = OSName
     , os_version :: T.Text
     , os_machine :: T.Text
     } deriving (Eq, Ord, Show, Generic)
-       deriving anyclass ToText
+       deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 getOSName :: IO OSName
 getOSName = do

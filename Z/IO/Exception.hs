@@ -5,6 +5,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 {-|
 Module      : Z.IO.Exception
@@ -87,6 +88,10 @@ import Foreign.Ptr
 import Foreign.C.Types
 import GHC.Stack
 import Z.IO.UV.Errno
+import Z.Data.CBytes (CBytes)
+import qualified Z.Data.CBytes as CB
+import qualified Z.Data.Text.ShowT as T
+
 
 -- | The root type of all io exceptions, you can catch all io exception by catching this root type.
 --
@@ -188,17 +193,29 @@ throwECLOSEDSTM = throwSTM (ResourceVanished
 
 -- | IO exceptions informations.
 --
+-- The 'ShowT' instances does not check if name and description are valid UTF8 string, it's your responsibility
+-- to make sure.
 data IOEInfo = IOEInfo
-    { ioeName        :: String      -- ^ the errno name, e.g. EADDRINUSE, etc. empty if no errno.
-    , ioeDescription :: String      -- ^ description for this io error, can be errno description, or some custom description if no errno.
+    { ioeName        :: CBytes      -- ^ the errno name, e.g. EADDRINUSE, etc. empty if no errno.
+    , ioeDescription :: CBytes      -- ^ description for this io error, can be errno description, or some custom description if no errno.
     , ioeCallStack   :: CallStack   -- ^ lightweight partial call-stack
     }
 
 instance Show IOEInfo where
     show (IOEInfo errno desc cstack) =
-         "{name:" ++ errno ++
-         ", description:" ++ desc ++
+         "{name:" ++ CB.unpack errno ++
+         ", description:" ++ CB.unpack desc ++
          ", callstack:" ++ prettyCallStack cstack ++ "}"
+
+instance T.ShowT IOEInfo where
+    toTextBuilder _ (IOEInfo errno desc cstack) = do
+         "{name:"
+         T.unsafeFromBuilder(CB.toBuilder errno)  -- we use UTF8 name here
+         ", description:"
+         T.unsafeFromBuilder (CB.toBuilder desc)
+         ", callstack:"
+         T.stringUTF8 (prettyCallStack cstack)
+         "}"
 
 throwUVError :: CInt -> IOEInfo -> IO a
 throwUVError e info = case e of
