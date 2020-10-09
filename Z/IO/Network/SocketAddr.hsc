@@ -1,12 +1,3 @@
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE UnliftedFFITypes #-}
-{-# LANGUAGE PatternSynonyms    #-}
-{-# LANGUAGE TypeApplications   #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE UnboxedTuples #-}
-{-# LANGUAGE MagicHash #-}
-
 {-|
 Module      : Z.IO.Network.SocketAddr
 Description : TCP/UDP socket address API
@@ -73,10 +64,11 @@ import qualified Data.List                as List
 import           Data.Typeable
 import           Foreign
 import           Foreign.C
-import           Numeric                  (showHex)
+import           GHC.Generics
+import           Numeric                    (showHex)
 import           System.IO.Unsafe
-import           Text.Read
 import           Z.Data.CBytes
+import           Z.Data.Text.ShowT          (ShowT)
 import           Z.IO.Exception
 import           Z.IO.UV.Errno
 import           Z.Foreign
@@ -487,19 +479,13 @@ pokeSocketAddrMBA p (SocketAddrInet6 port flow addr scope) =  do
 -- True
 -- >>> 50000 + (10000 :: PortNumber)
 -- 60000
-newtype PortNumber = PortNumber Word16 deriving (Eq, Ord, Num, Enum, Bounded, Real, Integral)
+newtype PortNumber = PortNumber Word16 deriving (Eq, Ord, Enum, Generic)
+                                        deriving newtype (Show, Read, Num, Bounded, Real, Integral)
+                                        deriving anyclass ShowT
 
 -- | @:0@
 portAny :: PortNumber
 portAny = PortNumber 0
-
--- Print "n" instead of "PortNum n".
-instance Show PortNumber where
-  showsPrec p (PortNumber pn) = showsPrec p pn
-
--- Read "n" instead of "PortNum n".
-instance Read PortNumber where
-  readPrec = PortNumber <$> readPrec
 
 instance Storable PortNumber where
    sizeOf    _ = sizeOf    (0 :: Word16)

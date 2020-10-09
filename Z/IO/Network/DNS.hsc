@@ -1,7 +1,3 @@
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE RecordWildCards #-}
-
 {-|
 Module      : Z.IO.Network.DNS
 Description : TCP/UDP socket address API

@@ -1,9 +1,3 @@
-{-# LANGUAGE MagicHash #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE OverloadedStrings #-}
-
 {-|
 Module      : Z.IO.IPC
 Description : Named pipe/Unix domain servers and clients

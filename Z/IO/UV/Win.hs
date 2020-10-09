@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-|
 Module      : Z.IO.UV.Win
 Description : Special code on windows

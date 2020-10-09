@@ -1,4 +1,3 @@
-{-# LANGUAGE PatternSynonyms #-}
 {-|
 Module      : Z.IO.UVErrno
 Description : Errno provided by libuv

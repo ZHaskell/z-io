@@ -1,8 +1,3 @@
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE MultiWayIf #-}
-
 {-|
 Module      : Z.IO.UV.Manager
 Description : IO manager based on libuv
