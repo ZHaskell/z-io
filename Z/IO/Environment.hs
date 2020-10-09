@@ -75,7 +75,7 @@ getArgs = do
 -- Warning: This function is not thread safe.
 getAllEnv :: HasCallStack => IO [(CBytes, CBytes)]
 getAllEnv = bracket
-    (do (p_env :: Ptr a, (envc :: CInt, _)) <- allocPrimUnsafe $ \ p_p_env -> do
+    (do (p_env :: Ptr CString, (envc :: CInt, _)) <- allocPrimUnsafe $ \ p_p_env -> do
             allocPrimUnsafe $ \ p_envc ->
                 throwUVIfMinus_ (uv_os_environ p_p_env p_envc)
         return (p_env, envc))
