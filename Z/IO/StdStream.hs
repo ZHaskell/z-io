@@ -53,7 +53,6 @@ module Z.IO.StdStream
 
 import Control.Monad
 import Control.Concurrent.MVar
-import Foreign.C.Types (CInt)
 import Foreign.Ptr
 import System.IO.Unsafe
 import Z.Data.Builder as B

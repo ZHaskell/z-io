@@ -3,8 +3,10 @@
 ## 0.1.4.0  -- 2020-10-02
 
 * Add `Z.IO.Environment` module.
+* Add various instances to data types in `Z.IO.UV.FFI`.
 * Fix a UDP batch receiving bug.
 * Remove `UV` prefix in config data types(`Z.IO.FileSystem`, `Z.IO.UDP`).
+* Change `TCP`, `IPC` server config, move server worker to start params instead of config.
 * `Logger` type rework, colorful logger are possible.
 
 ## 0.1.3.0  -- 2020-09-28
