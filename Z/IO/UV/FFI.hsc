@@ -22,8 +22,6 @@ import           Foreign.Ptr
 import           Foreign.Storable
 import           Z.Data.Array.Unaligned
 import qualified Z.Data.Array  as A 
-import qualified Z.Data.Vector as V
-import qualified Z.Data.Vector.Base as V
 import qualified Z.Data.Text   as T
 import           Z.Data.Text.ShowT   (ShowT(..))
 import           Z.Data.JSON         (EncodeJSON, ToValue, FromValue)
