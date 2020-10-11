@@ -24,7 +24,7 @@ spec = describe "TCP operations" $ do
             longMsg = V.cycleN 2048 "abcdefg"
             addr = SocketAddrInet 12345 inetLoopback
 
-        serverThread <- forkIO $ startTCPServer defaultTCPServerConfig{ tcpListenAddr = addr } echoWorker
+        serverThread <- forkIO $ startTCPServer defaultTCPServerConfig{ tcpListenAddr = addr } echo
 
         threadDelay 100000
 

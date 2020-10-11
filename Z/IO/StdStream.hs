@@ -1,6 +1,6 @@
 {-|
 Module      : Z.IO.StdStream
-Description : TTY devices
+Description : Standard Streams and TTY devices
 Copyright   : (c) Dong Han, 2018~2019
 License     : BSD
 Maintainer  : winterland1989@gmail.com
@@ -39,7 +39,7 @@ module Z.IO.StdStream
   ( -- * Standard input & output streams
     StdStream
   , isStdStreamTTY
-  , TTYMode(TTY_MODE_NORMAL, TTY_MODE_RAW)
+  , getStdStreamFD
   , setStdinTTYMode
   , getStdoutWinSize
   , stdin, stdout, stderr
@@ -49,6 +49,11 @@ module Z.IO.StdStream
   , readLineStd
   , putStd
   , putLineStd
+  -- * Constant
+  -- ** TTYMode
+  , TTYMode
+  , pattern TTY_MODE_NORMAL
+  , pattern TTY_MODE_RAW
   ) where
 
 import Control.Monad
@@ -81,6 +86,10 @@ data StdStream
 isStdStreamTTY :: StdStream -> Bool
 isStdStreamTTY (StdTTY _ _ _) = True
 isStdStreamTTY _              = False
+
+getStdStreamFD :: StdStream -> IO UVFD
+getStdStreamFD (StdTTY hdl _ _) = throwUVIfMinus (hs_uv_fileno hdl)
+getStdStreamFD (StdFile fd) = return fd
 
 instance Input StdStream where
     {-# INLINE readInput #-}
@@ -191,23 +200,26 @@ getStdoutWinSize = case stdout of
 
 --------------------------------------------------------------------------------
 
--- | print a 'ShowT' and flush to stdout.
+-- | Print a 'ShowT' and flush to stdout.
 printStd :: HasCallStack => ShowT a => a -> IO ()
 printStd s = putStd (toBuilder s)
 
--- | print a 'Builder' and flush to stdout.
+-- | Print a 'Builder' and flush to stdout.
 putStd :: HasCallStack => Builder a -> IO ()
 putStd b = withMVar stdoutBuf $ \ o -> do
     writeBuilder o b
     flushBuffer o
 
--- | print a 'Builder' and flush to stdout, with a linefeed.
+-- | Print a 'Builder' and flush to stdout, with a linefeed.
 putLineStd :: HasCallStack => Builder a -> IO ()
 putLineStd b = withMVar stdoutBuf $ \ o -> do
     writeBuilder o (b >> B.char8 '\n')
     flushBuffer o
 
--- | read a line from stdin
+-- | Read a line from stdin
+--
+-- This function will throw 'ECLOSED' when meet EOF, which may cause trouble if stdin is connected
+-- to a file, use 'readLine' instead.
 readLineStd :: HasCallStack => IO V.Bytes
 readLineStd = withMVar stdinBuf $ \ s -> do
     line <- readLine s

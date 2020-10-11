@@ -24,13 +24,7 @@ spec = describe "IPC operations" $ do
             longMsg = V.cycleN 2048 "abcdefg"
             addr = "/tmp/test_ipc"
 
-        serverThread <- forkIO $ startIPCServer defaultIPCServerConfig{
-                ipcListenName = addr
-            ,   ipcServerWorker = \ ipc -> do
-                    i <- newBufferedInput ipc
-                    o <- newBufferedOutput ipc
-                    forever $ readBuffer i >>= writeBuffer o >> flushBuffer o
-            }
+        serverThread <- forkIO $ startIPCServer defaultIPCServerConfig{ ipcListenName = addr } echo
 
         threadDelay 100000
 
