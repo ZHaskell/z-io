@@ -16,14 +16,6 @@ module Z.IO.FileSystem
     File, initFile, readFile, writeFile
     -- * file offset bundle
   , FilePtr, newFilePtr, getFileOffset, setFileOffset
-    -- * opening constant
-  , FileMode(DEFAULT_MODE, S_IRWXU, S_IRUSR, S_IWUSR
-      , S_IXUSR, S_IRWXG, S_IRGRP, S_IWGRP, S_IXGRP, S_IRWXO, S_IROTH
-      )
-  , FileFlag(O_APPEND, O_CREAT, O_DIRECT, O_DSYNC, O_EXCL
-      , O_EXLOCK, O_NOATIME, O_NOFOLLOW, O_RDONLY, O_RDWR, O_SYMLINK
-      , O_SYNC, O_TRUNC, O_WRONLY, O_RANDOM, O_SHORT_LIVED, O_SEQUENTIAL, O_TEMPORARY
-      )
   -- * filesystem operations
   , mkdir
   , unlink
@@ -36,16 +28,64 @@ module Z.IO.FileSystem
   , rename
   , fsync, fdatasync
   , ftruncate
-  , CopyFileFlag(COPYFILE_DEFAULT, COPYFILE_EXCL, COPYFILE_FICLONE)
   , copyfile
-  , AccessMode(F_OK, R_OK, W_OK, X_OK)
   , AccessResult(..)
   , access
   , chmod, fchmod
   , utime, futime, lutime
-  , SymlinkFlag(SYMLINK_DEFAULT, SYMLINK_DIR, SYMLINK_JUNCTION)
   , link, symlink
   , readlink, realpath
+  -- * opening constant
+  -- ** AccessMode
+  , AccessMode
+  , pattern F_OK
+  , pattern R_OK
+  , pattern W_OK
+  , pattern X_OK
+  -- ** FileMode
+  , FileMode
+  , pattern DEFAULT_MODE
+  , pattern S_IRWXU
+  , pattern S_IRUSR
+  , pattern S_IWUSR
+  , pattern S_IXUSR
+  , pattern S_IRWXG
+  , pattern S_IRGRP
+  , pattern S_IWGRP
+  , pattern S_IXGRP
+  , pattern S_IRWXO
+  , pattern S_IROTH
+  -- ** FileFlag
+  , FileFlag
+  , pattern O_APPEND
+  , pattern O_CREAT
+  , pattern O_DIRECT
+  , pattern O_DSYNC
+  , pattern O_EXCL
+  , pattern O_EXLOCK
+  , pattern O_NOATIME
+  , pattern O_NOFOLLOW
+  , pattern O_RDONLY
+  , pattern O_RDWR
+  , pattern O_SYMLINK
+  , pattern O_SYNC
+  , pattern O_TRUNC
+  , pattern O_WRONLY
+  , pattern O_RANDOM
+  , pattern O_SHORT_LIVED
+  , pattern O_SEQUENTIAL
+  , pattern O_TEMPORARY
+  -- ** CopyFileFlag
+  , CopyFileFlag
+  , pattern COPYFILE_DEFAULT
+  , pattern COPYFILE_EXCL
+  , pattern COPYFILE_FICLONE
+  , pattern COPYFILE_FICLONE_FORCE
+  -- ** SymlinkFlag
+  , SymlinkFlag
+  , pattern SYMLINK_DEFAULT
+  , pattern SYMLINK_DIR
+  , pattern SYMLINK_JUNCTION
   ) where
 
 import           Control.Monad
@@ -295,6 +335,7 @@ copyfile path path' flag = throwUVIfMinus_ . withCBytesUnsafe path $ \ p ->
     withCBytesUnsafe path' $ \ p' -> hs_uv_fs_copyfile p p' flag
 
 -- | Equivalent to <http://linux.die.net/man/2/access access(2)> on Unix.
+--
 -- Windows uses GetFileAttributesW().
 access :: HasCallStack => CBytes -> AccessMode -> IO AccessResult
 access path mode = do

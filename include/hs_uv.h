@@ -648,6 +648,19 @@ HsInt hs_uv_fs_readlink_threaded(const char* path, char** result_path, uv_loop_t
 HsInt hs_uv_fs_realpath_threaded(const char* path, char** result_path, uv_loop_t* loop);
 
 ////////////////////////////////////////////////////////////////////////////////
+// process
+
+HsInt hs_uv_spawn(uv_loop_t* loop
+                 , uv_process_options_t* options
+                 , const char* file
+                 , const char* all_args
+                 , const size_t args_len
+                 , const char* all_env
+                 , const ssize_t env_len
+                 , const char* cwd
+                 , uv_stdio_container_t* container);
+
+////////////////////////////////////////////////////////////////////////////////
 // dns
 int uv__getaddrinfo_translate_error(int sys_err);
 HsInt hs_getaddrinfo(const char *node, const char *service,

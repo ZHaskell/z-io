@@ -25,7 +25,6 @@ module Z.IO.Network.UDP (
   , initUDP
   , UDPConfig(..)
   , defaultUDPConfig
-  , UDPFlag(UDP_DEFAULT, UDP_IPV6ONLY, UDP_REUSEADDR)
   , sendUDP
   , UDPRecvConfig(..)
   , defaultUDPRecvConfig
@@ -39,7 +38,6 @@ module Z.IO.Network.UDP (
   , getPeerName
   , sendConnectedUDP
   -- * multicast and broadcast
-  , Membership(JOIN_GROUP, LEAVE_GROUP)
   , setMembership
   , setSourceMembership
   , setMulticastLoop
@@ -47,6 +45,16 @@ module Z.IO.Network.UDP (
   , setMulticastInterface
   , setBroadcast
   , setTTL
+  -- * Constants
+  -- ** UDPFlag
+  , UDPFlag
+  , pattern UDP_DEFAULT
+  , pattern UDP_IPV6ONLY
+  , pattern UDP_REUSEADDR
+  -- ** Membership
+  , Membership
+  , pattern JOIN_GROUP
+  , pattern LEAVE_GROUP
   ) where
 
 import Control.Concurrent

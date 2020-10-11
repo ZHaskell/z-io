@@ -25,6 +25,11 @@ module Z.IO.Network.IPC (
   , IPCServerConfig(..)
   , defaultIPCServerConfig
   , startIPCServer
+  -- * For test
+  , helloWorld
+  , echo
+  -- * Internal helper
+  , initIPCStream
   ) where
 
 import           Control.Concurrent.MVar
@@ -32,13 +37,12 @@ import           Control.Monad
 import           Control.Monad.IO.Class
 import           Data.Primitive.PrimArray
 import           Foreign.Ptr
-import           GHC.Ptr
 import           Z.Data.CBytes
-import           Z.IO.Buffered
 import           Z.IO.Exception
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
 import           Z.IO.UV.Manager
+import           Z.IO.UV.UVStream
 import           Data.Coerce
 
 --------------------------------------------------------------------------------
@@ -79,8 +83,6 @@ initIPCClient (IPCClientConfig cname tname) = do
 data IPCServerConfig = IPCServerConfig
     { ipcListenName       :: CBytes      -- ^ listening path (Unix) or a name (Windows).
     , ipcListenBacklog    :: Int           -- ^ listening pipe's backlog size, should be large enough(>128)
-    , ipcServerWorker     :: UVStream -> IO ()  -- ^ worker which get an accepted IPC stream,
-                                                -- the socket will be closed upon exception or worker finishes.
     }
 
 -- | A default hello world server on @./ipc@
@@ -91,14 +93,18 @@ defaultIPCServerConfig :: IPCServerConfig
 defaultIPCServerConfig = IPCServerConfig
     "./ipc"
     256
-    (\ uvs -> writeOutput uvs (Ptr "hello world"#) 11)
 
 -- | Start a server
 --
 -- Fork new worker thread upon a new connection.
 --
-startIPCServer :: HasCallStack => IPCServerConfig -> IO ()
-startIPCServer IPCServerConfig{..} = do
+startIPCServer :: HasCallStack
+               => IPCServerConfig
+               -> (UVStream -> IO ())  -- ^ worker which get an accepted IPC stream,
+                                        -- run in a seperated haskell thread,
+                                       --  will be closed upon exception or worker finishes.
+               -> IO ()
+startIPCServer IPCServerConfig{..} ipcServerWorker = do
     let backLog = max ipcListenBacklog 128
     serverUVManager <- getUVManager
     withResource (initIPCStream serverUVManager) $ \ (UVStream serverHandle serverSlot _ _) -> do

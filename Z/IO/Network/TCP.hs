@@ -23,8 +23,9 @@ module Z.IO.Network.TCP (
   , defaultTCPServerConfig
   , startTCPServer
   , getTCPPeerName
-  , helloWorldWorker
-  , echoWorker
+  -- * For test
+  , helloWorld
+  , echo
   -- * Internal helper
   , setTCPNoDelay
   , setTCPKeepAlive
@@ -36,14 +37,12 @@ import           Control.Monad
 import           Control.Monad.IO.Class
 import           Data.Primitive.PrimArray
 import           Foreign.Ptr
-import           Foreign.C
-import           GHC.Ptr
-import           Z.IO.Buffered
 import           Z.IO.Exception
 import           Z.IO.Network.SocketAddr
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
 import           Z.IO.UV.Manager
+import           Z.IO.UV.UVStream
 import           Z.Foreign
 import           Data.Coerce
 
@@ -106,17 +105,6 @@ defaultTCPServerConfig = TCPServerConfig
     True
     30
 
--- | A server worker output "hello world" and close the connection.
-helloWorldWorker :: UVStream -> IO ()
-helloWorldWorker uvs = writeOutput uvs (Ptr "hello world"#) 11
-
--- | A server worker echo whatever received bytes.
-echoWorker :: UVStream -> IO ()
-echoWorker uvs = do
-    i <- newBufferedInput uvs
-    o <- newBufferedOutput uvs
-    forever $ readBuffer i >>= writeBuffer o >> flushBuffer o
-
 -- | Start a server
 --
 -- Fork new worker thread upon a new connection.
@@ -125,7 +113,7 @@ startTCPServer :: HasCallStack
                => TCPServerConfig
                -> (UVStream -> IO ())   -- ^ worker which will get an accepted TCP stream and
                                         -- run in a seperated haskell thread,
-                                        -- the socket will be closed upon exception or worker finishes.
+                                        -- will be closed upon exception or worker finishes.
                -> IO ()
 startTCPServer TCPServerConfig{..} tcpServerWorker = do
     let backLog = max tcpListenBacklog 128
@@ -155,6 +143,8 @@ startTCPServer TCPServerConfig{..} tcpServerWorker = do
 -- we allocate a buffer to hold accepted FDs, pass it just like a normal reading buffer.
 -- then we can start listening.
                 acceptBuf <- newPinnedPrimArray backLog
+                -- https://stackoverflow.com/questions/1953639/is-it-safe-to-cast-socket-to-int-under-win64
+                -- UVFD is 32bit CInt, it's large enough to hold uv_os_sock_t
                 let acceptBufPtr = coerce (mutablePrimArrayContents acceptBuf :: Ptr UVFD)
 
                 withUVManager' serverUVManager $ do
