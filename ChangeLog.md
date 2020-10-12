@@ -1,5 +1,11 @@
 # Revision history for Z-IO
 
+## 0.1.5.0  -- 2020-10-02
+
+* Add `Z.IO.Process` module.
+* Move many flag type to type alias from newtype, adjust patterns haddock.
+* Sync IPC's server API to TCP's.
+
 ## 0.1.4.0  -- 2020-10-02
 
 * Add `Z.IO.Environment` module.

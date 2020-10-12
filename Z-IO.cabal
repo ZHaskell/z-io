@@ -1,6 +1,6 @@
 cabal-version:              2.4
 name:                       Z-IO
-version:                    0.1.4.0
+version:                    0.1.5.0
 synopsis:                   Simple and high performance IO toolkit for Haskell
 description:                Simple and high performance IO toolkit for Haskell, including
                             file system, network, ipc and more!
@@ -95,7 +95,6 @@ library
                             Z.IO.Process
                             Z.IO.Resource
                             Z.IO.StdStream
-                            -- Z.IO.StdStream.Ansi
 
                             Z.IO.UV.Errno
                             Z.IO.UV.FFI
@@ -108,7 +107,7 @@ library
                             Z.Compression.Zlib
 
     build-depends:          base                    >= 4.12 && <5.0
-                          , Z-Data                  >= 0.1.6 && <0.1.7
+                          , Z-Data                  >= 0.1.6.1 && <0.1.7
                           , primitive               >= 0.7.1 && < 0.7.2
                           , exceptions              == 0.10.*
                           , time                    >= 1.8 && < 2.0
