@@ -19,7 +19,7 @@ The threadpool version operations have overheads similar to safe FFI, but provid
 
 module Z.IO.FileSystem.Threaded
   ( -- * regular file devices
-    FileT, initFileT, readFileT, writeFileT
+    FileT, initFileT, readFileT, writeFileT, getFileTFD
     -- * file offset bundle
   , FilePtrT, newFilePtrT, getFileOffset, setFileOffset
   -- * filesystem operations
@@ -125,6 +125,12 @@ import           Z.IO.UV.Manager
 --
 data FileT =  FileT  {-# UNPACK #-} !UVFD      -- ^ the file
                      {-# UNPACK #-} !(IORef Bool)  -- ^ closed flag
+
+-- | Return FileT fd.
+getFileTFD :: FileT -> IO UVFD
+getFileTFD (FileT fd closedRef) = do
+    closed <- readIORef closedRef
+    if closed then throwECLOSED else return fd
 
 -- | If fd is -1 (closed), throw 'ResourceVanished' ECLOSED.
 checkFileTClosed :: HasCallStack => FileT -> (UVFD -> IO a) -> IO a
