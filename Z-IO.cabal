@@ -353,6 +353,7 @@ test-suite Z-IO-Test
                             Z.IO.Network.TCPSpec
                             -- Z.IO.Network.IPCSpec
                             Z.IO.LowResTimerSpec
+                            Z.IO.ProcessSpec
                             Z.IO.ResourceSpec
 
     ghc-options:            -threaded
