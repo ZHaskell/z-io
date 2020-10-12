@@ -49,6 +49,8 @@ module Z.IO.StdStream
   , readLineStd
   , putStd
   , putLineStd
+    -- * re-export
+  , withMVar
   -- * Constant
   -- ** TTYMode
   , TTYMode

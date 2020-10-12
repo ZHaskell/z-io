@@ -103,6 +103,7 @@ library
                             Z.IO.UV.Win
 
                             Z.IO.Environment
+                            Z.IO
 
                             Z.Compression.Zlib
 
