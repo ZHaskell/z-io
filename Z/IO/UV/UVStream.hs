@@ -84,8 +84,12 @@ closeUVStream (UVStream hdl _ uvm closed) = withUVManager' uvm $ do
     -- hs_uv_handle_close won't return error
     unless c $ writeIORef closed True >> hs_uv_handle_close hdl
 
-getUVStreamFD :: UVStream -> IO UVFD
-getUVStreamFD (UVStream hdl _ _ _) = throwUVIfMinus (hs_uv_fileno hdl)
+-- | Get stream fd
+getUVStreamFD :: HasCallStack => UVStream -> IO UVFD
+getUVStreamFD (UVStream hdl _ _ closed) = do
+    c <- readIORef closed
+    when c throwECLOSED
+    throwUVIfMinus (hs_uv_fileno hdl)
 
 instance Input UVStream where
     -- readInput :: HasCallStack => UVStream -> Ptr Word8 ->  Int -> IO Int

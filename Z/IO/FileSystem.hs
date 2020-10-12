@@ -13,7 +13,7 @@ This module provide IO operations related to filesystem, operations are implemen
 
 module Z.IO.FileSystem
   ( -- * regular file devices
-    File, initFile, readFile, writeFile
+    File, initFile, readFile, writeFile, getFileFD
     -- * file offset bundle
   , FilePtr, newFilePtr, getFileOffset, setFileOffset
   -- * filesystem operations
@@ -116,6 +116,12 @@ import           Prelude hiding (writeFile, readFile)
 --
 data File =  File  {-# UNPACK #-} !UVFD      -- ^ the file
                    {-# UNPACK #-} !(IORef Bool)  -- ^ closed flag
+
+-- | Return File fd.
+getFileFD :: File -> IO UVFD
+getFileFD (File fd closedRef) = do
+    closed <- readIORef closedRef
+    if closed then throwECLOSED else return fd
 
 -- | If fd is -1 (closed), throw 'ResourceVanished' ECLOSED.
 checkFileClosed :: HasCallStack => File -> (UVFD -> IO a) -> IO a
