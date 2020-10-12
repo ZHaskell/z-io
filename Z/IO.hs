@@ -13,17 +13,17 @@ such as resource management, buffered IO and std streams.
 -}
 
 module Z.IO
-  ( module Std.IO.Buffered
-  , module Std.IO.Environment
-  , module Std.IO.Exception
-  , module Std.IO.Logger
-  , module Std.IO.Resource
-  , module Std.IO.StdStream
+  ( module Z.IO.Buffered
+  , module Z.IO.Environment
+  , module Z.IO.Exception
+  , module Z.IO.Logger
+  , module Z.IO.Resource
+  , module Z.IO.StdStream
   ) where
 
-import Std.IO.Buffered
-import Std.IO.Environment
-import Std.IO.Exception
-import Std.IO.Logger
-import Std.IO.Resource
-import Std.IO.StdStream
+import Z.IO.Buffered
+import Z.IO.Environment
+import Z.IO.Exception
+import Z.IO.Logger
+import Z.IO.Resource
+import Z.IO.StdStream
