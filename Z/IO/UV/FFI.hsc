@@ -760,18 +760,18 @@ data ProcessOptions = ProcessOptions
        deriving anyclass ShowT
 
 data ProcessStdStream
-    = ProcIgnore
-    | ProcCreate
-    | ProcInherit UVFD
+    = ProcessIgnore     -- ^ redirect process std stream to /dev/null
+    | ProcessCreate     -- ^ create a new std stream
+    | ProcessInherit UVFD -- ^ pass an existing FD to child process as std stream
   deriving  (Eq, Ord, Show, Generic)
   deriving anyclass ShowT
 
 processStdStreamFlag :: ProcessStdStream -> CInt
-processStdStreamFlag ProcIgnore = #const UV_IGNORE
-processStdStreamFlag ProcCreate = (#const UV_CREATE_PIPE) 
+processStdStreamFlag ProcessIgnore = #const UV_IGNORE
+processStdStreamFlag ProcessCreate = (#const UV_CREATE_PIPE) 
                             .|. (#const UV_READABLE_PIPE)
                             .|. (#const UV_WRITABLE_PIPE)
-processStdStreamFlag (ProcInherit _) = #const UV_INHERIT_FD
+processStdStreamFlag (ProcessInherit _) = #const UV_INHERIT_FD
 
 foreign import ccall unsafe hs_uv_spawn :: Ptr UVLoop 
                                         -> MBA## ProcessOptions         --  option
@@ -783,6 +783,8 @@ foreign import ccall unsafe hs_uv_spawn :: Ptr UVLoop
                                         -> BA## Word8                   --  cwd
                                         -> MBA## ProcessStdStream       -- stdio
                                         -> IO Int
+
+foreign import ccall unsafe uv_kill :: CInt -> CInt -> IO CInt
 
 --------------------------------------------------------------------------------
 -- misc
