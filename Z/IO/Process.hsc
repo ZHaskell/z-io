@@ -36,7 +36,6 @@ module Z.IO.Process (
   , Signal
   , pattern SIGTERM 
   , pattern SIGINT 
-  , pattern SIGQUIT
   , pattern SIGKILL
   , pattern SIGHUP 
   -- ** Priority
@@ -113,13 +112,11 @@ killPID (PID pid) sig = throwUVIfMinus_ (uv_kill pid sig)
 
 pattern SIGTERM :: Signal
 pattern SIGINT  :: Signal
-pattern SIGQUIT :: Signal
 pattern SIGKILL :: Signal
 pattern SIGHUP  :: Signal
 pattern SIGTERM = #const SIGTERM
 pattern SIGINT  = #const SIGINT
-pattern SIGQUIT = #const SIGQUIT
-pattern SIGKILL = #const SIGKILL
+pattern SIGKILL = 9  -- on windows this is absent
 pattern SIGHUP  = #const SIGHUP
 
 -- | Resource spawn processes.
