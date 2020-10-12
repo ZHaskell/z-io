@@ -49,13 +49,17 @@ spec = describe "process" $ do
         assertEqual "exit code" (ExitFailure 8) ecode
 
     it "redirect stdin, stdout to file" $ do
-        withResource (initFile "./test-stdin" (O_RDWR .|. O_CREAT) DEFAULT_MODE) $ \ input -> do
+
+        tempdir <- mkdtemp "stdio-filesystem-unit"
+        let ifilename = tempdir <> "/test-stdin"
+            ofilename = tempdir <> "/test-stdout"
+        withResource (initFile ifilename (O_RDWR .|. O_CREAT) DEFAULT_MODE) $ \ input -> do
             bi <- newBufferedOutput' 4096 input
             writeBuffer bi "hello world" >> flushBuffer bi
 
-        (o, ecode) <- withResource (initFile "./test-stdin" O_RDWR DEFAULT_MODE) $ \ input -> do
+        ecode <- withResource (initFile ifilename O_RDWR DEFAULT_MODE) $ \ input -> do
 
-            withResource (initFile "./test-stdout" (O_RDWR .|. O_CREAT) DEFAULT_MODE) $ \ output -> do
+            withResource (initFile ofilename (O_RDWR .|. O_CREAT) DEFAULT_MODE) $ \ output -> do
 
                 iF <- getFileFD input
                 oF <- getFileFD output
@@ -65,20 +69,16 @@ spec = describe "process" $ do
                     ,   processStdStreams = (ProcessInherit iF, ProcessInherit oF, ProcessIgnore)
                     }) $ \ (_, _, _, pstate) -> do
 
-                        bo <- newBufferedInput' 4096 output
-                        o <- readBuffer bo
+                        waitProcessExit pstate
 
-                        forkIO $ do
-                            threadDelay 1000000
-                            getProcessPID pstate >>= \ (Just pid) -> killPID pid SIGTERM
+        withResource (initFile ofilename (O_RDWR .|. O_CREAT) DEFAULT_MODE) $ \ output -> do
+            bo <- newBufferedInput' 4096 output
+            o <- readBuffer bo
+            assertEqual "cat echo back" "hello world" o
 
-                        ecode <- waitProcessExit pstate
-                        return (o, ecode)
+        assertEqual "exit code" ecode ExitSuccess
 
         -- clean up file
-        unlink "./test-stdin"
-        unlink "./test-stdout"
-
-        withResource (initFile "./test-stdout" (O_RDWR .|. O_CREAT) DEFAULT_MODE) $ \ output -> do
-            assertEqual "cat echo back" "hello world" o
-            assertEqual "exit code" ecode ExitSuccess
+        unlink ifilename
+        unlink ofilename
+        rmdir tempdir
