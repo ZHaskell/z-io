@@ -748,14 +748,18 @@ pattern PROCESS_WINDOWS_HIDE_GUI = (#const UV_PROCESS_WINDOWS_HIDE_GUI)
 -}
 
 data ProcessOptions = ProcessOptions
-    { processFile :: CBytes
-    , processArgs :: [CBytes]
-    , processEnv  :: Maybe [(CBytes, CBytes)]   -- ^ Optional environment (otherwise inherit from the current process)
-    , processCWD :: CBytes
-    , processFlags :: ProcessFlag
+    { processFile :: CBytes                     -- ^ Path pointing to the program to be executed.
+    , processArgs :: [CBytes]                   -- ^ Command line arguments. 
+                                                -- On Windows this uses CreateProcess which concatenates
+                                                -- the arguments into a string this can cause some strange errors.
+                                                -- See the 'PROCESS_WINDOWS_VERBATIM_ARGUMENTS'.
+    , processEnv  :: Maybe [(CBytes, CBytes)]   -- ^ Optional environment(otherwise inherit from the current process).
+    , processCWD :: CBytes                      -- ^ Current working directory for the subprocess.
+    , processFlags :: ProcessFlag               -- ^ Various flags that control how spawn behaves
     , processUID :: UID -- ^ This happens only when the appropriate bits are set in the flags fields.
     , processGID :: GID -- ^ This happens only when the appropriate bits are set in the flags fields.
-    , processStdStreams :: (ProcessStdStream, ProcessStdStream, ProcessStdStream)
+    , processStdStreams :: (ProcessStdStream, ProcessStdStream, ProcessStdStream) -- ^ Specifying how (stdin, stdout, stderr) should be passed/created to the child, see 'ProcessStdStream'
+                            
     }  deriving (Eq, Ord, Show, Generic)
        deriving anyclass ShowT
 
@@ -903,12 +907,13 @@ newtype PID = PID CInt
     deriving newtype (Storable, Prim, Unaligned, EncodeJSON, ToValue, FromValue)
     deriving anyclass ShowT
 
-pattern PRIORITY_LOW          :: CInt
-pattern PRIORITY_BELOW_NORMAL :: CInt
-pattern PRIORITY_NORMAL       :: CInt
-pattern PRIORITY_ABOVE_NORMAL :: CInt
-pattern PRIORITY_HIGH         :: CInt
-pattern PRIORITY_HIGHEST      :: CInt
+type Priority = CInt
+pattern PRIORITY_LOW          :: Priority
+pattern PRIORITY_BELOW_NORMAL :: Priority
+pattern PRIORITY_NORMAL       :: Priority
+pattern PRIORITY_ABOVE_NORMAL :: Priority
+pattern PRIORITY_HIGH         :: Priority
+pattern PRIORITY_HIGHEST      :: Priority
 pattern PRIORITY_LOW           = #const UV_PRIORITY_LOW         
 pattern PRIORITY_BELOW_NORMAL  = #const UV_PRIORITY_BELOW_NORMAL  
 pattern PRIORITY_NORMAL        = #const UV_PRIORITY_NORMAL        

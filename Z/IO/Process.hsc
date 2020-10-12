@@ -19,30 +19,40 @@ import Z.IO.Process
 module Z.IO.Process (
     initProcess
   , readProcess 
+  , readProcessText
   , ProcessOptions(..)
   , defaultProcessOptions
   , ProcessStdStream(..)
   , ProcessState(..)
+  , ExitCode(..)
   , waitProcessExit
   , getProcessPID
   , killPID
+  , getPriority, setPriority
   -- * internal 
   , spawn
   -- * Constant
   -- ** Signal
+  , Signal
   , pattern SIGTERM 
   , pattern SIGINT 
   , pattern SIGQUIT
   , pattern SIGKILL
   , pattern SIGHUP 
+  -- ** Priority
+  , Priority
+  , pattern PRIORITY_LOW
+  , pattern PRIORITY_BELOW_NORMAL
+  , pattern PRIORITY_NORMAL
+  , pattern PRIORITY_ABOVE_NORMAL
+  , pattern PRIORITY_HIGH
+  , pattern PRIORITY_HIGHEST
   ) where
 
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad
-import Data.Int
 import Data.Primitive.ByteArray
-import Foreign.C.Types
 import GHC.Generics
 import GHC.Conc.Signal (Signal)
 import System.Exit
@@ -65,6 +75,7 @@ import Z.IO.UV.UVStream
 
 #include "uv.h"
 
+-- | Default process options, start @"./main"@ with no arguments, redirect all std streams to @/dev/null@.
 defaultProcessOptions :: ProcessOptions
 defaultProcessOptions = ProcessOptions
     { processFile = "./main"
@@ -97,7 +108,7 @@ getProcessPID svar = atomically $ do
               _ -> return Nothing
 
 -- | Send signals to process.
-killPID :: PID -> Signal -> IO ()
+killPID :: HasCallStack => PID -> Signal -> IO ()
 killPID (PID pid) sig = throwUVIfMinus_ (uv_kill pid sig)
 
 pattern SIGTERM :: Signal
@@ -114,51 +125,65 @@ pattern SIGHUP  = #const SIGHUP
 -- | Resource spawn processes.
 --
 -- Return a resource spawn processes, when initiated return the @(stdin, stdout, stderr, pstate)@ tuple, 
--- and fork a seperated thread waiting process exit, i.e. the @pstate@ will be updated to `ProcessExited`
--- automatically when the process exits.
+-- std streams are created when pass 'ProcessCreate' option, otherwise will be 'Nothing',
+-- @pstate@ will be updated to `ProcessExited` automatically when the process exits.
 -- 
 -- A cleanup thread will be started when you finish using the process resource, to close any std stream 
--- created during spawn, i.e. 'ProcessCreate' option are passed.
+-- created during spawn.
 --
 -- @
---    initProcess defaultProcessOptions{processFile="your program" ...} $ (stdin, stdout, stderr, pstate) -> do
---      ... -- read or write from child process's std stream
---      waitProcessExit pstate  -- if you want to wait for process exit on current thread.
+--    initProcess defaultProcessOptions{
+--          processFile="your program" 
+--      ,   processStdStreams = (ProcessCreate, ProcessCreate, ProcessCreate)
+--      } $ (stdin, stdout, stderr, pstate) -> do
+--      ... -- read or write from child process's std stream, will clean up automatically
+--      waitProcessExit pstate  -- wait for process exit on current thread.
 -- @
 initProcess :: ProcessOptions -> Resource (Maybe UVStream, Maybe UVStream, Maybe UVStream, TVar ProcessState)
 initProcess opt = initResource (spawn opt) $ \ (s0,s1,s2, pstate) -> void . forkIO $ do
-    waitProcessExit pstate
+    _ <- waitProcessExit pstate
     forM_ s0 closeUVStream
     forM_ s1 closeUVStream
     forM_ s2 closeUVStream
 
--- | Spawn a processe with given UTF8 textual input.
+-- | Spawn a processe with given input.
 --
--- Result output are collected as UTF8 bytes, return with exit code.
-readProcess :: ProcessOptions                   -- ^ processStdStreams options are ignored
-            -> T.Text                           -- ^ stdin
-            -> IO (T.Text, T.Text, ExitCode)    -- ^ stdout, stderr, exit code
+-- Child process's stdout and stderr output are collected, return with exit code.
+readProcess :: HasCallStack 
+            => ProcessOptions                   -- ^ processStdStreams options are ignored
+            -> V.Bytes                          -- ^ stdin
+            -> IO (V.Bytes, V.Bytes, ExitCode)  -- ^ stdout, stderr, exit code
 readProcess opts inp = do
     withResource (initProcess opts{processStdStreams=(ProcessCreate, ProcessCreate, ProcessCreate)}) 
         $ \ (Just s0, Just s1, Just s2, pstate) -> do
             r1 <- newEmptyMVar 
             r2 <- newEmptyMVar 
-            forkIO $ do
-                withPrimVectorSafe (T.getUTF8Bytes inp) (writeOutput s0)
+            _ <- forkIO $ do
+                withPrimVectorSafe inp (writeOutput s0)
                 closeUVStream s0
-            forkIO $ do
+            _ <- forkIO $ do
                 b1 <- newBufferedInput s1
-                readAll' b1 >>= putMVar r1 . T.validate
-            forkIO $ do
+                readAll' b1 >>= putMVar r1
+            _ <- forkIO $ do
                 b2 <- newBufferedInput s2
-                readAll' b2 >>= putMVar r2 . T.validate
+                readAll' b2 >>= putMVar r2 
             (,,) <$> takeMVar r1 <*> takeMVar r2 <*> waitProcessExit pstate
 
+-- | Spawn a processe with given UTF8 textual input.
+--
+-- Child process's stdout and stderr output are collected as UTF8 bytes, return with exit code.
+readProcessText :: HasCallStack 
+                => ProcessOptions                   -- ^ processStdStreams options are ignored
+                -> T.Text                           -- ^ stdin
+                -> IO (T.Text, T.Text, ExitCode)    -- ^ stdout, stderr, exit code
+readProcessText opts inp = do
+    (out, err, e) <- readProcess opts (T.getUTF8Bytes inp)
+    return (T.validate out, T.validate err, e)
 
 -- | Spawn a new thread
 --
--- Please manually close child process's std stream(if there'are any created) after process exists.
-spawn :: ProcessOptions -> IO (Maybe UVStream, Maybe UVStream, Maybe UVStream, TVar ProcessState)
+-- Please manually close child process's std stream(if any) after process exists.
+spawn :: HasCallStack => ProcessOptions -> IO (Maybe UVStream, Maybe UVStream, Maybe UVStream, TVar ProcessState)
 spawn ProcessOptions{..} = do
 
     (MutableByteArray popts) <- newByteArray (#size uv_process_options_t)
@@ -243,3 +268,21 @@ spawn ProcessOptions{..} = do
 
 
     return (uvs0', uvs1', uvs2', ps)
+
+-- | Retrieves the scheduling priority of the process specified by pid.
+--
+-- The returned value of priority is between -20 (high priority) and 19 (low priority).
+-- On Windows, the returned priority will equal one of the PRIORITY constants.
+getPriority :: HasCallStack => PID -> IO Priority
+getPriority pid = do
+    (p, _) <- allocPrimUnsafe $ \ p_p -> throwUVIfMinus_ (uv_os_getpriority pid p_p)
+    return p
+
+-- | Sets the scheduling priority of the process specified by pid.
+--
+-- The priority value range is between -20 (high priority) and 19 (low priority).
+-- The constants 'PRIORITY_LOW', 'PRIORITY_BELOW_NORMAL', 'PRIORITY_NORMAL',
+-- 'PRIORITY_ABOVE_NORMAL', 'PRIORITY_HIGH', and 'PRIORITY_HIGHEST' are also provided for convenience.
+--
+setPriority :: HasCallStack => PID -> Priority -> IO ()
+setPriority pid p = throwUVIfMinus_ (uv_os_setpriority pid p)

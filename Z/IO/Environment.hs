@@ -24,13 +24,6 @@ module Z.IO.Environment
   , getHighResolutionTime
   , PID(..)
   , getPID, getPPID
-  , getPriority, setPriority
-  , pattern PRIORITY_LOW
-  , pattern PRIORITY_BELOW_NORMAL
-  , pattern PRIORITY_NORMAL
-  , pattern PRIORITY_ABOVE_NORMAL
-  , pattern PRIORITY_HIGH
-  , pattern PRIORITY_HIGHEST
   , getHostname
   , getOSName, OSName(..)
   , getRandom, getRandomT
@@ -155,24 +148,6 @@ getPID = uv_os_getpid
 -- | Returns the parent process ID.
 getPPID :: IO PID
 getPPID = uv_os_getppid
-
--- | Retrieves the scheduling priority of the process specified by pid.
---
--- The returned value of priority is between -20 (high priority) and 19 (low priority).
--- On Windows, the returned priority will equal one of the PRIORITY constants.
-getPriority :: HasCallStack => PID -> IO CInt
-getPriority pid = do
-    (p, _) <- allocPrimUnsafe $ \ p_p -> throwUVIfMinus_ (uv_os_getpriority pid p_p)
-    return p
-
--- | Sets the scheduling priority of the process specified by pid.
---
--- The priority value range is between -20 (high priority) and 19 (low priority).
--- The constants 'PRIORITY_LOW', 'PRIORITY_BELOW_NORMAL', 'PRIORITY_NORMAL',
--- 'PRIORITY_ABOVE_NORMAL', 'PRIORITY_HIGH', and 'PRIORITY_HIGHEST' are also provided for convenience.
---
-setPriority :: HasCallStack => PID -> CInt -> IO ()
-setPriority pid p = throwUVIfMinus_ (uv_os_setpriority pid p)
 
 -- | Returns the hostname as a null-terminated string.
 --
