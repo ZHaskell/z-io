@@ -123,7 +123,9 @@ startTCPServer TCPServerConfig{..} tcpServerWorker = do
         withSocketAddrUnsafe tcpListenAddr $ \ addrPtr -> do
             throwUVIfMinus_ (uv_tcp_bind serverHandle addrPtr 0)
         bracket
-            (throwOOMIfNull $ hs_uv_accept_check_alloc serverHandle)
+            (do check <- throwOOMIfNull $ hs_uv_accept_check_alloc
+                throwUVIfMinus_ (hs_uv_accept_check_init check serverHandle)
+                return check)
             hs_uv_accept_check_close $
             \ check -> do
 -- The buffer passing of accept is a litte complicated here, to get maximum performance,
@@ -152,10 +154,10 @@ startTCPServer TCPServerConfig{..} tcpServerWorker = do
                     pokeBufferTable serverUVManager serverSlot acceptBufPtr (backLog-1)
                     throwUVIfMinus_ (hs_uv_listen serverHandle (fromIntegral backLog))
 -- Step 2.
--- we initiate a uv_check_t for given uv_stream_t, with predefined checking callback
+-- we start a uv_check_t for given uv_stream_t, with predefined checking callback
 -- see hs_accept_check_cb in hs_uv_stream.c
-                    throwUVIfMinus_ $ hs_uv_accept_check_init check
---
+                    throwUVIfMinus_ $ hs_uv_accept_check_start check
+
                 m <- getBlockMVar serverUVManager serverSlot
                 forever $ do
                     -- wait until accept some FDs

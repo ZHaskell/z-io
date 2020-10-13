@@ -111,7 +111,9 @@ startIPCServer IPCServerConfig{..} ipcServerWorker = do
         withCBytesUnsafe ipcListenName $ \ name_p -> do
             throwUVIfMinus_ (uv_pipe_bind serverHandle name_p)
         bracket
-            (throwOOMIfNull $ hs_uv_accept_check_alloc serverHandle)
+            (do check <- throwOOMIfNull $ hs_uv_accept_check_alloc
+                throwUVIfMinus_ (hs_uv_accept_check_init check serverHandle)
+                return check)
             hs_uv_accept_check_close $
             \ check -> do
 
@@ -139,9 +141,9 @@ startIPCServer IPCServerConfig{..} ipcServerWorker = do
                     pokeBufferTable serverUVManager serverSlot acceptBufPtr (backLog-1)
                     throwUVIfMinus_ (hs_uv_listen serverHandle (fromIntegral backLog))
 -- Step 2.
--- we initiate a uv_check_t for given uv_stream_t, with predefined checking callback
+-- we start a uv_check_t for given uv_stream_t, with predefined checking callback
 -- see hs_accept_check_cb in hs_uv_stream.c
-                    throwUVIfMinus_ $ hs_uv_accept_check_init check
+                    throwUVIfMinus_ $ hs_uv_accept_check_start check
 
                 m <- getBlockMVar serverUVManager serverSlot
                 forever $ do

@@ -258,8 +258,9 @@ int hs_uv_listen(uv_stream_t* stream, int backlog);
 void hs_uv_listen_resume(uv_stream_t* server);
 int hs_uv_read_start(uv_stream_t* handle);
 HsInt hs_uv_write(uv_stream_t* handle, char* buf, HsInt buf_size);
-uv_check_t* hs_uv_accept_check_alloc(uv_stream_t* server);
-int hs_uv_accept_check_init(uv_check_t* check);
+uv_check_t* hs_uv_accept_check_alloc();
+int hs_uv_accept_check_init(uv_check_t* check, uv_stream_t* server);
+int hs_uv_accept_check_start(uv_check_t* check);
 void hs_uv_accept_check_close(uv_check_t* check);
 
 ////////////////////////////////////////////////////////////////////////////////

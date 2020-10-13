@@ -15,8 +15,6 @@ module Z.Compression.Zlib(
   , defaultCompressConfig
   , compress
   , compressSink
-  , Strategy (Z_FILTERED, Z_HUFFMAN_ONLY, Z_RLE, Z_FIXED, Z_DEFAULT_STRATEGY)
-  , CompressLevel(Z_BEST_SPEED, Z_BEST_COMPRESSION, Z_DEFAULT_COMPRESSION)
   , WindowBits
   , defaultWindowBits
   , MemLevel
@@ -26,6 +24,19 @@ module Z.Compression.Zlib(
   , defaultDecompressConfig
   , decompress
   , decompressSource
+  -- * Constants
+  -- ** Strategy 
+  , Strategy 
+  , pattern Z_FILTERED
+  , pattern Z_HUFFMAN_ONLY
+  , pattern Z_RLE
+  , pattern Z_FIXED
+  , pattern Z_DEFAULT_STRATEGY
+  -- ** CompressLevel
+  , CompressLevel
+  , pattern Z_BEST_SPEED
+  , pattern Z_BEST_COMPRESSION
+  , pattern Z_DEFAULT_COMPRESSION
   ) where
 
 import           Control.Monad
@@ -46,53 +57,44 @@ import           Z.IO.Exception
 
 #include "zlib.h"
 
-newtype Strategy = Strategy CInt deriving (Eq, Ord, Show, Generic)
-                                    deriving anyclass ShowT
+type Strategy = CInt 
 
 pattern Z_FILTERED           :: Strategy
 pattern Z_HUFFMAN_ONLY       :: Strategy
 pattern Z_RLE                :: Strategy
 pattern Z_FIXED              :: Strategy
 pattern Z_DEFAULT_STRATEGY   :: Strategy
-pattern Z_FILTERED           = Strategy (#const Z_FILTERED        )
-pattern Z_HUFFMAN_ONLY       = Strategy (#const Z_HUFFMAN_ONLY    )
-pattern Z_RLE                = Strategy (#const Z_RLE             )
-pattern Z_FIXED              = Strategy (#const Z_FIXED           )
-pattern Z_DEFAULT_STRATEGY   = Strategy (#const Z_DEFAULT_STRATEGY)
+pattern Z_FILTERED           = #const Z_FILTERED        
+pattern Z_HUFFMAN_ONLY       = #const Z_HUFFMAN_ONLY    
+pattern Z_RLE                = #const Z_RLE             
+pattern Z_FIXED              = #const Z_FIXED           
+pattern Z_DEFAULT_STRATEGY   = #const Z_DEFAULT_STRATEGY
 
-
-newtype CompressLevel = CompressLevel CInt deriving (Eq, Ord, Show, Generic)
-                                            deriving anyclass ShowT
+type CompressLevel = CInt 
 
 -- pattern Z_NO_COMPRESSION       =  CompressLevel (#const Z_NO_COMPRESSION     )
 pattern Z_BEST_SPEED          :: CompressLevel
 pattern Z_BEST_COMPRESSION    :: CompressLevel
 pattern Z_DEFAULT_COMPRESSION :: CompressLevel
-pattern Z_BEST_SPEED           =  CompressLevel (#const Z_BEST_SPEED         )
-pattern Z_BEST_COMPRESSION     =  CompressLevel (#const Z_BEST_COMPRESSION   )
-pattern Z_DEFAULT_COMPRESSION  =  CompressLevel (#const Z_DEFAULT_COMPRESSION)
+pattern Z_BEST_SPEED          = #const Z_BEST_SPEED         
+pattern Z_BEST_COMPRESSION    = #const Z_BEST_COMPRESSION   
+pattern Z_DEFAULT_COMPRESSION = #const Z_DEFAULT_COMPRESSION
 
 {- | The 'WindowBits' is the base two logarithm of the maximum window size (the size of the history buffer).
 It should be in the range 8..15 for this version of the library. The 'defaultWindowBits' value is 15. Decompressing windowBits must be greater than or equal to the compressing windowBits. If a compressed stream with a larger window size is given as input, decompress will throw 'ZDataError'
 windowBits can also be –8..–15 for raw inflate. In this case, -windowBits determines the window size. inflate() will then process raw deflate data, not looking for a zlib or gzip header, not generating a check value, and not looking for any check values for comparison at the end of the stream.
 windowBits can also be greater than 15 for optional gzip decoding. Add 32 to windowBits to enable zlib and gzip decoding with automatic header detection, or add 16 to decode only the gzip format.
 -}
-newtype WindowBits = WindowBits CInt
-    deriving (Eq, Ord, Read, Show, Generic)
-        deriving newtype Num
-        deriving anyclass ShowT
+type WindowBits = CInt
 
 defaultWindowBits :: WindowBits
-defaultWindowBits = WindowBits 15
+defaultWindowBits = 15
 
 -- | The 'MemLevel' specifies how much memory should be allocated for the internal compression state. 1 uses minimum memory but is slow and reduces compression ratio; 9 uses maximum memory for optimal speed. The default value is 8.
-newtype MemLevel = MemLevel CInt
-    deriving (Eq, Ord, Read, Show, Generic)
-        deriving newtype Num
-        deriving anyclass ShowT
+type MemLevel = CInt
 
 defaultMemLevel :: MemLevel
-defaultMemLevel = MemLevel 9
+defaultMemLevel = 9
 
 data CompressConfig = CompressConfig
     { compressLevel :: CompressLevel
@@ -100,7 +102,8 @@ data CompressConfig = CompressConfig
     , compressMemoryLevel :: MemLevel
     , compressDictionary :: V.Bytes
     , compressStrategy :: Strategy
-    }
+    }   deriving (Show, Eq, Ord, Generic)
+        deriving anyclass ShowT
 
 defaultCompressConfig :: CompressConfig
 defaultCompressConfig =
@@ -185,7 +188,8 @@ compressBuilderStream :: HasCallStack
 data DecompressConfig = DecompressConfig
     { decompressWindowBits :: WindowBits
     , decompressDictionary :: V.Bytes
-    }
+    }   deriving (Show, Eq, Ord, Generic)
+        deriving anyclass ShowT
 
 defaultDecompressConfig :: DecompressConfig
 defaultDecompressConfig = DecompressConfig defaultWindowBits V.empty
@@ -268,8 +272,6 @@ decompress conf input = V.concat . unsafePerformIO $ do
      collectSource =<< decompressSource conf =<< sourceFromList [input]
 
 --------------------------------------------------------------------------------
-
-newtype ZReturn = ZReturn CInt deriving (Eq, Ord, Show, Typeable)
 
 toZErrorMsg :: CInt -> CBytes
 toZErrorMsg (#const Z_OK           ) =  "Z_OK"

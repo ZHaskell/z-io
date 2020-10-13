@@ -119,6 +119,7 @@ foreign import ccall unsafe hs_uv_fileno :: Ptr UVHandle -> IO UVFD
 foreign import ccall unsafe hs_uv_handle_alloc :: Ptr UVLoop -> IO (Ptr UVHandle)
 foreign import ccall unsafe hs_uv_handle_free  :: Ptr UVHandle -> IO ()
 foreign import ccall unsafe hs_uv_handle_close :: Ptr UVHandle -> IO ()
+foreign import ccall unsafe uv_unref :: Ptr UVHandle -> IO ()
 
 --------------------------------------------------------------------------------
 -- request
@@ -135,8 +136,11 @@ foreign import ccall unsafe hs_uv_read_start :: Ptr UVHandle -> IO CInt
 foreign import ccall unsafe uv_read_stop :: Ptr UVHandle -> IO CInt
 foreign import ccall unsafe hs_uv_write :: Ptr UVHandle -> Ptr Word8 -> Int -> IO UVSlotUnsafe
 
-foreign import ccall unsafe hs_uv_accept_check_alloc :: Ptr UVHandle -> IO (Ptr UVHandle)
-foreign import ccall unsafe hs_uv_accept_check_init :: Ptr UVHandle -> IO CInt
+foreign import ccall unsafe hs_uv_accept_check_alloc :: IO (Ptr UVHandle)
+foreign import ccall unsafe hs_uv_accept_check_init :: Ptr UVHandle -- ^ uv_check_t
+                                                    -> Ptr UVHandle -- ^ uv_stream_t
+                                                    -> IO CInt
+foreign import ccall unsafe hs_uv_accept_check_start :: Ptr UVHandle -> IO CInt
 foreign import ccall unsafe hs_uv_accept_check_close :: Ptr UVHandle -> IO ()
 
 --------------------------------------------------------------------------------
@@ -711,9 +715,7 @@ pattern PROCESS_WINDOWS_VERBATIM_ARGUMENTS = (#const UV_PROCESS_WINDOWS_VERBATIM
 -- | Spawn the child process in a detached state 
 --
 -- This will make it a process group leader, and will effectively enable the child to keep running after
--- the parent exits. Note that the child process will still keep the
--- parent's event loop alive unless the parent process calls uv_unref() on
--- the child's process handle.
+-- the parent exits.
 pattern PROCESS_DETACHED :: ProcessFlag
 pattern PROCESS_DETACHED = (#const UV_PROCESS_DETACHED)
 -- | Hide the subprocess window that would normally be created.

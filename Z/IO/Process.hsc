@@ -32,6 +32,14 @@ module Z.IO.Process (
   -- * internal 
   , spawn
   -- * Constant
+  -- ** ProcessFlag
+  , ProcessFlag
+  , pattern PROCESS_SETUID
+  , pattern PROCESS_SETGID
+  , pattern PROCESS_WINDOWS_VERBATIM_ARGUMENTS
+  , pattern PROCESS_DETACHED
+  , pattern PROCESS_WINDOWS_HIDE_CONSOLE
+  , pattern PROCESS_WINDOWS_HIDE_GUI
   -- ** Signal
   , Signal
   , pattern SIGTERM 
@@ -179,54 +187,54 @@ readProcessText opts inp = do
 
 -- | Spawn a new thread
 --
--- Please manually close child process's std stream(if any) after process exists.
+-- Please manually close child process's std stream(if any) after process exits.
 spawn :: HasCallStack => ProcessOptions -> IO (Maybe UVStream, Maybe UVStream, Maybe UVStream, TVar ProcessState)
 spawn ProcessOptions{..} = do
 
-    (MutableByteArray popts) <- newByteArray (#size uv_process_options_t)
-    (MutableByteArray pstdio) <- newByteArray ((#size uv_stdio_container_t)*3)
+    (MutableByteArray popts##) <- newByteArray (#size uv_process_options_t)
+    (MutableByteArray pstdio##) <- newByteArray ((#size uv_stdio_container_t)*3)
 
-    pokeMBA popts (#offset uv_process_options_t, flags) processFlags
-    pokeMBA popts (#offset uv_process_options_t, uid) processUID
-    pokeMBA popts (#offset uv_process_options_t, gid) processGID
+    pokeMBA popts## (#offset uv_process_options_t, flags) processFlags
+    pokeMBA popts## (#offset uv_process_options_t, uid) processUID
+    pokeMBA popts## (#offset uv_process_options_t, gid) processGID
 
     uvm <- getUVManager 
 
     let (s0, s1, s2) = processStdStreams
 
-    pokeMBA pstdio (#offset uv_stdio_container_t, flags) (processStdStreamFlag s0)
+    pokeMBA pstdio## (#offset uv_stdio_container_t, flags) (processStdStreamFlag s0)
     uvs0' <- case s0 of
         ProcessInherit fd -> do
-            pokeMBA pstdio (#offset uv_stdio_container_t, data) fd
+            pokeMBA pstdio## (#offset uv_stdio_container_t, data) fd
             return Nothing
         ProcessCreate -> do
             (uvs0, _) <- acquire (initIPCStream uvm)
-            pokeMBA pstdio (#offset uv_stdio_container_t, data) (uvsHandle uvs0)
+            pokeMBA pstdio## (#offset uv_stdio_container_t, data) (uvsHandle uvs0)
             return (Just uvs0)
         _ -> return Nothing
         
-    pokeMBA pstdio ((#offset uv_stdio_container_t, flags)+(#size uv_stdio_container_t))
+    pokeMBA pstdio## ((#offset uv_stdio_container_t, flags)+(#size uv_stdio_container_t))
                 (processStdStreamFlag s1)
     uvs1' <- case s1 of
         ProcessInherit fd -> do
-            pokeMBA pstdio ((#offset uv_stdio_container_t, data)+(#size uv_stdio_container_t)) fd
+            pokeMBA pstdio## ((#offset uv_stdio_container_t, data)+(#size uv_stdio_container_t)) fd
             return Nothing
         ProcessCreate -> do
             (uvs1, _) <- acquire (initIPCStream uvm)
-            pokeMBA pstdio ((#offset uv_stdio_container_t, data)+(#size uv_stdio_container_t))
+            pokeMBA pstdio## ((#offset uv_stdio_container_t, data)+(#size uv_stdio_container_t))
                 (uvsHandle uvs1)
             return (Just uvs1)
         _ -> return Nothing
 
-    pokeMBA pstdio ((#offset uv_stdio_container_t, flags)+(#size uv_stdio_container_t)*2)
+    pokeMBA pstdio## ((#offset uv_stdio_container_t, flags)+(#size uv_stdio_container_t)*2)
                 (processStdStreamFlag s2)
     uvs2' <- case s2 of
         ProcessInherit fd -> do
-            pokeMBA pstdio ((#offset uv_stdio_container_t, data)+(#size uv_stdio_container_t)*2) fd
+            pokeMBA pstdio## ((#offset uv_stdio_container_t, data)+(#size uv_stdio_container_t)*2) fd
             return Nothing
         ProcessCreate -> do
             (uvs2, _) <- acquire (initIPCStream uvm)
-            pokeMBA pstdio ((#offset uv_stdio_container_t, data.stream)+(#size uv_stdio_container_t)*2)
+            pokeMBA pstdio## ((#offset uv_stdio_container_t, data.stream)+(#size uv_stdio_container_t)*2)
                 (uvsHandle uvs2)
             return (Just uvs2)
         _ -> return Nothing
@@ -248,8 +256,8 @@ spawn ProcessOptions{..} = do
             withPrimArrayUnsafe allArgs $ \ pargs _ ->
                 withPrimArrayUnsafe allEnv $ \ penv _ ->
                     withUVManager uvm $ \ loop -> do
-                        slot <- throwUVIfMinus (hs_uv_spawn loop popts pfile
-                                        pargs argsLen penv envLen pcwd pstdio)
+                        slot <- throwUVIfMinus (hs_uv_spawn loop popts## pfile
+                                        pargs argsLen penv envLen pcwd pstdio##)
                         pid <- peekBufferTable uvm slot
                         return (slot, pid)
 

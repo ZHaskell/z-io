@@ -351,17 +351,19 @@ void hs_accept_check_cb(uv_check_t* check){
 
 // It's hard to arrange accepting notification without check handler, we can't
 // do it in listen's callback, since it'll be called multiple times during uv_run.
-uv_check_t* hs_uv_accept_check_alloc(uv_stream_t* server){
+uv_check_t* hs_uv_accept_check_alloc(){
     uv_check_t* check = malloc(sizeof(uv_check_t));
     if (check == NULL) return NULL;
-    check->data = (void*)server;    // we link server to check's data field
     return check;
 }
 
-int hs_uv_accept_check_init(uv_check_t* check){
-    uv_stream_t* server = check->data;
+int hs_uv_accept_check_init(uv_check_t* check, uv_stream_t* server){
     int r = uv_check_init(server->loop, check);
-    if (r < 0) return r;
+    check->data = (void*)server;    // we link server to check's data field
+    return r;
+}
+
+int hs_uv_accept_check_start(uv_check_t* check){
     return uv_check_start(check, hs_accept_check_cb);
 }
 
