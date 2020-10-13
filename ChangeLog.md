@@ -1,5 +1,9 @@
 # Revision history for Z-IO
 
+## 0.1.5.2  -- 2020-10-13
+
+* Fix windows dist(add `fs-fd-hash-inl.h` to other-source-files).
+
 ## 0.1.5.1  -- 2020-10-13
 
 * Export `ProcessFlag` from `Z.IO.Process`.

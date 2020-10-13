@@ -1,15 +1,17 @@
 ## Z-IO
 
-[![Linux Build Status](https://github.com/haskell-Z/z-io/workflows/ubuntu-ci/badge.svg)](https://github.com/haskell-Z/z-io/actions) [![MacOS Build Status](https://github.com/haskell-Z/z-io/workflows/oxs-ci/badge.svg)](https://github.com/haskell-Z/z-io/actions) [![Windows Build Status](https://github.com/haskell-Z/z-io/workflows/win-ci/badge.svg)](https://github.com/haskell-Z/z-io/actions)
+[![Hackage](https://img.shields.io/hackage/v/Z-IO.svg?style=flat)](https://hackage.haskell.org/package/Z-IO) [![Linux Build Status](https://github.com/haskell-Z/z-io/workflows/ubuntu-ci/badge.svg)](https://github.com/haskell-Z/z-io/actions) [![MacOS Build Status](https://github.com/haskell-Z/z-io/workflows/oxs-ci/badge.svg)](https://github.com/haskell-Z/z-io/actions) [![Windows Build Status](https://github.com/haskell-Z/z-io/workflows/win-ci/badge.svg)](https://github.com/haskell-Z/z-io/actions)
 
-This package provides basic IO operations:
+This package is part of [Z](https://github.com/haskell-Z/Z) project, provides basic IO operations:
 
 * IO resource management, resource pool
-* File system
+* File system operations
 * Network: DNS, TCP, UDP and IPC
 * Buffered input and output
+* Process management
+* Environment settings
 * High performance logger
-* High performance timer
+* High performance low resolution timer
 
 ## Requirements
 
@@ -55,7 +57,6 @@ startTCPServer defaultTCPServerConfig{
 ```
 
 ## Dev guide
-
 
 ```bash
 # get code
