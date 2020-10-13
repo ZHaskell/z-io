@@ -14,6 +14,7 @@ This module provide IO operations related to filesystem, operations are implemen
 module Z.IO.FileSystem
   ( -- * regular file devices
     File, initFile, readFile, writeFile, getFileFD
+  , quickReadFile, quickReadTextFile, quickWriteFile, quickWriteTextFile
     -- * file offset bundle
   , FilePtr, newFilePtr, getFileOffset, setFileOffset
   -- * filesystem operations
@@ -89,14 +90,17 @@ module Z.IO.FileSystem
   ) where
 
 import           Control.Monad
-import           Data.Word
+import           Data.Bits
 import           Data.Int
 import           Data.IORef
+import           Data.Word
 import           Foreign.Ptr
 import           Foreign.Storable               (peekElemOff)
 import           Foreign.Marshal.Alloc          (allocaBytes)
-import           Z.Data.CBytes                 as CBytes
+import           Z.Data.CBytes                  as CBytes
 import           Z.Data.PrimRef.PrimIORef
+import qualified Z.Data.Text                    as T
+import qualified Z.Data.Vector                  as V
 import           Z.Foreign
 import           Z.IO.Buffered
 import           Z.IO.Exception
@@ -232,6 +236,26 @@ initFile path flags mode =
             unless closed $ do
                 throwUVIfMinus_ (hs_uv_fs_close fd)
                 writeIORef closedRef True)
+
+-- | Quickly open a file and read its content.
+quickReadFile :: HasCallStack => CBytes -> IO V.Bytes
+quickReadFile filename = do
+    withResource (initFile filename O_RDONLY DEFAULT_MODE) $ \ file -> do
+        readAll' =<< newBufferedInput file
+
+-- | Quickly open a file and read its content as UTF8 text.
+quickReadTextFile :: HasCallStack => CBytes -> IO T.Text
+quickReadTextFile filename = T.validate <$> quickReadFile filename
+
+-- | Quickly open a file and write some content.
+quickWriteFile :: HasCallStack => CBytes -> V.Bytes -> IO ()
+quickWriteFile filename content = do
+    withResource (initFile filename (O_WRONLY .|. O_CREAT) DEFAULT_MODE) $ \ file -> do
+        withPrimVectorSafe content (writeOutput file)
+
+-- | Quickly open a file and write some content as UTF8 text.
+quickWriteTextFile :: HasCallStack => CBytes -> T.Text -> IO ()
+quickWriteTextFile filename content = quickWriteFile filename (T.getUTF8Bytes content)
 
 --------------------------------------------------------------------------------
 
