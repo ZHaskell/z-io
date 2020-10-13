@@ -39,7 +39,7 @@ spec = describe "low resolution timers" $ do
             threadDelay 50000
         threadDelay 10000000  -- wait 10s here
         c' <- readPrimIORef c
-        assertEqual "throttled add" 6 c'
+        assertBool "throttled add" (6  <= c' && c' <= 8)    -- on osx time drift too much
 
     it "throttleTrailing" $ do
         c <- newCounter 0
