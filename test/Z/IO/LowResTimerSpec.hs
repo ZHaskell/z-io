@@ -39,7 +39,7 @@ spec = describe "low resolution timers" $ do
             threadDelay 50000
         threadDelay 10000000  -- wait 10s here
         c' <- readPrimIORef c
-        assertBool "throttled add" (5  <= c' && c' <= 6)
+        assertEqual "throttled add" 6 c'
 
     it "throttleTrailing" $ do
         c <- newCounter 0
