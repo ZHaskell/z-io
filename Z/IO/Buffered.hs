@@ -49,6 +49,7 @@ module Z.IO.Buffered
     -- * common buffer size
   , V.defaultChunkSize
   , V.smallChunkSize
+  , V.chunkOverhead
   ) where
 
 import           Control.Monad

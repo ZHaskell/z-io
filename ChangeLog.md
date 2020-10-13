@@ -3,6 +3,7 @@
 ## 0.1.5.1  -- 2020-10-02
 
 * Export `ProcessFlag` from `Z.IO.Process`.
+* Add quick read & write functions to fileSystem modules.
 * Fix a bug: when exception raise from server loop an uninitialized uv_check_t is closed.
 * Update libuv's version to 1.40.1.
 * Change `IOEInfo` type to use `Text` instead of `CBytes`.
