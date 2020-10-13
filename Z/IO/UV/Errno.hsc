@@ -15,17 +15,18 @@ module Z.IO.UV.Errno where
 
 import Foreign.C.Types
 import Foreign.C.String
-import Z.Data.CBytes
+import Z.Data.Text (Text)
+import Z.Data.CBytes as CB
 
 #include "hs_uv.h"
 
-uvStdError :: CInt -> IO CBytes
-uvStdError errno = fromCString =<< uv_strerror errno
+uvStdError :: CInt -> IO Text
+uvStdError errno = toText <$> (fromCString =<< uv_strerror errno)
 
 foreign import ccall unsafe uv_strerror :: CInt -> IO CString
 
-uvErrName :: CInt -> IO CBytes
-uvErrName errno = fromCString =<< uv_err_name errno
+uvErrName :: CInt -> IO Text
+uvErrName errno = toText <$> (fromCString =<< uv_err_name errno)
 
 foreign import ccall unsafe uv_err_name :: CInt -> IO CString
 

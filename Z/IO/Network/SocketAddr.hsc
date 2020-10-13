@@ -45,9 +45,23 @@ module Z.IO.Network.SocketAddr
   , PortNumber(..)
   , portAny
   -- * family, type, protocol
-  , SocketFamily(AF_UNSPEC, AF_INET, AF_INET6)
-  , SocketType(SOCK_DGRAM, SOCK_STREAM, SOCK_SEQPACKET, SOCK_RAW, SOCK_RDM, SOCK_ANY)
-  , ProtocolNumber(IPPROTO_DEFAULT, IPPROTO_IP, IPPROTO_TCP, IPPROTO_UDP)
+  -- ** SocketFamily
+  , SocketFamily
+  , pattern AF_UNSPEC
+  , pattern AF_INET
+  , pattern AF_INET6
+  , SocketType
+  , pattern SOCK_DGRAM
+  , pattern SOCK_STREAM
+  , pattern SOCK_SEQPACKET
+  , pattern SOCK_RAW
+  , pattern SOCK_RDM
+  , pattern SOCK_ANY
+  , ProtocolNumber
+  , pattern IPPROTO_DEFAULT
+  , pattern IPPROTO_IP
+  , pattern IPPROTO_TCP
+  , pattern IPPROTO_UDP
   -- * Internal helper
   , peekSocketAddr
   , pokeSocketAddr
@@ -501,63 +515,42 @@ instance Unaligned PortNumber where
     
 --------------------------------------------------------------------------------
 
-newtype SocketFamily = SocketFamily CInt
-    deriving (Eq, Ord, Read, Show, Typeable)
-newtype SocketType = SocketType CInt
-    deriving (Eq, Ord, Read, Show, Typeable)
-newtype ProtocolNumber = ProtocolNumber CInt
-    deriving (Eq, Ord, Read, Show, Typeable)
-
-instance Storable SocketFamily where                      
-    sizeOf _ = sizeOf (undefined :: CInt)       
-    alignment _ = alignment (undefined :: CInt) 
-    peek ptr = SocketFamily `fmap` peek (castPtr ptr)             
-    poke ptr (SocketFamily v) = poke (castPtr ptr) v
-
-instance Storable SocketType where                      
-    sizeOf _ = sizeOf (undefined :: CInt)       
-    alignment _ = alignment (undefined :: CInt) 
-    peek ptr = SocketType `fmap` peek (castPtr ptr)             
-    poke ptr (SocketType v) = poke (castPtr ptr) v
-
-instance Storable ProtocolNumber where                      
-    sizeOf _ = sizeOf (undefined :: CInt)       
-    alignment _ = alignment (undefined :: CInt) 
-    peek ptr = ProtocolNumber `fmap` peek (castPtr ptr)             
-    poke ptr (ProtocolNumber v) = poke (castPtr ptr) v
+type SocketFamily = CInt
+type SocketType = CInt
+type ProtocolNumber = CInt
 
 -- | unspecified
 pattern AF_UNSPEC :: SocketFamily
-pattern AF_UNSPEC = SocketFamily (#const AF_UNSPEC)
+pattern AF_UNSPEC = #const AF_UNSPEC
 -- | internetwork: UDP, TCP, etc
 pattern AF_INET :: SocketFamily
-pattern AF_INET = SocketFamily (#const AF_INET)
+pattern AF_INET = #const AF_INET
 -- | Internet Protocol version 6
 pattern AF_INET6 :: SocketFamily
-pattern AF_INET6 = SocketFamily (#const AF_INET6)
+pattern AF_INET6 = #const AF_INET6
 
 pattern SOCK_STREAM :: SocketType
-pattern SOCK_STREAM = SocketType (#const SOCK_STREAM)
+pattern SOCK_STREAM = #const SOCK_STREAM
 pattern SOCK_DGRAM :: SocketType
-pattern SOCK_DGRAM = SocketType (#const SOCK_DGRAM)
+pattern SOCK_DGRAM = #const SOCK_DGRAM
 pattern SOCK_RAW :: SocketType
-pattern SOCK_RAW = SocketType (#const SOCK_RAW)
+pattern SOCK_RAW = #const SOCK_RAW
 pattern SOCK_RDM :: SocketType
-pattern SOCK_RDM = SocketType (#const SOCK_RDM)
+pattern SOCK_RDM = #const SOCK_RDM
 pattern SOCK_SEQPACKET :: SocketType
-pattern SOCK_SEQPACKET = SocketType (#const SOCK_SEQPACKET)
+pattern SOCK_SEQPACKET = #const SOCK_SEQPACKET
 -- | Used in getAddrInfo hints, for any type can be returned by getAddrInfo
 pattern SOCK_ANY :: SocketType
-pattern SOCK_ANY = SocketType 0
+pattern SOCK_ANY = 0
 
 pattern IPPROTO_DEFAULT :: ProtocolNumber
-pattern IPPROTO_DEFAULT = ProtocolNumber 0
+pattern IPPROTO_DEFAULT = 0
 pattern IPPROTO_IP :: ProtocolNumber
-pattern IPPROTO_IP = ProtocolNumber (#const IPPROTO_IP)
+pattern IPPROTO_IP = #const IPPROTO_IP
 pattern IPPROTO_TCP :: ProtocolNumber
-pattern IPPROTO_TCP = ProtocolNumber (#const IPPROTO_TCP)
+pattern IPPROTO_TCP =  #const IPPROTO_TCP
 pattern IPPROTO_UDP :: ProtocolNumber
-pattern IPPROTO_UDP = ProtocolNumber (#const IPPROTO_UDP)
+pattern IPPROTO_UDP = #const IPPROTO_UDP
 
 --------------------------------------------------------------------------------
 

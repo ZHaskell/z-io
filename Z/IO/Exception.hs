@@ -79,8 +79,7 @@ import Foreign.Ptr
 import Foreign.C.Types
 import GHC.Stack
 import Z.IO.UV.Errno
-import Z.Data.CBytes (CBytes)
-import qualified Z.Data.CBytes as CB
+import qualified Z.Data.Text       as T
 import qualified Z.Data.Text.ShowT as T
 
 
@@ -184,26 +183,24 @@ throwECLOSEDSTM = throwSTM (ResourceVanished
 
 -- | IO exceptions informations.
 --
--- The 'ShowT' instances does not check if name and description are valid UTF8 string, it's your responsibility
--- to make sure.
 data IOEInfo = IOEInfo
-    { ioeName        :: CBytes      -- ^ the errno name, e.g. EADDRINUSE, etc. empty if no errno.
-    , ioeDescription :: CBytes      -- ^ description for this io error, can be errno description, or some custom description if no errno.
+    { ioeName        :: T.Text      -- ^ the errno name, e.g. EADDRINUSE, etc. empty if no errno.
+    , ioeDescription :: T.Text      -- ^ description for this io error, can be errno description, or some custom description if no errno.
     , ioeCallStack   :: CallStack   -- ^ lightweight partial call-stack
     }
 
 instance Show IOEInfo where
     show (IOEInfo errno desc cstack) =
-         "{name:" ++ CB.unpack errno ++
-         ", description:" ++ CB.unpack desc ++
+         "{name:" ++ T.unpack errno ++
+         ", description:" ++ T.unpack desc ++
          ", callstack:" ++ prettyCallStack cstack ++ "}"
 
 instance T.ShowT IOEInfo where
     toTextBuilder _ (IOEInfo errno desc cstack) = do
          "{name:"
-         T.unsafeFromBuilder(CB.toBuilder errno)  -- we use UTF8 name here
+         T.text errno
          ", description:"
-         T.unsafeFromBuilder (CB.toBuilder desc)
+         T.text desc
          ", callstack:"
          T.stringUTF8 (prettyCallStack cstack)
          "}"

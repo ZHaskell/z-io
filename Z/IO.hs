@@ -7,7 +7,7 @@ Maintainer  : winterland1989@gmail.com
 Stability   : experimental
 Portability : non-portable
 
-This re-exports several common module to be used together with file, network, and or specific module,
+This re-exports several common modules to be used together with file, network, and other specific modules,
 such as resource management, buffered IO and std streams.
 
 -}
