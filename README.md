@@ -16,7 +16,6 @@ This package is part of [Z](https://github.com/haskell-Z/Z) project, provides ba
 ## Requirements
 
 * A working haskell compiler system, GHC(>=8.6), cabal-install(>=2.4), hsc2hs.
-
 * Tests need  [hspec-discover](https://hackage.haskell.org/package/hspec-discover).
 
 ## Example usage

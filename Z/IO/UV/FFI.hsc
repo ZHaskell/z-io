@@ -211,8 +211,11 @@ foreign import ccall unsafe uv_udp_set_ttl :: Ptr UVHandle -> CInt -> IO CInt
 foreign import ccall unsafe hs_uv_udp_recv_start :: Ptr UVHandle -> IO CInt
 foreign import ccall unsafe uv_udp_recv_stop :: Ptr UVHandle -> IO CInt
 
-foreign import ccall unsafe hs_uv_udp_check_alloc :: Ptr UVHandle -> IO (Ptr UVHandle)
-foreign import ccall unsafe hs_uv_udp_check_init :: Ptr UVHandle -> IO CInt
+foreign import ccall unsafe hs_uv_udp_check_alloc :: IO (Ptr UVHandle)
+foreign import ccall unsafe hs_uv_udp_check_init :: Ptr UVHandle    -- ^ uv_check_t
+                                                 -> Ptr UVHandle    -- ^ udp server
+                                                 -> IO CInt
+foreign import ccall unsafe hs_uv_udp_check_start :: Ptr UVHandle -> IO CInt
 foreign import ccall unsafe hs_uv_udp_check_close :: Ptr UVHandle -> IO ()
 
 foreign import ccall unsafe hs_uv_udp_send 

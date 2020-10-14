@@ -373,14 +373,16 @@ recvUDPLoop :: HasCallStack
             -> IO ()
 recvUDPLoop (UDPRecvConfig bufSiz bufArrSiz) udp@(UDP hdl slot uvm _ _) worker = do
     bracket
-        (throwOOMIfNull $ hs_uv_udp_check_alloc hdl)
+        (do check <- throwOOMIfNull $ hs_uv_udp_check_alloc
+            throwUVIfMinus_ (hs_uv_udp_check_init check hdl)
+            return check)
         hs_uv_udp_check_close $
         \ check -> do
             buf@(_, rbufArr) <- newRecvBuf bufSiz bufArrSiz
             withMutablePrimArrayContents rbufArr $ \ p -> do
                 pokeBufferTable uvm slot (castPtr p) (bufArrSiz-1)
                 -- init uv_check_t must come after poking buffer
-                throwUVIfMinus_ $ hs_uv_udp_check_init check
+                throwUVIfMinus_ $ hs_uv_udp_check_start check
             forever $ do
                 msgs <- recvUDPWith udp check buf bufSiz
                 withMutablePrimArrayContents rbufArr $ \ p ->
@@ -393,14 +395,16 @@ recvUDPLoop (UDPRecvConfig bufSiz bufArrSiz) udp@(UDP hdl slot uvm _ _) worker =
 recvUDP :: HasCallStack => UDPRecvConfig -> UDP -> IO [(Maybe SocketAddr, Bool, V.Bytes)]
 recvUDP (UDPRecvConfig bufSiz bufArrSiz) udp@(UDP hdl slot uvm _ _)  = do
     bracket
-        (throwOOMIfNull $ hs_uv_udp_check_alloc hdl)
+        (do check <- throwOOMIfNull $ hs_uv_udp_check_alloc
+            throwUVIfMinus_ (hs_uv_udp_check_init check hdl)
+            return check)
         hs_uv_udp_check_close $
         \ check -> do
             buf@(_, rbufArr) <- newRecvBuf bufSiz bufArrSiz
             withMutablePrimArrayContents rbufArr $ \ p -> do
                 pokeBufferTable uvm slot (castPtr p) (bufArrSiz-1)
                 -- init uv_check_t must come after poking buffer
-                throwUVIfMinus_ $ hs_uv_udp_check_init check
+                throwUVIfMinus_ $ hs_uv_udp_check_start check
             recvUDPWith udp check buf bufSiz
 
 recvUDPWith :: HasCallStack

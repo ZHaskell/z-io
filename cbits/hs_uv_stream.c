@@ -353,7 +353,6 @@ void hs_accept_check_cb(uv_check_t* check){
 // do it in listen's callback, since it'll be called multiple times during uv_run.
 uv_check_t* hs_uv_accept_check_alloc(){
     uv_check_t* check = malloc(sizeof(uv_check_t));
-    if (check == NULL) return NULL;
     return check;
 }
 

@@ -76,7 +76,7 @@ source-repository head
     location: git://github.com/haskell-Z/Z-IO.git
 
 flag no-pkg-config
-    description: Don't use pkg-config to check for library dependences
+    description: Don't use pkg-config to check for library dependences(on platforms other than linux, win and osx)
     default: False
     manual: True
 
@@ -97,6 +97,7 @@ library
                             Z.IO.Process
                             Z.IO.Resource
                             Z.IO.StdStream
+                            Z.IO.StdStream.Ansi
 
                             Z.IO.UV.Errno
                             Z.IO.UV.FFI

@@ -299,8 +299,9 @@ void uv__io_start(uv_loop_t* loop, uv__io_t* w, unsigned int events);
 int hs_uv_udp_recv_start(uv_udp_t* handle);
 HsInt hs_uv_udp_send_connected(uv_udp_t* handle, char* buf, HsInt buf_siz);
 HsInt hs_uv_upd_send(uv_udp_t* handle, const struct sockaddr* addr, char* buf, HsInt buf_siz);
-uv_check_t* hs_uv_udp_check_alloc(uv_udp_t* server);
-int hs_uv_udp_check_init(uv_check_t* check);
+uv_check_t* hs_uv_udp_check_alloc();
+int hs_uv_udp_check_init(uv_check_t* check, uv_udp_t* server);
+int hs_uv_udp_check_start(uv_check_t* check);
 void hs_uv_udp_check_close(uv_check_t* check);
 
 ////////////////////////////////////////////////////////////////////////////////
