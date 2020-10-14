@@ -15,7 +15,7 @@ module Z.IO.Buffered
   ( -- * Input & Output device
     Input(..), Output(..)
     -- * Buffered Input
-  , BufferedInput
+  , BufferedInput, bufInput
   , newBufferedInput
   , newBufferedInput'
   , readBuffer
@@ -26,7 +26,7 @@ module Z.IO.Buffered
   , readLine, readLine'
   , readAll, readAll'
     -- * Buffered Output
-  , BufferedOutput
+  , BufferedOutput, bufOutput
   , newBufferedOutput
   , newBufferedOutput'
   , writeBuffer

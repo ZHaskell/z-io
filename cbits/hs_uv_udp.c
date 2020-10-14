@@ -115,23 +115,25 @@ void hs_udp_check_cb(uv_check_t* check){
 
 // It's hard to arrange receiving notification without check handler, we can't
 // do it in recv's callback, since it'll be called multiple times during uv_run.
-uv_check_t* hs_uv_udp_check_alloc(uv_udp_t* server){
+uv_check_t* hs_uv_udp_check_alloc(){
     uv_check_t* check = malloc(sizeof(uv_check_t));
-    if (check == NULL) return NULL;
-    check->data = (void*)server;    // we link server to check's data field
     return check;
 }
 
-int hs_uv_udp_check_init(uv_check_t* check){
-    uv_udp_t* server = check->data;
+int hs_uv_udp_check_init(uv_check_t* check, uv_udp_t* server){
     int r = uv_check_init(server->loop, check);
-    if (r < 0) return r;
+    check->data = (void*)server;    // we link server to check's data field
+    return r;
+}
+
+int hs_uv_udp_check_start(uv_check_t* check){
     return uv_check_start(check, hs_udp_check_cb);
 }
 
 void hs_uv_udp_check_close(uv_check_t* check){
     uv_close((uv_handle_t*)check, (uv_close_cb)free);
 }
+
 void hs_uv_udp_send_cb(uv_udp_send_t* req, int status){
     HsInt slot = (HsInt)req->data;
     uv_loop_t* loop = req->handle->loop;
