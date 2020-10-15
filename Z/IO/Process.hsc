@@ -12,6 +12,9 @@ This module provides process utilities.
 @
 import Control.Concurrent.MVar
 import Z.IO.Process
+
+> readProcessText defaultProcessOptions{processFile = "cat"} "hello world"
+("hello world","",ExitSuccess)
 @
 
 -}
@@ -240,12 +243,12 @@ spawn ProcessOptions{..} = do
         _ -> return Nothing
 
     -- concat args
-    let allArgs = V.intercalateElem 0 (List.map CBytes.toPrimArray processArgs ++ [mempty])  
+    let allArgs = mconcat (List.map CBytes.rawPrimArray processArgs)  
         argsLen = fromIntegral $ List.length processArgs
     -- concat env
-        mkEnv (k, v) = CBytes.toPrimArray (k <> "=" <> v)
+        mkEnv (k, v) = CBytes.rawPrimArray (CBytes.concat [k, "=", v])
         allEnv = case processEnv of
-            Just e -> V.intercalateElem 0 (List.map mkEnv e ++ [mempty])  
+            Just e -> mconcat (List.map mkEnv e ++ [mempty])  
             _ -> V.singleton 0 
         envLen = case processEnv of
             Just e -> fromIntegral $ List.length e
