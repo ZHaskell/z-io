@@ -7,7 +7,7 @@ Maintainer  : winterland1989@gmail.com
 Stability   : experimental
 Portability : non-portable
 
-This module provide methods for retrieving various environment infomation. There's no encoding guarantee about these information, if you want textual representation, use UTF8 assumption is recommended. i.e. use "Z.Data.Text.validate".
+This module provide methods for retrieving various environment infomation. There's no encoding guarantee about these information, if you want textual representation, UTF8 assumption is recommended. i.e. use 'Z.Data.Text.validate'.
 
 -}
 module Z.IO.Environment

@@ -1,5 +1,11 @@
 # Revision history for Z-IO
 
+## 0.1.6.0  -- 2020-10-15
+
+* Add `Z.IO.StdStream.Ansi` module, add a default colored logger.
+* Fix a bug affects udp exception raising(simliar to the one fixed in 0.1.5.2).
+* Add `Z.IO.Time` module.
+
 ## 0.1.5.2  -- 2020-10-13
 
 * Fix windows dist(add `fs-fd-hash-inl.h` to other-source-files).

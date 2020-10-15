@@ -7,7 +7,7 @@ Maintainer  : winterland1989@gmail.com
 Stability   : experimental
 Portability : non-portable
 
-This module provide buffered IO interface.
+This module provides buffered IO interface and basic streaming utilities.
 
 -}
 

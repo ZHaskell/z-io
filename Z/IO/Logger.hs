@@ -69,12 +69,12 @@ import Z.IO.StdStream.Ansi  (color, AnsiColor(..))
 import Z.IO.Buffered
 import System.IO.Unsafe (unsafePerformIO)
 import Z.IO.Exception
+import Z.IO.Time
 import Data.IORef
 import Control.Concurrent.MVar
 import GHC.Stack
 import qualified Z.Data.Builder as B
 import qualified Z.Data.CBytes as CB
-import qualified Data.Time as Time
 
 type LogFormatter = B.Builder ()            -- ^ data/time string
                   -> Level                  -- ^ log level
@@ -115,9 +115,8 @@ defaultTSCache :: IO (B.Builder ())
 {-# NOINLINE defaultTSCache #-}
 defaultTSCache = unsafePerformIO $ do
     throttle 1 $ do
-        t <- Time.getCurrentTime
-        return . B.string8 $
-            Time.formatTime Time.defaultTimeLocale "%Y-%m-%dT%H:%M:%S%Z" t
+        t <- getSystemTime
+        CB.toBuilder <$> formatSystemTime simpleDateFormat t
 
 -- | Use this function to implement a simple 'IORef' based concurrent logger.
 --
