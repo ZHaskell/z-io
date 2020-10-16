@@ -115,8 +115,9 @@ pathSeparator = do
 
 -- | The character that is used to separate the entries in the $PATH environment variable.
 --
--- > Windows: searchPathSeparator == ';'
--- > Posix:   searchPathSeparator == ':'
+-- * Windows: searchPathSeparator is ASCII @;@
+-- * Unix:    searchPathSeparator is ASCII @:@
+--
 searchPathSeparator :: IO Word8
 searchPathSeparator = do
     s <- getPathStyle
@@ -125,7 +126,7 @@ searchPathSeparator = do
 
 -- | File extension character
 --
--- > extSeparator == '.'
+-- ExtSeparator is ASCII @.@
 extensionSeparator :: Word8
 extensionSeparator = #const DOT
 
@@ -188,7 +189,7 @@ changeBaseName p b = do
 --
 -- This function determines the root of a path by finding it’s length.
 -- The root comes before the first segment of the path.
--- For example, C:\ is the root of C:\folder\file.txt.
+-- For example, @C:\\@ is the root of @C:\\folder\\file.txt@.
 -- It always starts at the submitted path. If the path has no root, 'CB.empty' will be returned.
 --
 -- +---------+--------------------------+----------------------+
@@ -574,7 +575,7 @@ changeExtension p p2 = do
 
 --------------------------------------------------------------------------------
 
--- | Get a list of file path in the @$PATH@ variable.
+-- | Get a list of paths in the @$PATH@ variable.
 getSearchPath :: IO [CBytes]
 getSearchPath = do
     s <- getEnv' "PATH"
