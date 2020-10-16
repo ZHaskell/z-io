@@ -36,6 +36,7 @@ module Z.IO.FileSystem
   , utime, futime, lutime
   , link, symlink
   , readlink, realpath
+  , chown, fchown, lchown
   -- * opening constant
   -- ** AccessMode
   , AccessMode
@@ -118,17 +119,17 @@ import           Prelude hiding (writeFile, readFile)
 -- Implict offset interface is provided by 'Input' \/ 'Output' instances.
 -- Explict offset interface is provided by 'readFile' \/ 'writeFile'.
 --
-data File =  File  {-# UNPACK #-} !UVFD      -- ^ the file
+data File =  File  {-# UNPACK #-} !FD      -- ^ the file
                    {-# UNPACK #-} !(IORef Bool)  -- ^ closed flag
 
 -- | Return File fd.
-getFileFD :: File -> IO UVFD
+getFileFD :: File -> IO FD
 getFileFD (File fd closedRef) = do
     closed <- readIORef closedRef
     if closed then throwECLOSED else return fd
 
 -- | If fd is -1 (closed), throw 'ResourceVanished' ECLOSED.
-checkFileClosed :: HasCallStack => File -> (UVFD -> IO a) -> IO a
+checkFileClosed :: HasCallStack => File -> (FD -> IO a) -> IO a
 checkFileClosed (File fd closedRef) f = do
     closed <- readIORef closedRef
     if closed then throwECLOSED else f fd
@@ -466,3 +467,15 @@ realpath path = do
                 throwUVIfMinus (hs_uv_fs_realpath p p'))
         (hs_uv_fs_readlink_cleanup . fst)
         (fromCString . fst)
+
+-- | Equivalent to <http://linux.die.net/man/2/chown chown(2)>.
+chown :: HasCallStack => CBytes -> UID -> GID -> IO ()
+chown path uid gid = throwUVIfMinus_ . withCBytesUnsafe path $ \ p -> hs_uv_fs_chown p uid gid
+
+-- | Equivalent to <http://linux.die.net/man/2/fchown fchown(2)>.
+fchown :: HasCallStack => File -> UID -> GID -> IO ()
+fchown uvf uid gid = checkFileClosed uvf $ \ fd -> throwUVIfMinus_ $ hs_uv_fs_fchown fd uid gid
+
+-- | Equivalent to <http://linux.die.net/man/2/lchown lchown(2)>.
+lchown :: HasCallStack => CBytes -> UID -> GID -> IO ()
+lchown path uid gid = throwUVIfMinus_ . withCBytesUnsafe path $ \ p -> hs_uv_fs_lchown p uid gid

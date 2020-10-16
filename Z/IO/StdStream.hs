@@ -83,13 +83,13 @@ import Z.Foreign
 
 data StdStream
     = StdTTY {-# UNPACK #-}!(Ptr UVHandle) {-# UNPACK #-}!UVSlot UVManager -- similar to UVStream
-    | StdFile {-# UNPACK #-}!UVFD                                          -- similar to UVFile
+    | StdFile {-# UNPACK #-}!FD                                          -- similar to UVFile
 
 isStdStreamTTY :: StdStream -> Bool
 isStdStreamTTY (StdTTY _ _ _) = True
 isStdStreamTTY _              = False
 
-getStdStreamFD :: StdStream -> IO UVFD
+getStdStreamFD :: StdStream -> IO FD
 getStdStreamFD (StdTTY hdl _ _) = throwUVIfMinus (hs_uv_fileno hdl)
 getStdStreamFD (StdFile fd) = return fd
 
@@ -167,7 +167,7 @@ stderrBuf :: MVar (BufferedOutput StdStream)
 {-# NOINLINE stderrBuf #-}
 stderrBuf = unsafePerformIO (newBufferedOutput stderr >>= newMVar)
 
-makeStdStream :: HasCallStack => UVFD -> IO StdStream
+makeStdStream :: HasCallStack => FD -> IO StdStream
 makeStdStream fd = do
     typ <- uv_guess_handle fd
     if typ == UV_TTY
