@@ -146,7 +146,7 @@ formatSystemTimeHelper
     -> IO CBytes
 formatSystemTimeHelper formatFun fmt t = go 80
   where
-    MkSystemTime sec _ = truncateSystemTimeLeapSecond t
+    MkSystemTime sec _ = t
     go !siz = do
         (bs, r)<- allocCBytesUnsafe siz $ \ pbuf ->
             withCBytesUnsafe fmt $ \ pfmt ->

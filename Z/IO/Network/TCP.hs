@@ -131,7 +131,7 @@ startTCPServer TCPServerConfig{..} tcpServerWorker = do
 -- The buffer passing of accept is a litte complicated here, to get maximum performance,
 -- we do batch accepting. i.e. recv multiple client inside libuv's event loop:
 --
--- we poke uvmanager's buffer table as a Ptr Word8, with byte size (backLog*sizeof(UVFD))
+-- we poke uvmanager's buffer table as a Ptr Word8, with byte size (backLog*sizeof(FD))
 -- inside libuv event loop, we cast the buffer back to int32_t* pointer.
 -- each accept callback push a new socket fd to the buffer, and increase a counter(buffer_size_table).
 -- backLog should be large enough(>128), so under windows we can't possibly filled it up within one
@@ -146,8 +146,8 @@ startTCPServer TCPServerConfig{..} tcpServerWorker = do
 -- then we can start listening.
                 acceptBuf <- newPinnedPrimArray backLog
                 -- https://stackoverflow.com/questions/1953639/is-it-safe-to-cast-socket-to-int-under-win64
-                -- UVFD is 32bit CInt, it's large enough to hold uv_os_sock_t
-                let acceptBufPtr = coerce (mutablePrimArrayContents acceptBuf :: Ptr UVFD)
+                -- FD is 32bit CInt, it's large enough to hold uv_os_sock_t
+                let acceptBufPtr = coerce (mutablePrimArrayContents acceptBuf :: Ptr FD)
 
                 withUVManager' serverUVManager $ do
                     -- We use buffersize as accepted fd count(count backwards)

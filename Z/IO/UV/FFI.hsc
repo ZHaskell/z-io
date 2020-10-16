@@ -23,12 +23,11 @@ import           Foreign.Ptr
 import           Foreign.Storable
 import           Z.Data.Array.Unaligned
 import qualified Z.Data.Array  as A 
-import qualified Z.Data.Text   as T
 import           Z.Data.Text.ShowT   (ShowT(..))
 import           Z.Data.JSON         (EncodeJSON, ToValue, FromValue)
 import           Z.Data.CBytes as CBytes
 import           Z.Foreign
-import           Z.IO.Exception (throwUVIfMinus_)
+import           Z.IO.Exception (throwUVIfMinus_, bracket)
 import           Z.IO.Network.SocketAddr    (SocketAddr)
 import           System.Posix.Types (CSsize (..))
 import           GHC.Generics
@@ -49,7 +48,7 @@ type UVSlot = Int
 -- | UVSlotUnsafe wrap a slot which may not have a 'MVar' in blocking table, 
 --   i.e. the blocking table need to be resized.
 newtype UVSlotUnsafe = UVSlotUnsafe { unsafeGetSlot :: UVSlot }
-type UVFD = CInt
+type FD = CInt
 
 --------------------------------------------------------------------------------
 -- CONSTANT
@@ -115,7 +114,7 @@ data UVHandle
 peekUVHandleData :: Ptr UVHandle -> IO UVSlotUnsafe
 peekUVHandleData p =  UVSlotUnsafe <$> (#{peek uv_handle_t, data} p :: IO Int)
 
-foreign import ccall unsafe hs_uv_fileno :: Ptr UVHandle -> IO UVFD
+foreign import ccall unsafe hs_uv_fileno :: Ptr UVHandle -> IO FD
 foreign import ccall unsafe hs_uv_handle_alloc :: Ptr UVLoop -> IO (Ptr UVHandle)
 foreign import ccall unsafe hs_uv_handle_free  :: Ptr UVHandle -> IO ()
 foreign import ccall unsafe hs_uv_handle_close :: Ptr UVHandle -> IO ()
@@ -145,7 +144,7 @@ foreign import ccall unsafe hs_uv_accept_check_close :: Ptr UVHandle -> IO ()
 
 --------------------------------------------------------------------------------
 -- tcp & pipe
-foreign import ccall unsafe hs_uv_tcp_open :: Ptr UVHandle -> UVFD -> IO CInt
+foreign import ccall unsafe hs_uv_tcp_open :: Ptr UVHandle -> FD -> IO CInt
 foreign import ccall unsafe uv_tcp_init :: Ptr UVLoop -> Ptr UVHandle -> IO CInt
 foreign import ccall unsafe uv_tcp_init_ex :: Ptr UVLoop -> Ptr UVHandle -> CUInt -> IO CInt
 foreign import ccall unsafe uv_tcp_nodelay :: Ptr UVHandle -> CInt -> IO CInt
@@ -160,7 +159,7 @@ foreign import ccall unsafe uv_tcp_bind :: Ptr UVHandle -> MBA## SocketAddr -> C
 foreign import ccall unsafe hs_uv_tcp_connect :: Ptr UVHandle -> MBA## SocketAddr -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_set_socket_reuse :: Ptr UVHandle -> IO CInt
 
-foreign import ccall unsafe hs_uv_pipe_open :: Ptr UVHandle -> UVFD -> IO CInt
+foreign import ccall unsafe hs_uv_pipe_open :: Ptr UVHandle -> FD -> IO CInt
 foreign import ccall unsafe uv_pipe_init :: Ptr UVLoop -> Ptr UVHandle -> CInt -> IO CInt
 foreign import ccall unsafe uv_pipe_bind :: Ptr UVHandle -> BA## Word8 -> IO CInt
 foreign import ccall unsafe hs_uv_pipe_connect :: Ptr UVHandle -> BA## Word8 -> IO UVSlotUnsafe
@@ -169,7 +168,7 @@ foreign import ccall unsafe hs_uv_pipe_connect :: Ptr UVHandle -> BA## Word8 -> 
 -- udp
 foreign import ccall unsafe uv_udp_init :: Ptr UVLoop -> Ptr UVHandle -> IO CInt
 foreign import ccall unsafe uv_udp_init_ex :: Ptr UVLoop -> Ptr UVHandle -> CUInt -> IO CInt
-foreign import ccall unsafe uv_udp_open :: Ptr UVHandle -> UVFD -> IO CInt
+foreign import ccall unsafe uv_udp_open :: Ptr UVHandle -> FD -> IO CInt
 foreign import ccall unsafe uv_udp_bind :: Ptr UVHandle -> MBA## SocketAddr -> UDPFlag -> IO CInt
 
 type Membership = CInt 
@@ -307,10 +306,10 @@ pattern DEFAULT_MODE :: FileMode
 pattern DEFAULT_MODE = 0o666
 
 -- non-threaded functions
-foreign import ccall unsafe hs_uv_fs_open    :: BA## Word8 -> FileFlag -> FileMode -> IO UVFD
-foreign import ccall unsafe hs_uv_fs_close   :: UVFD -> IO Int
-foreign import ccall unsafe hs_uv_fs_read    :: UVFD -> Ptr Word8 -> Int -> Int64 -> IO Int
-foreign import ccall unsafe hs_uv_fs_write   :: UVFD -> Ptr Word8 -> Int -> Int64 -> IO Int
+foreign import ccall unsafe hs_uv_fs_open    :: BA## Word8 -> FileFlag -> FileMode -> IO FD
+foreign import ccall unsafe hs_uv_fs_close   :: FD -> IO Int
+foreign import ccall unsafe hs_uv_fs_read    :: FD -> Ptr Word8 -> Int -> Int64 -> IO Int
+foreign import ccall unsafe hs_uv_fs_write   :: FD -> Ptr Word8 -> Int -> Int64 -> IO Int
 foreign import ccall unsafe hs_uv_fs_unlink  :: BA## Word8 -> IO Int
 foreign import ccall unsafe hs_uv_fs_mkdir   :: BA## Word8 -> FileMode -> IO Int
 foreign import ccall unsafe hs_uv_fs_rmdir   :: BA## Word8 -> IO Int
@@ -320,11 +319,11 @@ foreign import ccall unsafe hs_uv_fs_mkdtemp :: BA## Word8 -> Int -> MBA## Word8
 foreign import ccall unsafe hs_uv_fs_open_threaded 
     :: BA## Word8 -> FileFlag -> FileMode -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_close_threaded 
-    :: UVFD -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: FD -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_read_threaded  
-    :: UVFD -> Ptr Word8 -> Int -> Int64 -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: FD -> Ptr Word8 -> Int -> Int64 -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_write_threaded 
-    :: UVFD -> Ptr Word8 -> Int -> Int64 -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: FD -> Ptr Word8 -> Int -> Int64 -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_unlink_threaded
     :: BA## Word8 -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_mkdir_threaded 
@@ -553,27 +552,27 @@ peekUVStat p = FStat
     <*> (#{peek uv_stat_t, st_birthtim     } p)
 
 foreign import ccall unsafe hs_uv_fs_stat :: BA## Word8 -> Ptr FStat -> IO Int
-foreign import ccall unsafe hs_uv_fs_fstat :: UVFD -> Ptr FStat -> IO Int
+foreign import ccall unsafe hs_uv_fs_fstat :: FD -> Ptr FStat -> IO Int
 foreign import ccall unsafe hs_uv_fs_lstat :: BA## Word8 -> Ptr FStat -> IO Int
 foreign import ccall unsafe hs_uv_fs_rename :: BA## Word8 -> BA## Word8 -> IO Int
-foreign import ccall unsafe hs_uv_fs_fsync :: UVFD -> IO Int
-foreign import ccall unsafe hs_uv_fs_fdatasync :: UVFD -> IO Int
-foreign import ccall unsafe hs_uv_fs_ftruncate :: UVFD -> Int64 -> IO Int
+foreign import ccall unsafe hs_uv_fs_fsync :: FD -> IO Int
+foreign import ccall unsafe hs_uv_fs_fdatasync :: FD -> IO Int
+foreign import ccall unsafe hs_uv_fs_ftruncate :: FD -> Int64 -> IO Int
 
 foreign import ccall unsafe hs_uv_fs_stat_threaded
     :: BA## Word8 -> Ptr FStat -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_fstat_threaded
-    :: UVFD -> Ptr FStat -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: FD -> Ptr FStat -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_lstat_threaded
     :: BA## Word8 -> Ptr FStat -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_rename_threaded
     :: BA## Word8 -> BA## Word8 -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_fsync_threaded
-    :: UVFD -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: FD -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_fdatasync_threaded
-    :: UVFD -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: FD -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_ftruncate_threaded 
-    :: UVFD -> Int64 -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: FD -> Int64 -> Ptr UVLoop -> IO UVSlotUnsafe
 
 -- | Flags control copying.
 -- 
@@ -621,17 +620,17 @@ foreign import ccall unsafe hs_uv_fs_chmod :: BA## Word8 -> FileMode -> IO Int
 foreign import ccall unsafe hs_uv_fs_chmod_threaded
     :: BA## Word8 -> FileMode -> Ptr UVLoop -> IO UVSlotUnsafe
 
-foreign import ccall unsafe hs_uv_fs_fchmod :: UVFD -> FileMode -> IO Int
+foreign import ccall unsafe hs_uv_fs_fchmod :: FD -> FileMode -> IO Int
 foreign import ccall unsafe hs_uv_fs_fchmod_threaded
-    :: UVFD -> FileMode -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: FD -> FileMode -> Ptr UVLoop -> IO UVSlotUnsafe
 
 foreign import ccall unsafe hs_uv_fs_utime :: BA## Word8 -> Double -> Double -> IO Int
 foreign import ccall unsafe hs_uv_fs_utime_threaded
     :: BA## Word8 -> Double -> Double -> Ptr UVLoop -> IO UVSlotUnsafe
 
-foreign import ccall unsafe hs_uv_fs_futime :: UVFD -> Double -> Double -> IO Int
+foreign import ccall unsafe hs_uv_fs_futime :: FD -> Double -> Double -> IO Int
 foreign import ccall unsafe hs_uv_fs_futime_threaded
-    :: UVFD -> Double -> Double -> Ptr UVLoop -> IO UVSlotUnsafe
+    :: FD -> Double -> Double -> Ptr UVLoop -> IO UVSlotUnsafe
 
 foreign import ccall unsafe hs_uv_fs_lutime :: BA## Word8 -> Double -> Double -> IO Int
 foreign import ccall unsafe hs_uv_fs_lutime_threaded
@@ -674,6 +673,16 @@ foreign import ccall unsafe hs_uv_fs_readlink_threaded
 foreign import ccall unsafe hs_uv_fs_realpath_threaded
     :: BA## Word8  -> Ptr CString -> Ptr UVLoop -> IO UVSlotUnsafe
 
+foreign import ccall unsafe hs_uv_fs_chown :: BA## Word8 -> UID -> GID -> IO Int
+foreign import ccall unsafe hs_uv_fs_chown_threaded
+    :: BA## Word8 -> UID -> GID -> Ptr UVLoop -> IO UVSlotUnsafe
+foreign import ccall unsafe hs_uv_fs_fchown :: FD -> UID -> GID -> IO Int
+foreign import ccall unsafe hs_uv_fs_fchown_threaded
+    :: FD -> UID -> GID -> Ptr UVLoop -> IO UVSlotUnsafe
+foreign import ccall unsafe hs_uv_fs_lchown :: BA## Word8 -> UID -> GID -> IO Int
+foreign import ccall unsafe hs_uv_fs_lchown_threaded
+    :: BA## Word8 -> UID -> GID -> Ptr UVLoop -> IO UVSlotUnsafe
+
 --------------------------------------------------------------------------------
 -- process
 
@@ -684,7 +693,7 @@ newtype UID = UID
     Word32
 #endif
    deriving (Eq, Ord, Show, Generic)
-   deriving newtype (Storable, Prim, Unaligned, EncodeJSON, ToValue, FromValue)
+   deriving newtype (Storable, Prim, Unaligned, Num, EncodeJSON, ToValue, FromValue)
    deriving anyclass ShowT
 
 newtype GID = GID 
@@ -694,7 +703,7 @@ newtype GID = GID
     Word32
 #endif
    deriving (Eq, Ord, Show, Generic)
-   deriving newtype (Storable, Prim, Unaligned, EncodeJSON, ToValue, FromValue)
+   deriving newtype (Storable, Prim, Unaligned, Num, EncodeJSON, ToValue, FromValue)
    deriving anyclass ShowT
 
 type ProcessFlag = CUInt
@@ -765,15 +774,15 @@ data ProcessOptions = ProcessOptions
     , processGID :: GID -- ^ This happens only when the appropriate bits are set in the flags fields.
     , processStdStreams :: (ProcessStdStream, ProcessStdStream, ProcessStdStream) -- ^ Specifying how (stdin, stdout, stderr) should be passed/created to the child, see 'ProcessStdStream'
                             
-    }  deriving (Eq, Ord, Show, Generic)
-       deriving anyclass ShowT
+    }   deriving (Eq, Ord, Show, Generic)
+        deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 data ProcessStdStream
     = ProcessIgnore     -- ^ redirect process std stream to /dev/null
     | ProcessCreate     -- ^ create a new std stream
-    | ProcessInherit UVFD -- ^ pass an existing FD to child process as std stream
+    | ProcessInherit FD -- ^ pass an existing FD to child process as std stream
   deriving  (Eq, Ord, Show, Generic)
-  deriving anyclass ShowT
+  deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 processStdStreamFlag :: ProcessStdStream -> CInt
 processStdStreamFlag ProcessIgnore = #const UV_IGNORE
@@ -837,7 +846,7 @@ pattern UV_SIGNAL = #const UV_SIGNAL
 pattern UV_FILE :: UVHandleType
 pattern UV_FILE = #const UV_FILE
 
-foreign import ccall unsafe uv_guess_handle :: UVFD -> IO UVHandleType
+foreign import ccall unsafe uv_guess_handle :: FD -> IO UVHandleType
 
 foreign import ccall unsafe uv_resident_set_memory :: MBA## CSize -> IO CInt
 foreign import ccall unsafe uv_uptime :: MBA## Double -> IO CInt
@@ -939,10 +948,10 @@ pattern UV_MAXHOSTNAMESIZE = #const UV_MAXHOSTNAMESIZE
 foreign import ccall unsafe uv_os_gethostname :: MBA## Word8 -> MBA## CSize -> IO CInt
 
 data OSName = OSName
-    { os_sysname :: T.Text
-    , os_release :: T.Text
-    , os_version :: T.Text
-    , os_machine :: T.Text
+    { os_sysname :: CBytes
+    , os_release :: CBytes
+    , os_version :: CBytes
+    , os_machine :: CBytes
     }   deriving (Eq, Ord, Show, Generic)
         deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
@@ -950,13 +959,50 @@ getOSName :: IO OSName
 getOSName = do
     (A.MutablePrimArray mba## :: A.MutablePrimArray A.RealWorld Word8) <- A.newArr (#size uv_utsname_t)
     throwUVIfMinus_ (uv_os_uname mba##)
-    sn <- toText <$> peekMBA mba## (#offset uv_utsname_t, sysname)
-    re <- toText <$> peekMBA mba## (#offset uv_utsname_t, release)
-    ve <- toText <$> peekMBA mba## (#offset uv_utsname_t, version)
-    ma <- toText <$> peekMBA mba##  (#offset uv_utsname_t, machine) 
+    sn <- peekMBA mba## (#offset uv_utsname_t, sysname)
+    re <- peekMBA mba## (#offset uv_utsname_t, release)
+    ve <- peekMBA mba## (#offset uv_utsname_t, version)
+    ma <- peekMBA mba##  (#offset uv_utsname_t, machine) 
     return (OSName sn re ve ma)
     
 foreign import ccall unsafe uv_os_uname :: MBA## OSName -> IO CInt
 
 foreign import ccall unsafe hs_uv_random :: MBA## Word8 -> CSize -> CInt -> IO CInt
 foreign import ccall unsafe hs_uv_random_threaded :: Ptr Word8 -> CSize -> CInt -> Ptr UVLoop -> IO UVSlotUnsafe
+
+-- | Data type for password file information.
+data PassWD = PassWD
+    { passwd_username :: CBytes
+    , passwd_uid :: UID
+    , passwd_gid :: GID
+    , passwd_shell :: CBytes
+    , passwd_homedir :: CBytes
+    }   deriving (Eq, Ord, Show, Generic)
+        deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
+
+foreign import ccall unsafe uv_os_get_passwd :: MBA## PassWD -> IO CInt
+foreign import ccall unsafe uv_os_free_passwd :: MBA## PassWD -> IO ()
+
+-- | Gets a subset of the password file entry for the current effective uid (not the real uid). 
+--
+-- The populated data includes the username, euid, gid, shell, and home directory.
+-- On non-Windows systems, all data comes from getpwuid_r(3). 
+-- On Windows, uid and gid are set to -1 and have no meaning, and shell is empty.
+getPassWD :: IO PassWD
+getPassWD =  bracket
+    (do mpa@(A.MutablePrimArray mba## :: A.MutablePrimArray A.RealWorld Word8) <- A.newArr (#size uv_passwd_t)
+        throwUVIfMinus_ (uv_os_get_passwd mba##)
+        return mpa)
+    (\ (A.MutablePrimArray mba##) -> uv_os_free_passwd mba##)
+    (\ (A.MutablePrimArray mba##) -> do
+        username <- fromCString =<< peekMBA mba## (#offset uv_passwd_t, username)
+        uid <- fromIntegral <$> (peekMBA mba## (#offset uv_passwd_t, uid) :: IO CLong)
+        gid <- fromIntegral <$> (peekMBA mba## (#offset uv_passwd_t, gid) :: IO CLong)
+        shell <- fromCString =<< peekMBA mba## (#offset uv_passwd_t, shell)
+        homedir <- fromCString =<< peekMBA mba## (#offset uv_passwd_t, homedir)
+        return (PassWD username uid gid shell homedir))
+
+foreign import ccall unsafe uv_cwd :: MBA## Word8 -> MBA## CSize -> IO CInt
+foreign import ccall unsafe uv_chdir :: BA## Word8 -> IO CInt
+foreign import ccall unsafe uv_os_homedir :: MBA## Word8 -> MBA## CSize -> IO CInt
+foreign import ccall unsafe uv_os_tmpdir :: MBA## Word8 -> MBA## CSize -> IO CInt

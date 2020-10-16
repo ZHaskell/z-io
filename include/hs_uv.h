@@ -617,7 +617,9 @@ HsInt hs_uv_fs_link(const char* path, const char* path2);
 HsInt hs_uv_fs_symlink(const char* path, const char* path2, int flag);
 HsInt hs_uv_fs_readlink(const char* path, char** result_path);
 HsInt hs_uv_fs_realpath(const char* path, char** result_path);
-
+HsInt hs_uv_fs_chown(const char* path, uv_uid_t uid, uv_gid_t gid);
+HsInt hs_uv_fs_fchown(int32_t file, uv_uid_t uid, uv_gid_t gid);
+HsInt hs_uv_fs_lchown(const char* path, uv_uid_t uid, uv_gid_t gid);
 
 ////////////////////////////////////////////////////////////////////////////////
 // fs, thread pool version
@@ -648,6 +650,9 @@ HsInt hs_uv_fs_link_threaded(const char* path, const char* path2, uv_loop_t* loo
 HsInt hs_uv_fs_symlink_threaded(const char* path, const char* path2, int flag, uv_loop_t* loop);
 HsInt hs_uv_fs_readlink_threaded(const char* path, char** result_path, uv_loop_t* loop);
 HsInt hs_uv_fs_realpath_threaded(const char* path, char** result_path, uv_loop_t* loop);
+HsInt hs_uv_fs_chown_threaded(const char* path, uv_uid_t uid, uv_gid_t gid, uv_loop_t* loop);
+HsInt hs_uv_fs_fchown_threaded(int32_t file, uv_uid_t uid, uv_gid_t gid, uv_loop_t* loop);
+HsInt hs_uv_fs_lchown_threaded(const char* path, uv_uid_t uid, uv_gid_t gid, uv_loop_t* loop);
 
 ////////////////////////////////////////////////////////////////////////////////
 // process

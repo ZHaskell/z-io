@@ -85,7 +85,7 @@ closeUVStream (UVStream hdl _ uvm closed) = withUVManager' uvm $ do
     unless c $ writeIORef closed True >> hs_uv_handle_close hdl
 
 -- | Get stream fd
-getUVStreamFD :: HasCallStack => UVStream -> IO UVFD
+getUVStreamFD :: HasCallStack => UVStream -> IO FD
 getUVStreamFD (UVStream hdl _ _ closed) = do
     c <- readIORef closed
     when c throwECLOSED

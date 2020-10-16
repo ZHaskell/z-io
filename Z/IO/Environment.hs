@@ -18,6 +18,7 @@ module Z.IO.Environment
   , getEnv, getEnv'
   , setEnv, unsetEnv
     -- * other environment infos
+  , getCWD, chDir, getHomeDir, getTempDir
   , getResUsage
   , getResidentSetMemory
   , getUpTime
@@ -26,6 +27,7 @@ module Z.IO.Environment
   , getPID, getPPID
   , getHostname
   , getOSName, OSName(..)
+  , getPassWD, PassWD(..), UID, GID
   , getRandom, getRandomT
   ) where
 
@@ -177,6 +179,67 @@ getRandomT siz = do
         uvm <- getUVManager
         withUVRequest_ uvm (hs_uv_random_threaded p (fromIntegral siz) 0)
     return v
+
+-- | Gets the current working directory.
+--
+getCWD :: HasCallStack => IO CBytes
+getCWD = go 512
+  where
+    go siz = do
+        (siz', (v, r))<- withPrimUnsafe siz $ \ p_siz ->
+            allocCBytesUnsafe siz $ \ p_v ->
+                uv_cwd p_v p_siz
+        case r of
+            UV_ENOBUFS -> go siz'
+            _ -> do
+                throwUVIfMinus_ (return r)
+                return v
+
+-- | Changes the current working directory.
+--
+chDir :: HasCallStack => CBytes -> IO ()
+chDir p = throwUVIfMinus_ (withCBytesUnsafe p $ \ pp -> uv_chdir pp)
+
+-- | Gets the current user’s home directory.
+--
+-- On Windows, first checks the USERPROFILE environment variable using GetEnvironmentVariableW().
+-- If USERPROFILE is not set, GetUserProfileDirectoryW() is called.
+-- On all other operating systems, first checks the HOME environment variable using getenv(3).
+-- If HOME is not set, getpwuid_r(3) is called.
+--
+-- Warning 'getHomeDir' is not thread safe.
+getHomeDir :: HasCallStack => IO CBytes
+getHomeDir = go 512
+  where
+    go siz = do
+        (siz', (v, r))<- withPrimUnsafe siz $ \ p_siz ->
+            allocCBytesUnsafe siz $ \ p_v ->
+                uv_os_homedir p_v p_siz
+        case r of
+            UV_ENOBUFS -> go siz'
+            _ -> do
+                throwUVIfMinus_ (return r)
+                return v
+
+-- | Gets the temp directory.
+--
+-- On Windows, uses GetTempPathW(). On all other operating systems,
+-- uses the first environment variable found in the ordered list TMPDIR, TMP, TEMP, and TEMPDIR.
+-- If none of these are found, the path @\/tmp@ is used, or, on Android, @\/data\/local\/tmp@ is used.
+--
+-- Warning 'getHomeDir' is not thread safe.
+getTempDir :: HasCallStack => IO CBytes
+getTempDir = go 512
+  where
+    go siz = do
+        (siz', (v, r))<- withPrimUnsafe siz $ \ p_siz ->
+            allocCBytesUnsafe siz $ \ p_v ->
+                uv_os_tmpdir p_v p_siz
+        case r of
+            UV_ENOBUFS -> go siz'
+            _ -> do
+                throwUVIfMinus_ (return r)
+                return v
 
 --------------------------------------------------------------------------------
 

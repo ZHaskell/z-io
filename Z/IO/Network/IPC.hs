@@ -120,7 +120,7 @@ startIPCServer IPCServerConfig{..} ipcServerWorker = do
 -- The buffer passing of accept is a litte complicated here, to get maximum performance,
 -- we do batch accepting. i.e. recv multiple client inside libuv's event loop:
 --
--- we poke uvmanager's buffer table as a Ptr Word8, with byte size (backLog*sizeof(UVFD))
+-- we poke uvmanager's buffer table as a Ptr Word8, with byte size (backLog*sizeof(FD))
 -- inside libuv event loop, we cast the buffer back to int32_t* pointer.
 -- each accept callback push a new socket fd to the buffer, and increase a counter(buffer_size_table).
 -- backLog should be large enough(>128), so under windows we can't possibly filled it up within one
@@ -134,7 +134,7 @@ startIPCServer IPCServerConfig{..} ipcServerWorker = do
 -- we allocate a buffer to hold accepted FDs, pass it just like a normal reading buffer.
 -- then we can start listening.
                 acceptBuf <- newPinnedPrimArray backLog
-                let acceptBufPtr = coerce (mutablePrimArrayContents acceptBuf :: Ptr UVFD)
+                let acceptBufPtr = coerce (mutablePrimArrayContents acceptBuf :: Ptr FD)
 
                 withUVManager' serverUVManager $ do
                     -- We use buffersize as accepted fd count(count backwards)
