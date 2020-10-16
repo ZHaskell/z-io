@@ -1,12 +1,13 @@
 # Revision history for Z-IO
 
-## 0.1.6.0  -- 2020-10-15
+## 0.1.6.0  -- 2020-10-17
 
 * Add `Z.IO.StdStream.Ansi` module, add a default colored logger.
 * Fix a bug affects udp exception raising(simliar to the one fixed in 0.1.5.2).
 * Add `Z.IO.Time` module.
 * Add `getCWD`, `chDir`, `getHomeDir`, `getTempDir`, `getPassWD` to `Z.IO.Environment`.
 * Add `chown`, `fchown`, `lchown` to `Z.IO.FileSystem` and `Z.IO.FileSystem.Threaded`.
+* Add `Z.IO.FileSystem.FilePath` module.
 
 ## 0.1.5.2  -- 2020-10-13
 
