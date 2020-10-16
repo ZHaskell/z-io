@@ -30,6 +30,9 @@ extra-source-files:         ChangeLog.md
                             third_party/zlib/zutil.h
                             third_party/zlib/gzguts.h
 
+                            -- cwalk header
+                            third_party/cwalk/include/cwalk.h
+
                             -- libuv C sources
                             third_party/libuv/include/uv.h
                             third_party/libuv/include/uv/aix.h
@@ -83,6 +86,7 @@ flag no-pkg-config
 library
     exposed-modules:        Z.IO
                             Z.IO.FileSystem
+                            Z.IO.FileSystem.FilePath
                             Z.IO.FileSystem.Threaded
                             Z.IO.Network.SocketAddr
                             Z.IO.Network.DNS
@@ -160,14 +164,17 @@ library
 
     include-dirs:           include
                             third_party/zlib
+                            third_party/cwalk/include
 
     includes:               hs_uv.h
                             zlib.h
                             zconf.h
+                            hs_cwalk.h
 
     install-includes:       hs_uv.h 
                             zlib.h
                             zconf.h
+                            hs_cwalk.h
 
     cc-options:             -march=native
     c-sources:              cbits/hs_uv_base.c
@@ -177,6 +184,9 @@ library
                             cbits/hs_uv_process.c
                             cbits/hs_uv_udp.c
                             cbits/hs_zlib.c
+                            cbits/hs_cwalk.c
+
+                            third_party/cwalk/src/cwalk.c
 
                             third_party/zlib/adler32.c
                             third_party/zlib/compress.c
