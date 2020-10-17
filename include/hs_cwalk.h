@@ -35,5 +35,9 @@
 HsInt hs_cwk_path_get_basename(const char *path, HsInt *base_off);
 HsInt hs_cwk_path_get_dirname(const char *path);
 HsInt hs_cwk_path_get_root(const char *path);
+#if __GLASGOW_HASKELL__ < 810
+HsInt hs_cwk_path_join_multiple(const StgMutArrPtrs *paths_arr, HsInt path_n, char *buffer, size_t buffer_size);
+#else
 HsInt hs_cwk_path_join_multiple(const StgArrBytes **paths, HsInt path_n, char *buffer, size_t buffer_size);
+#endif
 HsInt hs_cwk_path_get_extension(const char *path, size_t *length);

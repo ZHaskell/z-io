@@ -113,9 +113,14 @@ instance Input UVStream where
                 void (tryTakeMVar m))
 
         if  | r > 0  -> return r
-            -- r == 0 should be impossible, since we guard this situation in c side
             | r == fromIntegral UV_EOF -> return 0
             | r < 0 ->  throwUVIfMinus (return r)
+            -- r == 0 should be impossible, since we guard this situation in c side
+            | otherwise -> throwUVError UV_UNKNOWN IOEInfo{
+                                  ioeName = "UVStream read error"
+                                , ioeDescription = "UVStream read should never return 0 before EOF"
+                                , ioeCallStack = callStack
+                                }
 
 instance Output UVStream where
     -- writeOutput :: HasCallStack => UVStream -> Ptr Word8 -> Int -> IO ()

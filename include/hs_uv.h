@@ -661,10 +661,17 @@ HsInt hs_uv_fs_lchown_threaded(const char* path, uv_uid_t uid, uv_gid_t gid, uv_
 HsInt hs_uv_spawn(uv_loop_t* loop
                  , uv_process_options_t* options
                  , const char* file
+#if __GLASGOW_HASKELL__ < 810
+                 , const StgMutArrPtrs* all_args_arr
+                 , const HsInt args_len
+                 , const StgMutArrPtrs* all_env_arr
+                 , const HsInt env_len
+#else
                  , const StgArrBytes** all_args
                  , const HsInt args_len
                  , const StgArrBytes** all_env
                  , const HsInt env_len
+#endif
                  , const char* cwd
                  , uv_stdio_container_t* container);
 

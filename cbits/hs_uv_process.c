@@ -49,12 +49,23 @@ void hs_uv_exit_cb(uv_process_t* handle, int64_t exit_status, int term_signal){
 HsInt hs_uv_spawn(uv_loop_t* loop
                  , uv_process_options_t* options
                  , const char* file
+#if __GLASGOW_HASKELL__ < 810
+                 , const StgMutArrPtrs* all_args_arr
+                 , const HsInt args_len
+                 , const StgMutArrPtrs* all_env_arr
+                 , const HsInt env_len
+#else
                  , const StgArrBytes** all_args
                  , const HsInt args_len
                  , const StgArrBytes** all_env
                  , const HsInt env_len
+#endif
                  , const char* cwd
                  , uv_stdio_container_t* container){
+#if __GLASGOW_HASKELL__ < 810
+    StgArrBytes **all_args = (StgArrBytes**)all_args_arr->payload;
+    StgArrBytes **all_env = (StgArrBytes**)all_env_arr->payload;
+#endif
     int r;
     HsInt i;
     char **args = NULL, **env = NULL;
