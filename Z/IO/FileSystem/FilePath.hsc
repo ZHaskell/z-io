@@ -16,6 +16,7 @@ module Z.IO.FileSystem.FilePath
  ( -- * Paths
     splitBaseName, changeBaseName
   , splitRoot, changeRoot
+  , splitSegments
   , isAbsolute
   , isRelative
   , join
@@ -247,6 +248,23 @@ changeRoot p r = do
             allocCBytesUnsafe l $ \ pbuf ->
                 cwk_path_change_root pp pr pbuf (fromIntegral l)
     return p'
+
+-- | Split file path into (root, segments, basename) tuple.
+--
+-- Root and basename may be empty, segments are separated by 'pathSeparator' and never be empty if any.
+splitSegments :: CBytes
+              -> IO (CBytes, [CBytes], CBytes) -- ^ return (root, segments, basename)
+{-# INLINABLE splitSegments #-}
+splitSegments p = do
+    (root, rest) <- splitRoot p
+    (CB seg, basename) <- splitBaseName rest
+    sty <- getPathStyle
+    let segs = case sty of
+            UnixStyle ->
+                V.splitWith (== (#const SLASH)) seg
+            _ ->
+                V.splitWith (\ w -> w == (#const SLASH) || w == (#const BACKSLASH)) seg
+    return (root, (map CB (filter (not . V.null) segs)), basename)
 
 -- | Determine whether the path is absolute or not.
 --
