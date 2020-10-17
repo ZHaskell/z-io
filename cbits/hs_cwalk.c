@@ -56,22 +56,18 @@ HsInt hs_cwk_path_get_root(const char *path){
     return (HsInt)length;
 }
 
-HsInt hs_cwk_path_join_multiple(const char *paths, HsInt path_n, char *buffer, size_t buffer_size){
-    const char **path_list = (const char**)malloc(sizeof(char*)*(path_n+1));
-    const char *p;
-    size_t i = 0;
+HsInt hs_cwk_path_join_multiple(const StgArrBytes **paths, HsInt path_n, char *buffer, size_t buffer_size){
     HsInt r;
+    const char **path_list = (const char**)malloc(sizeof(char*)*(path_n+1));
     if (path_list == NULL) {
         *buffer = 0;
         return 0;
     }
-    if (path_n > 0) path_list[i++] = paths; 
-    for(p = paths; i < path_n; p++){
-        if (*p == 0) {
-            path_list[i++] = p+1;
-        }
+    path_list[path_n--] = NULL;
+    while(path_n >= 0){
+        path_list[path_n] = (char*)paths[path_n]->payload;
+        path_n--;
     } 
-    path_list[i] = NULL;
     r = (HsInt)cwk_path_join_multiple(path_list, buffer, buffer_size);
     free(path_list);
     return r;

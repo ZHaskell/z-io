@@ -29,10 +29,11 @@
  */
 
 #include <HsFFI.h>  // for HsInt
+#include <Rts.h>    // for StgArrBytes
 #include <cwalk.h>
 
 HsInt hs_cwk_path_get_basename(const char *path, HsInt *base_off);
 HsInt hs_cwk_path_get_dirname(const char *path);
 HsInt hs_cwk_path_get_root(const char *path);
-HsInt hs_cwk_path_join_multiple(const char *paths, HsInt path_n, char *buffer, size_t buffer_size);
+HsInt hs_cwk_path_join_multiple(const StgArrBytes **paths, HsInt path_n, char *buffer, size_t buffer_size);
 HsInt hs_cwk_path_get_extension(const char *path, size_t *length);

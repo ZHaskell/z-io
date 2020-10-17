@@ -39,7 +39,7 @@ module Z.IO.FileSystem.FilePath
 import           Data.Word
 import qualified Data.List as List
 import           GHC.Generics
-import           Z.Data.CBytes (CBytes(CB), allocCBytesUnsafe, withCBytesUnsafe)
+import           Z.Data.CBytes (CBytes(CB), allocCBytesUnsafe, withCBytesUnsafe, withCBytesListUnsafe)
 import qualified Z.Data.CBytes as CB
 import qualified Z.Data.Text.ShowT as T
 import           Z.Data.JSON (FromValue, ToValue, EncodeJSON)
@@ -63,7 +63,7 @@ import Prelude hiding (concat)
 -- .
 #define DOT 46
 
-#define BUF_EXT_SIZ  8
+#define BUF_EXT_SIZ  4
 
 data PathStyle = WindowsStyle   -- ^ Use backslashes as a separator and volume for the root.
                | UnixStyle      -- ^ Use slashes as a separator and a slash for the root.
@@ -360,11 +360,10 @@ join p p2 = do
 -- it permits the use of multiple relative paths to combine.
 concat :: [CBytes] -> IO CBytes
 concat ps = do
-    let psbuf = mconcat (List.map CB.rawPrimArray ps)
-    (p', _) <- withPrimArrayUnsafe psbuf $ \ pp l -> do
-        let l' = l + (#const BUF_EXT_SIZ)
+    (p', _) <- withCBytesListUnsafe ps $ \ pp l -> do
+        let l' = sum (List.map (\ p -> CB.length p + (#const BUF_EXT_SIZ)) ps)
         allocCBytesUnsafe l' $ \ pbuf ->
-            hs_cwk_path_join_multiple pp (List.length ps) pbuf (fromIntegral l')
+            hs_cwk_path_join_multiple pp l pbuf (fromIntegral l')
     return p'
 
 -- | Creates a normalized version of the path.
@@ -599,7 +598,7 @@ foreign import ccall unsafe cwk_path_change_root :: BA## Word8 -> BA## Word8 -> 
 foreign import ccall unsafe cwk_path_is_absolute :: BA## Word8 -> IO CBool
 foreign import ccall unsafe cwk_path_is_relative :: BA## Word8 -> IO CBool
 foreign import ccall unsafe cwk_path_join :: BA## Word8 -> BA## Word8 -> MBA## Word8 -> CSize -> IO CSize
-foreign import ccall unsafe hs_cwk_path_join_multiple :: BA## Word8 -> Int -> MBA## Word8 -> CSize -> IO CSize
+foreign import ccall unsafe hs_cwk_path_join_multiple :: BAArray## Word8 -> Int -> MBA## Word8 -> CSize -> IO CSize
 foreign import ccall unsafe cwk_path_normalize :: BA## Word8 -> MBA## Word8 -> CSize -> IO CSize
 foreign import ccall unsafe cwk_path_get_intersection :: BA## Word8 -> BA## Word8 -> IO CSize
 foreign import ccall unsafe cwk_path_get_absolute :: BA## Word8 -> BA## Word8 -> MBA## Word8 -> CSize -> IO CSize
