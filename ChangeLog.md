@@ -8,6 +8,7 @@
 * Add `getCWD`, `chDir`, `getHomeDir`, `getTempDir`, `getPassWD` to `Z.IO.Environment`.
 * Add `chown`, `fchown`, `lchown` to `Z.IO.FileSystem` and `Z.IO.FileSystem.Threaded`.
 * Add `Z.IO.FileSystem.FilePath` module.
+* Rename `UVFD` to `FD`.
 
 ## 0.1.5.2  -- 2020-10-13
 

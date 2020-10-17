@@ -49,14 +49,14 @@ void hs_uv_exit_cb(uv_process_t* handle, int64_t exit_status, int term_signal){
 HsInt hs_uv_spawn(uv_loop_t* loop
                  , uv_process_options_t* options
                  , const char* file
-                 , const char* all_args
-                 , const size_t args_len
-                 , const char* all_env
-                 , const ssize_t env_len
+                 , const StgArrBytes** all_args
+                 , const HsInt args_len
+                 , const StgArrBytes** all_env
+                 , const HsInt env_len
                  , const char* cwd
-                 , uv_stdio_container_t* stdio){
-    int r, i;
-    char* p;
+                 , uv_stdio_container_t* container){
+    int r;
+    HsInt i;
     char **args = NULL, **env = NULL;
 
     hs_loop_data* loop_data = loop->data;
@@ -73,31 +73,28 @@ HsInt hs_uv_spawn(uv_loop_t* loop
     args = (char**)malloc(sizeof(char*)*(args_len + 2));
     if (args == NULL) return UV_ENOMEM;
     args[i++] = (char*)file;
-    if (args_len > 0) args[i++] = (char*)all_args;
-    for(p = (char*)all_args; i <= args_len; p++){
-        if (*p == 0) {
-            args[i++] = p+1;
-        }
+    while(i <= args_len) {
+        args[i] = (char*)all_args[i-1]->payload;
+        i++;
     }
     args[i] = NULL;
     options->args = args;
 
     i = 0;
+    // env_len == -1 for inherit from parent
     if (env_len >= 0){
         env = (char**)malloc(sizeof(char*)*(env_len+1));
         if (env == NULL) return UV_ENOMEM;
-        if (env_len > 0) env[i++] = (char*)all_env;
-        for(p = (char*)all_env; i < env_len; p++){
-            if (*p == 0) {
-                env[i++] = p+1;
-            }
+        while(i < env_len) {
+            env[i] = (char*)all_env[i]->payload;
+            i++;
         }
         env[i] = NULL;
     }
     options->env = env;
 
     options->stdio_count = 3;
-    options->stdio = stdio;
+    options->stdio = container;
     options->cwd = cwd;
 
     r = uv_spawn(loop, handle, options);

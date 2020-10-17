@@ -29,6 +29,7 @@
  */
 
 #include <HsFFI.h>  // for HsInt
+#include <Rts.h>
 #include <assert.h>
 #include <stdlib.h> // for malloc, free, etc.
 #include <string.h> // for fs path
@@ -660,10 +661,10 @@ HsInt hs_uv_fs_lchown_threaded(const char* path, uv_uid_t uid, uv_gid_t gid, uv_
 HsInt hs_uv_spawn(uv_loop_t* loop
                  , uv_process_options_t* options
                  , const char* file
-                 , const char* all_args
-                 , const size_t args_len
-                 , const char* all_env
-                 , const ssize_t env_len
+                 , const StgArrBytes** all_args
+                 , const HsInt args_len
+                 , const StgArrBytes** all_env
+                 , const HsInt env_len
                  , const char* cwd
                  , uv_stdio_container_t* container);
 

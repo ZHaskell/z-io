@@ -220,10 +220,11 @@ statPool pool = readTVarIO (poolState pool)
 -- | Obtain the pooled resource inside a given resource pool.
 --
 -- You shouldn't use 'withResource' with this resource after you closed the pool,
--- an 'ResourceVanished' will be thrown.
+-- a 'ResourceVanished' will be thrown.
 --
 initInPool :: Pool a -> Resource a
-initInPool (Pool res limit itime entries inuse state) = fst <$> initResource takeFromPool returnToPool
+initInPool (Pool res limit itime entries inuse state) =
+    fst <$> initResource takeFromPool returnToPool
   where
     takeFromPool = join . atomically $ do
         c <- readTVar state

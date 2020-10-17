@@ -794,10 +794,10 @@ processStdStreamFlag (ProcessInherit _) = #const UV_INHERIT_FD
 foreign import ccall unsafe hs_uv_spawn :: Ptr UVLoop 
                                         -> MBA## ProcessOptions         --  option
                                         -> BA## Word8                   --  file
-                                        -> BA## Word8                   --  all args
-                                        -> CSize                        --  args len
-                                        -> BA## Word8                   --  all envs
-                                        -> CSsize                        --  envs len
+                                        -> BAArray## Word8              --  all args
+                                        -> Int                          --  args len
+                                        -> BAArray## Word8              --  all envs
+                                        -> Int                          --  envs len
                                         -> BA## Word8                   --  cwd
                                         -> MBA## ProcessStdStream       -- stdio
                                         -> IO Int

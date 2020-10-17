@@ -242,22 +242,18 @@ spawn ProcessOptions{..} = do
             return (Just uvs2)
         _ -> return Nothing
 
-    -- concat args
-    let allArgs = mconcat (List.map CBytes.rawPrimArray processArgs)  
-        argsLen = fromIntegral $ List.length processArgs
-    -- concat env
-        mkEnv (k, v) = CBytes.rawPrimArray (CBytes.concat [k, "=", v])
+    let mkEnv (k, v) = CBytes.concat [k, "=", v]
         allEnv = case processEnv of
-            Just e -> mconcat (List.map mkEnv e ++ [mempty])  
-            _ -> V.singleton 0 
+            Just e -> List.map mkEnv e  
+            _ -> []
         envLen = case processEnv of
-            Just e -> fromIntegral $ List.length e
-            _ -> -1
+            Just e -> List.length e
+            _ -> -1     -- use -1 to inherit from parent
 
     (slot, pid) <- withCBytesUnsafe processFile $ \ pfile ->
         withCBytesUnsafe processCWD $ \ pcwd ->
-            withPrimArrayUnsafe allArgs $ \ pargs _ ->
-                withPrimArrayUnsafe allEnv $ \ penv _ ->
+            withCBytesListUnsafe processArgs $ \ pargs argsLen ->
+                withCBytesListUnsafe allEnv $ \ penv _ ->
                     withUVManager uvm $ \ loop -> do
                         slot <- throwUVIfMinus (hs_uv_spawn loop popts## pfile
                                         pargs argsLen penv envLen pcwd pstdio##)
