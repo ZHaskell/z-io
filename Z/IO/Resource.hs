@@ -26,8 +26,8 @@ module Z.IO.Resource (
   , Pool
   , PoolState(..)
   , initPool
-  , statPool
   , initInPool
+  , poolStat, poolInUse
 ) where
 
 import           Control.Concurrent.STM
@@ -171,12 +171,12 @@ data PoolState = PoolClosed | PoolScanning | PoolEmpty deriving (Eq, Show)
 -- can be opened.
 --
 data Pool a = Pool
-    { poolResource :: Resource a
-    , poolLimit :: Int
-    , poolIdleTime :: Int
-    , poolEntries :: TVar [Entry a]
-    , poolInUse :: TVar Int
-    , poolState :: TVar PoolState
+    { _poolResource :: Resource a
+    , _poolLimit :: Int
+    , _poolIdleTime :: Int
+    , _poolEntries :: TVar [Entry a]
+    , _poolInUse :: TVar Int
+    , _poolState :: TVar PoolState
     }
 
 -- | Initialize a resource pool with given 'Resource'
@@ -214,8 +214,17 @@ initPool res limit itime = initResource createPool closePool
 -- should be adjusted to a higher number. On the otherhand, lots of 'PoolScanning'
 -- may indicate there're too much free resources.
 --
-statPool :: Pool a -> IO PoolState
-statPool pool = readTVarIO (poolState pool)
+poolStat :: Pool a -> IO PoolState
+poolStat pool = readTVarIO (_poolState pool)
+
+-- | Get how many resource is being used within a resource pool.
+--
+-- This function is useful when debug, under load in use number alway reaches limit may indicate
+-- contention on resources, i.e. the limit on maximum number of resources can be opened
+-- should be adjusted to a higher number.
+--
+poolInUse :: Pool a -> IO Int
+poolInUse pool = readTVarIO (_poolInUse pool)
 
 -- | Obtain the pooled resource inside a given resource pool.
 --

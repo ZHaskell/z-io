@@ -44,7 +44,7 @@ spec = describe "resource tests" $ do
             r <- readPrimIORef resCounter
             assertEqual "pool should keep returned resources alive" 100 r
 
-            s <- statPool pool
+            s <- poolStat pool
             assertEqual "pool should be scanning returned resources" PoolScanning s
 
             threadDelay 5000000  -- after 5s, 1000 thread should release all resources
@@ -54,7 +54,7 @@ spec = describe "resource tests" $ do
 
             threadDelay 1200000  -- another 1.2s
 
-            s <- statPool pool
+            s <- poolStat pool
             assertEqual "pool should stop scanning returned resources" PoolEmpty s
 
             -- Let's test again
@@ -76,7 +76,7 @@ spec = describe "resource tests" $ do
             r <- readPrimIORef resCounter
             assertEqual "pool should keep returned resources alive" 100 r
 
-            s <- statPool pool
+            s <- poolStat pool
             assertEqual "pool should be scanning returned resources" PoolScanning s
 
             threadDelay 5000000  -- after 5s, 1000 thread should release all resources
@@ -86,7 +86,7 @@ spec = describe "resource tests" $ do
 
             threadDelay 1200000  -- another 1.2s
 
-            s <- statPool pool
+            s <- poolStat pool
             assertEqual "pool should stop scanning returned resources" PoolEmpty s
 
     it "resource pool under exceptions" $ do
@@ -108,7 +108,7 @@ spec = describe "resource tests" $ do
             r <- readPrimIORef resCounter
             assertEqual "pool should keep returned resources alive" 100 r
 
-            s <- statPool pool
+            s <- poolStat pool
             assertEqual "pool should be scanning returned resources" PoolScanning s
 
             threadDelay 5000000  -- after 5s, 1000 thread should release all resources
@@ -118,5 +118,5 @@ spec = describe "resource tests" $ do
 
             threadDelay 2000000  -- after 2s, scanning thread should stoped
 
-            s <- statPool pool
+            s <- poolStat pool
             assertEqual "pool should stop scanning returned resources" PoolEmpty s

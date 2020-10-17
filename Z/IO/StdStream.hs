@@ -106,9 +106,14 @@ instance Input StdStream where
                 throwUVIfMinus_ $ withUVManager' uvm (uv_read_stop hdl)
                 void (tryTakeMVar m))
         if  | r > 0  -> return r
-            -- r == 0 should be impossible, since we guard this situation in c side
             | r == fromIntegral UV_EOF -> return 0
             | r < 0 ->  throwUVIfMinus (return r)
+            -- r == 0 should be impossible, since we guard this situation in c side
+            | otherwise -> throwUVError UV_UNKNOWN IOEInfo{
+                                  ioeName = "StdStream read error"
+                                , ioeDescription = "StdStream read should never return 0 before EOF"
+                                , ioeCallStack = callStack
+                                }
     readInput (StdFile fd) buf len =
         throwUVIfMinus $ hs_uv_fs_read fd buf len (-1)
 

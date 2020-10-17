@@ -56,7 +56,12 @@ HsInt hs_cwk_path_get_root(const char *path){
     return (HsInt)length;
 }
 
+#if __GLASGOW_HASKELL__ < 810
+HsInt hs_cwk_path_join_multiple(const StgMutArrPtrs *paths_arr, HsInt path_n, char *buffer, size_t buffer_size){
+    StgArrBytes **paths = (StgArrBytes**)paths_arr->payload;
+#else
 HsInt hs_cwk_path_join_multiple(const StgArrBytes **paths, HsInt path_n, char *buffer, size_t buffer_size){
+#endif
     HsInt r;
     const char **path_list = (const char**)malloc(sizeof(char*)*(path_n+1));
     if (path_list == NULL) {
