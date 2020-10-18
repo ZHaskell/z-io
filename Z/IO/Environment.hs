@@ -19,7 +19,7 @@ module Z.IO.Environment
   , setEnv, unsetEnv
     -- * other environment infos
   , getCWD, chDir, getHomeDir, getTempDir
-  , getResUsage
+  , getResUsage, ResUsage(..)
   , getResidentSetMemory
   , getUpTime
   , getHighResolutionTime

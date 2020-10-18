@@ -28,7 +28,7 @@ Example for library author defining new io exception:
 @
 
 If you're dealing with OS's errno directly, you should convert the errno to libuv's errno in C side with
-'uv_translate_sys_error' from @hs_uv.h@, then use 'throwUVIfMinus/throwUVError' from this module.
+'uv_translate_sys_error' from @hs_uv.h@, then use 'throwUVIfMinus\/throwUVError' from this module.
 
 -}
 

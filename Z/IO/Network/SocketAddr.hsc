@@ -1,6 +1,6 @@
 {-|
 Module      : Z.IO.Network.SocketAddr
-Description : TCP/UDP socket address API
+Description : TCP\/UDP socket address API
 Copyright   : (c) Winterland, 2018
 License     : BSD
 Maintainer  : drkoster@qq.com

@@ -9,7 +9,7 @@ Portability : non-portable
 
 This module provide low resolution (0.1s) timers using a timing wheel of size 128 per capability,
 each timer thread will automatically started or stopped based on demannd. register or cancel a timeout is O(1),
-and each step only need scan n/128 items given timers are registered in an even fashion.
+and each step only need scan n\/128 items given timers are registered in an even fashion.
 
 This timer is particularly suitable for high concurrent approximated IO timeout scheduling.
 You should not rely on it to provide timing information since it's very inaccurate.

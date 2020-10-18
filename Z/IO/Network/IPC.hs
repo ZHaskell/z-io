@@ -1,6 +1,6 @@
 {-|
 Module      : Z.IO.IPC
-Description : Named pipe/Unix domain servers and clients
+Description : Named pipe\/Unix domain servers and clients
 Copyright   : (c) Dong Han, 2018
 License     : BSD
 Maintainer  : winterland1989@gmail.com
@@ -55,7 +55,7 @@ data IPCClientConfig = IPCClientConfig
     , ipcTargetName :: CBytes       -- ^ target path (Unix) or a name (Windows).
     }
 
--- | Default config, connect to "./ipc".
+-- | Default config, connect to ".\/ipc".
 --
 defaultIPCClientConfig :: IPCClientConfig
 defaultIPCClientConfig = IPCClientConfig Nothing "./ipc"
@@ -85,7 +85,7 @@ data IPCServerConfig = IPCServerConfig
     , ipcListenBacklog    :: Int           -- ^ listening pipe's backlog size, should be large enough(>128)
     }
 
--- | A default hello world server on @./ipc@
+-- | A default hello world server on @.\/ipc@
 --
 -- Test it with @main = startIPCServer defaultIPCServerConfig@
 --
