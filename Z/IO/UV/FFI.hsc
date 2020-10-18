@@ -778,7 +778,7 @@ data ProcessOptions = ProcessOptions
         deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 data ProcessStdStream
-    = ProcessIgnore     -- ^ redirect process std stream to /dev/null
+    = ProcessIgnore     -- ^ redirect process std stream to \/dev\/null
     | ProcessCreate     -- ^ create a new std stream
     | ProcessInherit FD -- ^ pass an existing FD to child process as std stream
   deriving  (Eq, Ord, Show, Generic)

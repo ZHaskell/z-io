@@ -20,11 +20,13 @@ import Z.Data.CBytes as CB
 
 #include "hs_uv.h"
 
+-- | Returns the error message for the given error code. Leaks a few bytes of memory when you call it with an unknown error code.
 uvStdError :: CInt -> IO Text
 uvStdError errno = toText <$> (fromCString =<< uv_strerror errno)
 
 foreign import ccall unsafe uv_strerror :: CInt -> IO CString
 
+-- | Returns the error name for the given error code. Leaks a few bytes of memory when you call it with an unknown error code.
 uvErrName :: CInt -> IO Text
 uvErrName errno = toText <$> (fromCString =<< uv_err_name errno)
 

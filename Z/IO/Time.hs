@@ -95,10 +95,10 @@ formatSystemTimeGMT fmt t =
 -- The result depends on the TZ environment variable.
 --
 -- @
--- > setEnv "TZ" "Africa/Algiers"
+-- > setEnv "TZ" "Africa\/Algiers"
 -- parseSystemTime simpleDateFormat "1970-01-01 00:00:00"
 -- MkSystemTime {systemSeconds = 0, systemNanoseconds = 0}
--- > setEnv "TZ" "Asia/Shanghai"
+-- > setEnv "TZ" "Asia\/Shanghai"
 -- parseSystemTime simpleDateFormat "1970-01-01 00:00:00"
 -- MkSystemTime {systemSeconds = -28800, systemNanoseconds = 0}
 -- @

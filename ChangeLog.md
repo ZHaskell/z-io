@@ -1,5 +1,11 @@
 # Revision history for Z-IO
 
+## 0.1.6.1  -- 2020-10-17
+
+* Export `ResUsage` from `Z.IO.Environment`.
+* Export `Level` from `Z.IO.Logger`.
+* Add linefeed with default logger formattor.
+
 ## 0.1.6.0  -- 2020-10-17
 
 * Fix a bug affects udp exception raising(simliar to the one fixed in 0.1.5.2).

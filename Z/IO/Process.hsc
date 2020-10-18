@@ -85,7 +85,7 @@ import Z.IO.UV.UVStream
 
 #include "uv.h"
 
--- | Default process options, start @"./main"@ with no arguments, redirect all std streams to @/dev/null@.
+-- | Default process options, start @".\/main"@ with no arguments, redirect all std streams to @\/dev\/null@.
 defaultProcessOptions :: ProcessOptions
 defaultProcessOptions = ProcessOptions
     { processFile = "./main"
@@ -140,12 +140,12 @@ pattern SIGHUP  = #const SIGHUP
 -- created during spawn.
 --
 -- @
---    initProcess defaultProcessOptions{
---          processFile="your program" 
---      ,   processStdStreams = (ProcessCreate, ProcessCreate, ProcessCreate)
---      } $ (stdin, stdout, stderr, pstate) -> do
---      ... -- read or write from child process's std stream, will clean up automatically
---      waitProcessExit pstate  -- wait for process exit on current thread.
+-- initProcess defaultProcessOptions{
+--       processFile="your program" 
+--   ,   processStdStreams = (ProcessCreate, ProcessCreate, ProcessCreate)
+--   } $ (stdin, stdout, stderr, pstate) -> do
+--   ... -- read or write from child process's std stream, will clean up automatically
+--   waitProcessExit pstate  -- wait for process exit on current thread.
 -- @
 initProcess :: ProcessOptions -> Resource (Maybe UVStream, Maybe UVStream, Maybe UVStream, TVar ProcessState)
 initProcess opt = initResource (spawn opt) $ \ (s0,s1,s2, pstate) -> void . forkIO $ do

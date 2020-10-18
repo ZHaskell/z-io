@@ -1,6 +1,6 @@
 {-|
 Module      : Z.IO.Network
-Description : DNS, TCP, UDP, IPC
+Description : Network Umbrella module, DNS, TCP, UDP, IPC
 Copyright   : (c) Dong Han, 2020
 License     : BSD
 Maintainer  : winterland1989@gmail.com

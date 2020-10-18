@@ -204,12 +204,12 @@ startTCPServer TCPServerConfig{..} tcpServerWorker = do
 initTCPStream :: HasCallStack => UVManager -> Resource UVStream
 initTCPStream = initUVStream (\ loop hdl -> throwUVIfMinus_ (uv_tcp_init loop hdl))
 
--- | Enable or disable @TCP_NODELAY@, which disables Nagle’s algorithm.
+-- | Enable or disable @TCP_NODELAY@, which enable or disable Nagle’s algorithm.
 setTCPNoDelay :: HasCallStack => UVStream -> Bool -> IO ()
 setTCPNoDelay uvs nodelay =
     throwUVIfMinus_ (uv_tcp_nodelay (uvsHandle uvs) (if nodelay then 1 else 0))
 
--- Enable / disable TCP keep-alive. delay is the initial delay in seconds, ignored when enable is zero.
+-- | Enable \/ disable TCP keep-alive. delay is the initial delay in seconds, ignored when enable is zero.
 --
 -- After delay has been reached, 10 successive probes, each spaced 1 second from the previous one,
 -- will still happen. If the connection is still lost at the end of this procedure,

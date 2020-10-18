@@ -1,6 +1,6 @@
 {-|
 Module      : Z.IO.Network.DNS
-Description : TCP/UDP socket address API
+Description : DNS and reverse DNS
 Copyright   : (c) Winterland, 2018
 License     : BSD
 Maintainer  : drkoster@qq.com

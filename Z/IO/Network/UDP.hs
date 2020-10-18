@@ -81,7 +81,7 @@ import Z.IO.Resource
 
 -- | UDP socket client.
 --
--- UDP is not a sequential protocol, thus not an instance of 'Input/Output'.
+-- UDP is not a sequential protocol, thus not an instance of 'Input\/Output'.
 -- Message are received or sent individually, UDP socket client is NOT thread safe!
 -- Use 'MVar' 'UDP' in multiple threads.
 --
@@ -384,7 +384,7 @@ recvUDPLoop (UDPRecvConfig bufSiz bufArrSiz) udp@(UDP hdl slot uvm _ _) worker =
                 -- init uv_check_t must come after poking buffer
                 throwUVIfMinus_ $ hs_uv_udp_check_start check
             forever $ do
-                msgs <- recvUDPWith udp check buf bufSiz
+                msgs <- recvUDPWith udp buf bufSiz
                 withMutablePrimArrayContents rbufArr $ \ p ->
                     pokeBufferTable uvm slot (castPtr p) (bufArrSiz-1)
                 forM_ msgs worker
@@ -405,15 +405,14 @@ recvUDP (UDPRecvConfig bufSiz bufArrSiz) udp@(UDP hdl slot uvm _ _)  = do
                 pokeBufferTable uvm slot (castPtr p) (bufArrSiz-1)
                 -- init uv_check_t must come after poking buffer
                 throwUVIfMinus_ $ hs_uv_udp_check_start check
-            recvUDPWith udp check buf bufSiz
+            recvUDPWith udp buf bufSiz
 
 recvUDPWith :: HasCallStack
             => UDP
-            -> Ptr UVHandle -- ^ uv_check_t
             -> (A.MutablePrimArray RealWorld Word8, A.MutablePrimArray RealWorld (Ptr Word8))
             -> Int32
             -> IO [(Maybe SocketAddr, Bool, V.Bytes)]
-recvUDPWith udp@(UDP hdl slot uvm _ _) check (rubf, rbufArr) bufSiz =
+recvUDPWith udp@(UDP hdl slot uvm _ _) (rubf, rbufArr) bufSiz =
     -- It's important to keep recv buffer alive, even if we don't directly use it
     mask_ . withMutablePrimArrayContents rubf $ \ _ -> do
         checkUDPClosed udp

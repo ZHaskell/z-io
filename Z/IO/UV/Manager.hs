@@ -57,8 +57,6 @@ import           Z.IO.Exception
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
 
-#define IDLE_LIMIT 20
-
 --------------------------------------------------------------------------------
 
 data UVManager = UVManager
