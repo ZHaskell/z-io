@@ -285,8 +285,11 @@ toZErrorMsg (#const Z_BUF_ERROR    ) =  "Z_BUF_ERROR"
 toZErrorMsg (#const Z_VERSION_ERROR) =  "Z_VERSION_ERROR"
 toZErrorMsg _                        =  "Z_UNEXPECTED"
 
+-- | Zlib exceptions, a sub exception type to 'SomeIOException'.
 data ZlibException = ZlibException CBytes CallStack deriving (Show, Typeable)
-instance Exception ZlibException
+instance Exception ZlibException where
+    toException = ioExceptionToException
+    fromException = ioExceptionFromException
 
 throwZlibIfMinus :: HasCallStack => IO CInt -> IO CInt
 throwZlibIfMinus f = do

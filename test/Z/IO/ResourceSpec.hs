@@ -32,9 +32,9 @@ spec = describe "resource tests" $ do
                 threadDelay (k * 1000)
                 assertEqual "pool should limit max usage" True (r <= 100)
 
-            threadDelay 4000000 -- first 100 worker quickly get resources
+            threadDelay 5000000 -- first 100 worker quickly get resources
                                 -- then hold for 1s, rest 100 worker have to wait, and so on
-                                -- so here we wait for 4s to make sure every worker got a resource
+                                -- so here we wait for 5s to make sure every worker got a resource
                                 -- we used to use replicateConcurrently_ from async, but it's
                                 -- not really neccessary
 
@@ -68,7 +68,7 @@ spec = describe "resource tests" $ do
                 assertEqual "pool should limit max usage" True (r <= 100)
 
 
-            threadDelay 4000000
+            threadDelay 5000000
 
             w <- readPrimIORef workerCounter
             assertEqual "worker should be able to get resource" 1000 w
@@ -103,7 +103,7 @@ spec = describe "resource tests" $ do
                 when (even i) (throwIO WorkerException)
                 assertEqual "pool should limit max usage" True (r <= 100)
 
-            threadDelay 4000000
+            threadDelay 5000000
 
             r <- readPrimIORef resCounter
             assertEqual "pool should keep returned resources alive" 100 r
