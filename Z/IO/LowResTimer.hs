@@ -35,6 +35,7 @@ module Z.IO.LowResTimer
   , throttle
   , throttle_
   , throttleTrailing_
+  , TimeOutException(..)
     -- * low resolution timer manager
   , LowResTimerManager
   , getLowResTimerManager
@@ -209,12 +210,10 @@ timeoutLowRes :: Int    -- ^ timeout in unit of 0.1s
               -> IO (Maybe a)
 timeoutLowRes timeo io = do
     mid <- myThreadId
-    catch
-        (do timer <- registerLowResTimer timeo (timeoutAThread mid)
-            r <- io
-            _ <- cancelLowResTimer timer
-            return (Just r))
-        ( \ (_ :: TimeOutException) -> return Nothing )
+    bracket
+        (registerLowResTimer timeo (timeoutAThread mid))
+        (void . cancelLowResTimer)
+        (\ _ -> catch (Just <$> io) (\ (_ :: TimeOutException) -> return Nothing))
   where
     timeoutAThread tid = void . forkIO $ throwTo tid (TimeOutException tid undefined)
 
@@ -226,15 +225,18 @@ timeoutLowResEx :: HasCallStack
                 -> IO a
 timeoutLowResEx timeo io = do
     mid <- myThreadId
-    timer <- registerLowResTimer timeo (timeoutAThread mid)
-    r <- io
-    _ <- cancelLowResTimer timer
-    return r
+    bracket
+        (registerLowResTimer timeo (timeoutAThread mid))
+        (void . cancelLowResTimer)
+        (\ _ -> io)
   where
     timeoutAThread tid = void . forkIO $ throwTo tid (TimeOutException tid callStack)
 
+-- | Exception used to stop a haskell thread when time out, a sub exception type to 'SomeIOException'.
 data TimeOutException = TimeOutException ThreadId CallStack deriving Show
-instance Exception TimeOutException
+instance Exception TimeOutException where
+    toException = ioExceptionToException
+    fromException = ioExceptionFromException
 
 --------------------------------------------------------------------------------
 -- | Check if low resolution timer manager loop is running, start loop if not.

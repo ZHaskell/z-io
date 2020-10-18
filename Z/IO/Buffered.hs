@@ -227,6 +227,7 @@ readAll h = loop []
 readAll' :: (HasCallStack, Input i) => BufferedInput i -> IO V.Bytes
 readAll' i = V.concat <$> readAll i
 
+-- | Exceptions related to buffered IO. A sub exception type to 'SomeIOException'.
 data BufferedException = ParseException P.ParseError CallStack
                        | ShortReadException CallStack deriving (Show, Typeable)
 
