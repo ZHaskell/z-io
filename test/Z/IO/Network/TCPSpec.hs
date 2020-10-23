@@ -26,7 +26,7 @@ spec = describe "TCP operations" $ do
 
         serverThread <- forkIO $ startTCPServer defaultTCPServerConfig{ tcpListenAddr = addr } echo
 
-        threadDelay 100000
+        threadDelay 2000000  -- 2s
 
         replicateM_  512 . forkIO $
             withResource (initTCPClient defaultTCPClientConfig{tcpRemoteAddr = addr}) $ \ tcp -> do
@@ -41,5 +41,5 @@ spec = describe "TCP operations" $ do
                 longMsg' <- readExactly' (V.length longMsg) i
                 longMsg' @=? longMsg
 
-        threadDelay 5000000
+        threadDelay 5000000  -- 5s
         killThread serverThread
