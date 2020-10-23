@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 {-|
 Module      : Z.IO.Logger
 Description : High performance logger
@@ -17,7 +19,10 @@ Simple, high performance logger. The design choice of this logger is biased towa
     * Each logging thread only need perform a CAS to prepend log 'V.Bytes' into a list, which reduces contention.
     * Each log call is atomic, Logging order is preserved under concurrent settings.
 
-Flushing is automatic and throttled for 'debug', 'info', 'warn' to boost performance, but a 'fatal' log will always flush logger's buffer.  This could lead to a problem that if main thread exits too early logs may missed, to add a flushing when program exits, use 'withDefaultLogger' like:
+Flushing is automatic and throttled for 'debug', 'info', 'warning' to boost
+performance, but a 'fatal' and 'critical' log will always flush logger's buffer.
+This could lead to a problem that if main thread exits too early logs may missed,
+to add a flushing when program exits, use 'withDefaultLogger' like:
 
 @
 import Z.IO.Logger
@@ -44,8 +49,9 @@ module Z.IO.Logger
     -- * logging functions
   , debug
   , info
-  , warn
+  , warning
   , fatal
+  , critical
   , otherLevel
   , Level
     -- * logging functions with specific logger
@@ -59,22 +65,25 @@ module Z.IO.Logger
   , defaultFmtCallStack
   , LogFormatter, defaultFmt, coloredFmt
   , flushLog
+
+    -- * Deprecated
+  , warn
   ) where
 
-import Control.Monad
-import Z.Data.Vector.Base as V
-import Z.IO.LowResTimer
-import Z.IO.StdStream
-import Z.IO.StdStream.Ansi  (color, AnsiColor(..))
-import Z.IO.Buffered
-import System.IO.Unsafe (unsafePerformIO)
-import Z.IO.Exception
-import Z.IO.Time
-import Data.IORef
-import Control.Concurrent.MVar
-import GHC.Stack
-import qualified Z.Data.Builder as B
-import qualified Z.Data.CBytes as CB
+import           Control.Concurrent.MVar
+import           Control.Monad
+import           Data.IORef
+import           GHC.Stack
+import           System.IO.Unsafe        (unsafePerformIO)
+import qualified Z.Data.Builder          as B
+import qualified Z.Data.CBytes           as CB
+import           Z.Data.Vector.Base      as V
+import           Z.IO.Buffered
+import           Z.IO.Exception
+import           Z.IO.LowResTimer
+import           Z.IO.StdStream
+import           Z.IO.StdStream.Ansi     (AnsiColor (..), color)
+import           Z.IO.Time
 
 type LogFormatter = B.Builder ()            -- ^ data\/time string
                   -> Level                  -- ^ log level
@@ -83,26 +92,34 @@ type LogFormatter = B.Builder ()            -- ^ data\/time string
                   -> B.Builder ()
 
 data Logger = Logger
-    { loggerPushBuilder     :: B.Builder () -> IO () -- ^ push log into buffer
-    , flushLogger           :: IO ()                -- ^ flush logger's buffer to output device
-    , flushLoggerThrottled  :: IO ()                -- ^ throttled flush, e.g. use 'throttleTrailing_' from "Z.IO.LowResTimer"
-    , loggerTSCache         :: IO (B.Builder ())    -- ^ A IO action return a formatted date\/time string
-    , loggerFmt             :: LogFormatter
+    { loggerPushBuilder    :: B.Builder () -> IO ()
+    -- ^ push log into buffer
+    , flushLogger          :: IO ()
+    -- ^ flush logger's buffer to output device
+    , flushLoggerThrottled :: IO ()
+    -- ^ throttled flush, e.g. use 'throttleTrailing_' from "Z.IO.LowResTimer"
+    , loggerTSCache        :: IO (B.Builder ())
+    -- ^ A IO action return a formatted date\/time string
+    , loggerFmt            :: LogFormatter
     }
 
 data LoggerConfig = LoggerConfig
-    { loggerMinFlushInterval :: {-# UNPACK #-} !Int -- ^ Minimal flush interval, see Notes on 'debug'
-    , loggerLineBufSize      :: {-# UNPACK #-} !Int -- ^ Buffer size to build each log line
-    , loggerShowDebug        :: Bool                -- ^ Set to 'False' to filter debug logs
+    { loggerMinFlushInterval :: {-# UNPACK #-} !Int
+    -- ^ Minimal flush interval, see Notes on 'debug'
+    , loggerLineBufSize      :: {-# UNPACK #-} !Int
+    -- ^ Buffer size to build each log line
+    , loggerLevel            :: {-# UNPACK #-} !Level
+    -- ^ We following the Python logging levels, for details,
+    -- see: https://docs.python.org/3/howto/logging.html#logging-levels
     }
 
 -- | A default logger config with
 --
 -- * 0.1s minimal flush interval
 -- * line buffer size 240 bytes
--- * show debug True
+-- * show everything by default
 defaultLoggerConfig :: LoggerConfig
-defaultLoggerConfig = LoggerConfig 1 240 True
+defaultLoggerConfig = LoggerConfig 1 240 NOTSET
 
 -- | A default timestamp cache with format @%Y-%m-%dT%H:%M:%S%Z@('iso8061DateFormat').
 --
@@ -140,12 +157,8 @@ newLogger LoggerConfig{..} oLock = do
     bList <- newIORef []
     let flush = flushLog oLock bList
     throttledFlush <- throttleTrailing_ loggerMinFlushInterval flush
-    return $ Logger (pushLog bList) flush throttledFlush defaultTSCache
-        (defaultFmt loggerShowDebug)
-  where
-    pushLog bList b = do
-        let !bs = B.buildBytesWith loggerLineBufSize b
-        atomicModifyIORef' bList (\ bss -> (bs:bss, ()))
+    return $ Logger (pushLog bList loggerLineBufSize) flush throttledFlush defaultTSCache
+        (defaultFmt loggerLevel)
 
 -- | Make a new colored logger connected to stderr.
 --
@@ -155,22 +168,22 @@ newColoredLogger LoggerConfig{..} = do
     bList <- newIORef []
     let flush = flushLog stderrBuf bList
     throttledFlush <- throttleTrailing_ loggerMinFlushInterval flush
-    return $ Logger (pushLog bList) flush throttledFlush defaultTSCache
-        (if isStdStreamTTY stderr then coloredFmt loggerShowDebug
-                                  else defaultFmt loggerShowDebug)
+    return $ Logger (pushLog bList loggerLineBufSize) flush throttledFlush defaultTSCache
+        (if isStdStreamTTY stderr then coloredFmt loggerLevel
+                                  else defaultFmt loggerLevel)
 
-  where
-    pushLog bList b = do
-        let !bs = B.buildBytesWith loggerLineBufSize b
-        atomicModifyIORef' bList (\ bss -> (bs:bss, ()))
+pushLog :: IORef [V.Bytes] -> Int -> B.Builder () -> IO ()
+pushLog bList loggerLineBufSize b = do
+    let !bs = B.buildBytesWith loggerLineBufSize b
+    unless (V.null bs) $ atomicModifyIORef' bList (\ bss -> (bs:bss, ()))
+
 
 -- | A default log formatter
 --
 -- @ [DEBUG][2020-10-09T07:44:14UTC][<interactive>:7:1]This a debug message\\n@
-defaultFmt :: Bool  -- ^ show DEGUG?
-           -> LogFormatter
-defaultFmt showdebug ts level content cstack = when (showdebug || level /= "DEBUG") $ do
-    B.square (CB.toBuilder level)
+defaultFmt :: Level -> LogFormatter
+defaultFmt preLevel ts level content cstack = when (preLevel <= level) $ do
+    B.square (CB.toBuilder $ showLevel level)
     B.square ts
     B.square $ defaultFmtCallStack cstack
     content
@@ -178,16 +191,16 @@ defaultFmt showdebug ts level content cstack = when (showdebug || level /= "DEBU
 
 -- | A default colored log formatter
 --
--- DEBUG level is 'Cyan', WARN level is 'Yellow', FATAL level is 'Red'.
-coloredFmt :: Bool  -- ^ show DEBUG?
-           -> LogFormatter
-coloredFmt showdebug ts level content cstack = when (showdebug || level /= "DEBUG") $ do
-    let blevel = CB.toBuilder level
+-- DEBUG level is 'Cyan', WARNING level is 'Yellow', FATAL and CRITICAL level are 'Red'.
+coloredFmt :: Level -> LogFormatter
+coloredFmt preLevel ts level content cstack = when (preLevel <= level) $ do
+    let blevel = CB.toBuilder $ showLevel level
     B.square (case level of
-        "DEBUG" -> color Cyan blevel
-        "WARN"  -> color Yellow blevel
-        "FATAL" -> color Red blevel
-        _       -> blevel)
+        DEBUG    -> color Cyan blevel
+        WARNING  -> color Yellow blevel
+        FATAL    -> color Red blevel
+        CRITICAL -> color Red blevel
+        _        -> blevel)
     B.square ts
     B.square $ defaultFmtCallStack cstack
     content
@@ -228,19 +241,66 @@ withDefaultLogger = (`finally` flushDefaultLogger)
 
 --------------------------------------------------------------------------------
 
-type Level = CB.CBytes
+-- | Logging Levels
+--
+-- +----------+---------------+
+-- | Level    | Numeric value |
+-- +----------+---------------+
+-- | CRITICAL | 50            |
+-- | FATAL    | 40            |
+-- | WARNING  | 30            |
+-- | INFO     | 20            |
+-- | DEBUG    | 10            |
+-- | NOTSET   | 0             |
+-- +----------+----------------
+--
+type Level = Int
+
+pattern CRITICAL :: Level
+pattern CRITICAL = 50
+
+pattern FATAL :: Level
+pattern FATAL = 40
+
+pattern WARNING :: Level
+pattern WARNING = 30
+
+pattern INFO :: Level
+pattern INFO = 20
+
+pattern DEBUG :: Level
+pattern DEBUG = 10
+
+pattern NOTSET :: Level
+pattern NOTSET = 0
+
+showLevel :: Level -> CB.CBytes
+showLevel = \case
+    CRITICAL -> "CRITICAL"
+    FATAL    -> "FATAL"
+    WARNING  -> "WARNING"
+    INFO     -> "INFO"
+    DEBUG    -> "DEBUG"
+    NOTSET   -> "NOTSET"
 
 debug :: HasCallStack => B.Builder () -> IO ()
-debug = otherLevel_ "DEBUG" False callStack
+debug = otherLevel_ DEBUG False callStack
 
 info :: HasCallStack => B.Builder () -> IO ()
-info = otherLevel_ "INFO" False callStack
+info = otherLevel_ INFO False callStack
 
+warning :: HasCallStack => B.Builder () -> IO ()
+warning = otherLevel_ WARNING False callStack
+
+{-# DEPRECATED warn "Use warning instead" #-}
 warn :: HasCallStack => B.Builder () -> IO ()
-warn = otherLevel_ "WARN" False callStack
+warn = warning
 
 fatal :: HasCallStack => B.Builder () -> IO ()
-fatal = otherLevel_ "FATAL" True callStack
+fatal = otherLevel_ FATAL True callStack
+
+critical :: HasCallStack => B.Builder () -> IO ()
+critical = otherLevel_ CRITICAL True callStack
 
 otherLevel :: HasCallStack
            => Level             -- ^ log level
@@ -257,16 +317,16 @@ otherLevel_ level flushNow cstack bu = do
 --------------------------------------------------------------------------------
 
 debugTo :: HasCallStack => Logger -> B.Builder () -> IO ()
-debugTo = otherLevelTo_ "DEBUG" False callStack
+debugTo = otherLevelTo_ DEBUG False callStack
 
 infoTo :: HasCallStack => Logger -> B.Builder () -> IO ()
-infoTo = otherLevelTo_ "INFO" False callStack
+infoTo = otherLevelTo_ INFO False callStack
 
 warnTo :: HasCallStack => Logger -> B.Builder () -> IO ()
-warnTo = otherLevelTo_ "WARN" False callStack
+warnTo = otherLevelTo_ WARNING False callStack
 
 fatalTo :: HasCallStack => Logger -> B.Builder () -> IO ()
-fatalTo = otherLevelTo_ "FATAL" True callStack
+fatalTo = otherLevelTo_ FATAL True callStack
 
 otherLevelTo :: HasCallStack
              => Logger
