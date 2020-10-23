@@ -104,7 +104,7 @@ data LoggerConfig = LoggerConfig
 defaultLoggerConfig :: LoggerConfig
 defaultLoggerConfig = LoggerConfig 1 240 True
 
--- | A default timestamp cache with format @%Y-%m-%dT%H:%M:%S%Z@
+-- | A default timestamp cache with format @%Y-%m-%dT%H:%M:%S%Z@('iso8061DateFormat').
 --
 -- The timestamp will updated in 0.1s granularity to ensure a seconds level precision.
 defaultTSCache :: IO (B.Builder ())
@@ -112,7 +112,7 @@ defaultTSCache :: IO (B.Builder ())
 defaultTSCache = unsafePerformIO $ do
     throttle 1 $ do
         t <- getSystemTime
-        CB.toBuilder <$> formatSystemTime simpleDateFormat t
+        CB.toBuilder <$> formatSystemTime iso8061DateFormat t
 
 -- | Use this function to implement a simple 'IORef' based concurrent logger.
 --

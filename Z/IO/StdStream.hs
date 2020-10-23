@@ -45,8 +45,9 @@ module Z.IO.StdStream
   , stdin, stdout, stderr
   , stdinBuf, stdoutBuf, stderrBuf
     -- * utils
-  , printStd
   , readLineStd
+  , printStd
+  , printLineStd
   , putStd
   , putLineStd
     -- * re-export
@@ -208,7 +209,7 @@ getStdoutWinSize = case stdout of
 --------------------------------------------------------------------------------
 
 -- | Print a 'ShowT' and flush to stdout.
-printStd :: HasCallStack => ShowT a => a -> IO ()
+printStd :: (HasCallStack, ShowT a) => a -> IO ()
 printStd s = putStd (toBuilder s)
 
 -- | Print a 'Builder' and flush to stdout.
@@ -216,6 +217,10 @@ putStd :: HasCallStack => Builder a -> IO ()
 putStd b = withMVar stdoutBuf $ \ o -> do
     writeBuilder o b
     flushBuffer o
+
+-- | Print a 'ShowT' and flush to stdout, with a linefeed.
+printLineStd :: (HasCallStack, ShowT a) => a -> IO ()
+printLineStd s = putLineStd (toBuilder s)
 
 -- | Print a 'Builder' and flush to stdout, with a linefeed.
 putLineStd :: HasCallStack => Builder a -> IO ()

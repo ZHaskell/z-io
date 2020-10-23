@@ -374,7 +374,7 @@ join p p2 = do
 -- | Joins multiple paths together.
 --
 -- This function generates a new path by joining multiple paths together.
--- It will remove double separators, and unlike 'getAbsolute',
+-- It will remove double separators, and unlike 'absolute',
 -- it permits the use of multiple relative paths to combine.
 concat :: [CBytes] -> IO CBytes
 concat ps = do

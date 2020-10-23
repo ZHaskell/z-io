@@ -69,6 +69,7 @@ module Z.IO.Exception
   , HasCallStack
   , CallStack
   , callStack
+  , module Z.IO.UV.Errno
   ) where
 
 import Control.Exception hiding (IOException)
