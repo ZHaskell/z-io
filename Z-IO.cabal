@@ -372,3 +372,4 @@ test-suite Z-IO-Test
 
     ghc-options:            -threaded
     default-language:       Haskell2010
+    build-tool-depends:     hspec-discover:hspec-discover == 2.*

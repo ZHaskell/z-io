@@ -1,8 +1,10 @@
-on: [push]
 name: ubuntu-ci
+on: [push, pull_request]
+
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    name: Build on ubuntu-latest:ghc-${{ matrix.ghc }}:cabal-${{ matrix.cabal }}
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         ghc: ['8.6.5', '8.8.4', '8.10.2']
@@ -13,7 +15,6 @@ jobs:
             cabal: 2.4.1.0
           - ghc: 8.10.2
             cabal: 2.4.1.0
-    name: Haskell GHC ${{ matrix.ghc }} sample
     env:
         CONFIG: "--enable-tests --enable-benchmarks"
     steps:
@@ -29,24 +30,24 @@ jobs:
 
       - run: cabal v2-update
       - run: cabal v2-freeze $CONFIG
+
       - uses: actions/cache@v2
         with:
           path: |
-            ${{ steps.setup-haskell-cabal.outputs.cabal-store }}
+            ~/.cabal/packages
+            ~/.cabal/store
             dist-newstyle
           key: ${{ runner.os }}-${{ matrix.ghc }}-${{ hashFiles('cabal.project.freeze') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.ghc }}-
 
-      - name: install hspec-discover
-        run: |
-            cabal install hspec-discover
-            export PATH=$HOME/.cabal/bin:$PATH
+      - run: "cabal update && cabal v2-build $CONFIG"
 
-      - run: cabal v2-build $CONFIG
-      - if: matrix.cabal == '2.4.1.0'
-        run: cabal v2-test 
-      - if: matrix.cabal == '3.4.0.0'
+      - if: "matrix.cabal < '3'"
+        run: cabal v2-test
+      - if: "matrix.cabal >= '3'"
         run: cabal v2-test --test-show-details=direct
+
+      - run: cabal check
       - run: cabal v2-haddock
       - run: cabal v2-sdist
