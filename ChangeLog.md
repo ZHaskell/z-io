@@ -1,5 +1,11 @@
 # Revision history for Z-IO
 
+## 0.1.6.2  -- 2020-10-19
+
+* Add `iso8016DateFormat`, change logger's default time format to include time zone.
+* Export `TimeVal` from `Z.IO.Environment`.
+* Add `getCPUInfo`, `getLoadAvg`, `getXXXMem` to `Z.IO.Environment`.
+
 ## 0.1.6.1  -- 2020-10-17
 
 * Export `ResUsage` from `Z.IO.Environment`.

@@ -20,7 +20,7 @@ module Z.IO.Time
     -- * Formatting
   , formatSystemTime, formatSystemTimeGMT
     -- * Format
-  , TimeFormat, simpleDateFormat, webDateFormat, mailDateFormat
+  , TimeFormat, simpleDateFormat, iso8061DateFormat, webDateFormat, mailDateFormat
   ) where
 
 import Data.Time.Clock.System
@@ -40,6 +40,13 @@ type TimeFormat = CBytes
 -- This should be used with 'formatSystemTime' and 'parseSystemTime'.
 simpleDateFormat :: TimeFormat
 simpleDateFormat = "%Y-%m-%d %H:%M:%S"
+
+-- | Simple format @2020-10-16T03:15:29@.
+--
+-- The value is \"%Y-%m-%dT%H:%M:%S%z\".
+-- This should be used with 'formatSystemTime' and 'parseSystemTime'.
+iso8061DateFormat :: TimeFormat
+iso8061DateFormat = "%Y-%m-%dT%H:%M:%S%z"
 
 -- | Format for web (RFC 2616).
 --

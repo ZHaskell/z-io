@@ -13,6 +13,7 @@ INTERNAL MODULE, provides all libuv side operations.
 
 module Z.IO.UV.FFI where
 
+import           Control.Monad
 import           Data.Bits
 import           Data.Int
 import           Data.Word
@@ -22,7 +23,6 @@ import           Foreign.C.Types
 import           Foreign.Ptr
 import           Foreign.Storable
 import           Z.Data.Array.Unaligned
-import qualified Z.Data.Array  as A 
 import           Z.Data.Text.ShowT   (ShowT(..))
 import           Z.Data.JSON         (EncodeJSON, ToValue, FromValue)
 import           Z.Data.CBytes as CBytes
@@ -852,6 +852,10 @@ foreign import ccall unsafe uv_resident_set_memory :: MBA## CSize -> IO CInt
 foreign import ccall unsafe uv_uptime :: MBA## Double -> IO CInt
 foreign import ccall unsafe uv_getrusage :: MBA## a -> IO CInt
 
+foreign import ccall unsafe uv_get_free_memory :: IO Word64
+foreign import ccall unsafe uv_get_total_memory :: IO Word64
+foreign import ccall unsafe uv_get_constrained_memory :: IO Word64
+
 -- | Data type for storing times.
 -- typedef struct { long tv_sec; long tv_usec; } uv_timeval_t;
 data TimeVal = TimeVal 
@@ -947,6 +951,7 @@ pattern UV_MAXHOSTNAMESIZE :: CSize
 pattern UV_MAXHOSTNAMESIZE = #const UV_MAXHOSTNAMESIZE
 foreign import ccall unsafe uv_os_gethostname :: MBA## Word8 -> MBA## CSize -> IO CInt
 
+-- | Data type for operating system name and version information.
 data OSName = OSName
     { os_sysname :: CBytes
     , os_release :: CBytes
@@ -957,7 +962,7 @@ data OSName = OSName
 
 getOSName :: IO OSName
 getOSName = do
-    (A.MutablePrimArray mba## :: A.MutablePrimArray A.RealWorld Word8) <- A.newArr (#size uv_utsname_t)
+    (MutableByteArray mba##) <- newByteArray (#size uv_utsname_t)
     throwUVIfMinus_ (uv_os_uname mba##)
     sn <- peekMBA mba## (#offset uv_utsname_t, sysname)
     re <- peekMBA mba## (#offset uv_utsname_t, release)
@@ -990,11 +995,11 @@ foreign import ccall unsafe uv_os_free_passwd :: MBA## PassWD -> IO ()
 -- On Windows, uid and gid are set to -1 and have no meaning, and shell is empty.
 getPassWD :: IO PassWD
 getPassWD =  bracket
-    (do mpa@(A.MutablePrimArray mba## :: A.MutablePrimArray A.RealWorld Word8) <- A.newArr (#size uv_passwd_t)
+    (do mpa@(MutableByteArray mba##) <- newByteArray (#size uv_passwd_t)
         throwUVIfMinus_ (uv_os_get_passwd mba##)
         return mpa)
-    (\ (A.MutablePrimArray mba##) -> uv_os_free_passwd mba##)
-    (\ (A.MutablePrimArray mba##) -> do
+    (\ (MutableByteArray mba##) -> uv_os_free_passwd mba##)
+    (\ (MutableByteArray mba##) -> do
         username <- fromCString =<< peekMBA mba## (#offset uv_passwd_t, username)
         uid <- fromIntegral <$> (peekMBA mba## (#offset uv_passwd_t, uid) :: IO CLong)
         gid <- fromIntegral <$> (peekMBA mba## (#offset uv_passwd_t, gid) :: IO CLong)
@@ -1006,3 +1011,50 @@ foreign import ccall unsafe uv_cwd :: MBA## Word8 -> MBA## CSize -> IO CInt
 foreign import ccall unsafe uv_chdir :: BA## Word8 -> IO CInt
 foreign import ccall unsafe uv_os_homedir :: MBA## Word8 -> MBA## CSize -> IO CInt
 foreign import ccall unsafe uv_os_tmpdir :: MBA## Word8 -> MBA## CSize -> IO CInt
+
+foreign import ccall unsafe uv_cpu_info      :: MBA## (Ptr CPUInfo) -> MBA## CInt -> IO CInt
+foreign import ccall unsafe uv_free_cpu_info :: Ptr CPUInfo -> CInt -> IO ()
+
+-- | Data type for CPU information.
+data CPUInfo = CPUInfo
+    { cpu_model :: CBytes
+    , cpu_speed :: CInt
+    , cpu_times_user :: Word64  -- ^ milliseconds 
+    , cpu_times_nice :: Word64  -- ^ milliseconds
+    , cpu_times_sys  :: Word64  -- ^ milliseconds 
+    , cpu_times_idle :: Word64  -- ^ milliseconds  
+    , cpu_times_irq  :: Word64  -- ^ milliseconds
+    }   deriving (Eq, Ord, Show, Generic)
+        deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
+
+-- | Gets information about the CPUs on the system.
+getCPUInfo :: IO [CPUInfo]
+getCPUInfo = bracket
+    (do (p, (len, _)) <-  allocPrimUnsafe $ \ pp -> 
+            allocPrimUnsafe $ \ plen -> 
+                throwUVIfMinus_ (uv_cpu_info pp plen)
+        return (p, len))
+    (\ (p, len) -> uv_free_cpu_info p len)
+    (\ (p, len) -> forM [0..fromIntegral len-1] (peekCPUInfoOff p))
+
+peekCPUInfoOff :: Ptr CPUInfo -> Int -> IO CPUInfo
+peekCPUInfoOff p off = do
+    let p' = p `plusPtr` (off * (#size uv_cpu_info_t))
+    model <- fromCString =<< (#peek uv_cpu_info_t, model) p'
+    speed <- (#peek uv_cpu_info_t, speed) p'
+    user <- (#peek uv_cpu_info_t, cpu_times.user) p'
+    nice <- (#peek uv_cpu_info_t, cpu_times.nice) p'
+    sys <- (#peek uv_cpu_info_t, cpu_times.sys) p'
+    idle <- (#peek uv_cpu_info_t, cpu_times.idle) p'
+    irq <- (#peek uv_cpu_info_t, cpu_times.irq) p'
+    return (CPUInfo model speed user nice sys idle irq)
+
+foreign import ccall unsafe uv_loadavg :: MBA## (Double, Double, Double) -> IO ()
+
+-- | Gets the load average. See: <https://en.wikipedia.org/wiki/Load_(computing)>
+getLoadAvg :: IO (Double, Double, Double)
+getLoadAvg = do
+    (arr, _) <- allocPrimArrayUnsafe 3 uv_loadavg 
+    return ( indexPrimArray arr 0
+           , indexPrimArray arr 1
+           , indexPrimArray arr 2)

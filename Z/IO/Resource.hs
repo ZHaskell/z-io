@@ -27,6 +27,7 @@ module Z.IO.Resource (
   , PoolState(..)
   , initPool
   , initInPool
+  , withResourceInPool
   , poolStat, poolInUse
 ) where
 
@@ -43,7 +44,7 @@ import           Z.IO.Exception
 -- | A 'Resource' is an 'IO' action which acquires some resource of type a and
 -- also returns a finalizer of type IO () that releases the resource.
 --
--- The only safe way to use a 'Resource' is 'withResource' and 'withResource\'',
+-- The only safe way to use a 'Resource' is 'withResource' and 'withResource'',
 -- You should not use the 'acquire' field directly, unless you want to implement your own
 -- resource management. In the later case, you should 'mask_' 'acquire' since
 -- some resource initializations may assume async exceptions are masked.
@@ -288,3 +289,11 @@ initInPool (Pool res limit itime entries inuse state) =
         | life > 1  = age es deadNum     dead     (Entry a (life-1):living)
         | otherwise = age es (deadNum+1) (a:dead) living
     age _ !deadNum dead living = (deadNum, dead, living)
+
+-- | Open resource inside a given resource pool and do some computation.
+--
+withResourceInPool :: (MonadCatch.MonadMask m, MonadIO m, HasCallStack)
+                   => Pool a -> (a -> m b) -> m b
+withResourceInPool pool = withResource res
+  where
+    res = initInPool pool

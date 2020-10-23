@@ -19,7 +19,8 @@ module Z.IO.Environment
   , setEnv, unsetEnv
     -- * other environment infos
   , getCWD, chDir, getHomeDir, getTempDir
-  , getResUsage, ResUsage(..)
+  , getRandom, getRandomT
+  , getResUsage, ResUsage(..), TimeVal(..)
   , getResidentSetMemory
   , getUpTime
   , getHighResolutionTime
@@ -28,7 +29,9 @@ module Z.IO.Environment
   , getHostname
   , getOSName, OSName(..)
   , getPassWD, PassWD(..), UID, GID
-  , getRandom, getRandomT
+  , getCPUInfo, CPUInfo(..)
+  , getLoadAvg
+  , getFreeMem, getTotalMem, getConstrainedMem
   ) where
 
 import Control.Monad
@@ -240,6 +243,22 @@ getTempDir = go 512
             _ -> do
                 throwUVIfMinus_ (return r)
                 return v
+
+-- | Gets the amount of free memory available in the system, as reported by the kernel (in bytes).
+getFreeMem :: IO Word64
+getFreeMem = uv_get_free_memory
+
+-- | Gets the total amount of physical memory in the system (in bytes).
+getTotalMem :: IO Word64
+getTotalMem = uv_get_total_memory
+
+-- | Gets the amount of memory available to the process (in bytes) based on limits imposed by the OS.
+--
+-- If there is no such constraint, or the constraint is unknown, 0 is returned.
+-- Note that it is not unusual for this value to be less than or greater than 'getTotalMem'.
+-- Note This function currently only returns a non-zero value on Linux, based on cgroups if it is present.
+getConstrainedMem :: IO Word64
+getConstrainedMem = uv_get_constrained_memory
 
 --------------------------------------------------------------------------------
 
