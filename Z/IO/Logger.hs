@@ -53,21 +53,27 @@ module Z.IO.Logger
   , fatal
   , critical
   , otherLevel
-  , Level
     -- * logging functions with specific logger
   , debugTo
   , infoTo
-  , warnTo
+  , warningTo
   , fatalTo
   , otherLevelTo
-    -- * Helper to write new logger
+    -- * Helpers to write new logger
   , defaultTSCache
   , defaultFmtCallStack
+  , defaultLevelFmt
   , LogFormatter, defaultFmt, coloredFmt
-  , flushLog
-
-    -- * Deprecated
-  , warn
+  , pushLogIORef, flushLogIORef
+    -- * Constants
+    -- ** Level
+  , Level
+  , pattern DEBUG
+  , pattern INFO
+  , pattern WARNING
+  , pattern FATAL
+  , pattern CRITICAL
+  , pattern NOTSET
   ) where
 
 import           Control.Concurrent.MVar
@@ -91,26 +97,29 @@ type LogFormatter = B.Builder ()            -- ^ data\/time string
                   -> CallStack              -- ^ call stack trace
                   -> B.Builder ()
 
+-- | Extensible logger type.
 data Logger = Logger
     { loggerPushBuilder    :: B.Builder () -> IO ()
-    -- ^ push log into buffer
+    -- ^ Push log into buffer
     , flushLogger          :: IO ()
-    -- ^ flush logger's buffer to output device
+    -- ^ Flush logger's buffer to output device
     , flushLoggerThrottled :: IO ()
-    -- ^ throttled flush, e.g. use 'throttleTrailing_' from "Z.IO.LowResTimer"
+    -- ^ Throttled flush, e.g. use 'throttleTrailing_' from "Z.IO.LowResTimer"
     , loggerTSCache        :: IO (B.Builder ())
-    -- ^ A IO action return a formatted date\/time string
+    -- ^ An IO action return a formatted date\/time string
     , loggerFmt            :: LogFormatter
+    -- ^ Output logs if level is equal or higher than this value.
+    , loggerLevel          :: {-# UNPACK #-} !Level
     }
 
+-- | Logger config type used in this module.
 data LoggerConfig = LoggerConfig
     { loggerMinFlushInterval :: {-# UNPACK #-} !Int
     -- ^ Minimal flush interval, see Notes on 'debug'
     , loggerLineBufSize      :: {-# UNPACK #-} !Int
     -- ^ Buffer size to build each log line
-    , loggerLevel            :: {-# UNPACK #-} !Level
-    -- ^ We following the Python logging levels, for details,
-    -- see: https://docs.python.org/3/howto/logging.html#logging-levels
+    , loggerConfigLevel      :: {-# UNPACK #-} !Level
+    -- ^ Config log's filter level
     }
 
 -- | A default logger config with
@@ -131,22 +140,6 @@ defaultTSCache = unsafePerformIO $ do
         t <- getSystemTime
         CB.toBuilder <$> formatSystemTime iso8061DateFormat t
 
--- | Use this function to implement a simple 'IORef' based concurrent logger.
---
--- @
--- bList <- newIORef []
--- let flush = flushLog buffered bList
--- ..
--- return $ Logger (pushLog bList) flush ...
--- @
---
-flushLog :: (HasCallStack, Output o) => MVar (BufferedOutput o) -> IORef [V.Bytes] -> IO ()
-flushLog oLock bList =
-    withMVar oLock $ \ o -> do
-        bss <- atomicModifyIORef' bList (\ bss -> ([], bss))
-        forM_ (reverse bss) (writeBuffer o)
-        flushBuffer o
-
 -- | Make a new simple logger.
 --
 newLogger :: Output o
@@ -154,36 +147,59 @@ newLogger :: Output o
           -> MVar (BufferedOutput o)
           -> IO Logger
 newLogger LoggerConfig{..} oLock = do
-    bList <- newIORef []
-    let flush = flushLog oLock bList
+    logsRef <- newIORef []
+    let flush = flushLogIORef oLock logsRef
     throttledFlush <- throttleTrailing_ loggerMinFlushInterval flush
-    return $ Logger (pushLog bList loggerLineBufSize) flush throttledFlush defaultTSCache
-        (defaultFmt loggerLevel)
+    return $ Logger (pushLogIORef logsRef loggerLineBufSize)
+                    flush throttledFlush defaultTSCache defaultFmt
+                    loggerConfigLevel
 
--- | Make a new colored logger connected to stderr.
+-- | Make a new colored logger(connected to stderr).
 --
 -- This logger will output colorized log if stderr is connected to TTY.
 newColoredLogger :: LoggerConfig -> IO Logger
 newColoredLogger LoggerConfig{..} = do
-    bList <- newIORef []
-    let flush = flushLog stderrBuf bList
+    logsRef <- newIORef []
+    let flush = flushLogIORef stderrBuf logsRef
     throttledFlush <- throttleTrailing_ loggerMinFlushInterval flush
-    return $ Logger (pushLog bList loggerLineBufSize) flush throttledFlush defaultTSCache
-        (if isStdStreamTTY stderr then coloredFmt loggerLevel
-                                  else defaultFmt loggerLevel)
+    return $ Logger (pushLogIORef logsRef loggerLineBufSize)
+                    flush throttledFlush defaultTSCache
+                    (if isStdStreamTTY stderr then coloredFmt
+                                              else defaultFmt)
+                    loggerConfigLevel
 
-pushLog :: IORef [V.Bytes] -> Int -> B.Builder () -> IO ()
-pushLog bList loggerLineBufSize b = do
+-- | Use 'pushLogIORef' and 'pushLogIORef' to implement a simple 'IORef' based concurrent logger.
+--
+-- @
+-- logsRef <- newIORef []
+-- let push = pushLogIORef logsRef lineBufSize
+--     flush = flushLogIORef stderrBuf logsRef
+--     throttledFlush <- throttleTrailing_ flushInterval flush
+-- ..
+-- return $ Logger push flush throttledFlush ...
+-- @
+--
+pushLogIORef :: IORef [V.Bytes]     -- ^ logs stored in a list, new log will be CASed into it.
+             -> Int                 -- ^ buffer size to build each log
+             -> B.Builder ()        -- ^ formatted log
+             -> IO ()
+pushLogIORef logsRef loggerLineBufSize b = do
     let !bs = B.buildBytesWith loggerLineBufSize b
-    unless (V.null bs) $ atomicModifyIORef' bList (\ bss -> (bs:bss, ()))
+    unless (V.null bs) $ atomicModifyIORef' logsRef (\ bss -> (bs:bss, ()))
 
+flushLogIORef :: (HasCallStack, Output o) => MVar (BufferedOutput o) -> IORef [V.Bytes] -> IO ()
+flushLogIORef oLock logsRef =
+    withMVar oLock $ \ o -> do
+        bss <- atomicModifyIORef' logsRef (\ bss -> ([], bss))
+        forM_ (reverse bss) (writeBuffer o)
+        flushBuffer o
 
 -- | A default log formatter
 --
 -- @ [DEBUG][2020-10-09T07:44:14UTC][<interactive>:7:1]This a debug message\\n@
-defaultFmt :: Level -> LogFormatter
-defaultFmt preLevel ts level content cstack = when (preLevel <= level) $ do
-    B.square (CB.toBuilder $ showLevel level)
+defaultFmt :: LogFormatter
+defaultFmt ts level content cstack = do
+    B.square (defaultLevelFmt level)
     B.square ts
     B.square $ defaultFmtCallStack cstack
     content
@@ -192,9 +208,9 @@ defaultFmt preLevel ts level content cstack = when (preLevel <= level) $ do
 -- | A default colored log formatter
 --
 -- DEBUG level is 'Cyan', WARNING level is 'Yellow', FATAL and CRITICAL level are 'Red'.
-coloredFmt :: Level -> LogFormatter
-coloredFmt preLevel ts level content cstack = when (preLevel <= level) $ do
-    let blevel = CB.toBuilder $ showLevel level
+coloredFmt :: LogFormatter
+coloredFmt ts level content cstack = do
+    let blevel = defaultLevelFmt level
     B.square (case level of
         DEBUG    -> color Cyan blevel
         WARNING  -> color Yellow blevel
@@ -243,16 +259,24 @@ withDefaultLogger = (`finally` flushDefaultLogger)
 
 -- | Logging Levels
 --
+-- We following the Python logging levels, for details,
+-- see: <https://docs.python.org/3/howto/logging.html#logging-levels>
+--
 -- +----------+---------------+
 -- | Level    | Numeric value |
 -- +----------+---------------+
 -- | CRITICAL | 50            |
+-- +----------+---------------+
 -- | FATAL    | 40            |
+-- +----------+---------------+
 -- | WARNING  | 30            |
+-- +----------+---------------+
 -- | INFO     | 20            |
+-- +----------+---------------+
 -- | DEBUG    | 10            |
+-- +----------+---------------+
 -- | NOTSET   | 0             |
--- +----------+----------------
+-- +----------+---------------+
 --
 type Level = Int
 
@@ -274,14 +298,19 @@ pattern DEBUG = 10
 pattern NOTSET :: Level
 pattern NOTSET = 0
 
-showLevel :: Level -> CB.CBytes
-showLevel = \case
+-- | Format 'DEBUG' to 'DEBUG', etc.
+--
+-- Level other than built-in ones, are formatted in decimal numeric format, i.e.
+-- @defaultLevelFmt 60 == "LEVEL60"@
+defaultLevelFmt :: Level -> B.Builder ()
+defaultLevelFmt level = case level of
     CRITICAL -> "CRITICAL"
     FATAL    -> "FATAL"
     WARNING  -> "WARNING"
     INFO     -> "INFO"
     DEBUG    -> "DEBUG"
     NOTSET   -> "NOTSET"
+    level'   -> "LEVEL" >> B.int level'
 
 debug :: HasCallStack => B.Builder () -> IO ()
 debug = otherLevel_ DEBUG False callStack
@@ -291,10 +320,6 @@ info = otherLevel_ INFO False callStack
 
 warning :: HasCallStack => B.Builder () -> IO ()
 warning = otherLevel_ WARNING False callStack
-
-{-# DEPRECATED warn "Use warning instead" #-}
-warn :: HasCallStack => B.Builder () -> IO ()
-warn = warning
 
 fatal :: HasCallStack => B.Builder () -> IO ()
 fatal = otherLevel_ FATAL True callStack
@@ -322,8 +347,8 @@ debugTo = otherLevelTo_ DEBUG False callStack
 infoTo :: HasCallStack => Logger -> B.Builder () -> IO ()
 infoTo = otherLevelTo_ INFO False callStack
 
-warnTo :: HasCallStack => Logger -> B.Builder () -> IO ()
-warnTo = otherLevelTo_ WARNING False callStack
+warningTo :: HasCallStack => Logger -> B.Builder () -> IO ()
+warningTo = otherLevelTo_ WARNING False callStack
 
 fatalTo :: HasCallStack => Logger -> B.Builder () -> IO ()
 fatalTo = otherLevelTo_ FATAL True callStack
@@ -338,7 +363,7 @@ otherLevelTo logger level flushNow =
     otherLevelTo_ level flushNow callStack logger
 
 otherLevelTo_ :: Level -> Bool -> CallStack -> Logger -> B.Builder () -> IO ()
-otherLevelTo_ level flushNow cstack logger bu = do
+otherLevelTo_ level flushNow cstack logger bu = when (level >= loggerLevel logger) $ do
     ts <- loggerTSCache logger
     (loggerPushBuilder logger) $ (loggerFmt logger) ts level bu cstack
     if flushNow
