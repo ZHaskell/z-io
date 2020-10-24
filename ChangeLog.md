@@ -1,8 +1,9 @@
 # Revision history for Z-IO
 
-## 0.1.6.2  -- 2020-10-19
+## 0.1.7.0  -- 2020-10-24
 
 * Add `iso8016DateFormat`, change logger's default time format to include time zone.
+* Rename `warn` to `warning`, change `Level` to `Int` type alias in `Z.IO.Logger`, add `critical`.
 * Export `TimeVal` from `Z.IO.Environment`.
 * Add `getCPUInfo`, `getLoadAvg`, `getXXXMem` to `Z.IO.Environment`.
 
