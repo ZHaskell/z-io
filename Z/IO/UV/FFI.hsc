@@ -232,7 +232,7 @@ foreign import ccall unsafe uv_udp_getpeername
 
 -- | Terminal mode.
 --
--- When in 'UV_TTY_MODE_RAW' mode, input is always available character-by-character,
+-- When in 'TTY_MODE_RAW' mode, input is always available character-by-character,
 -- not including modifiers. Additionally, all special processing of characters by the terminal is disabled, 
 -- including echoing input characters. Note that CTRL+C will no longer cause a SIGINT when in this mode.
 type TTYMode = CInt

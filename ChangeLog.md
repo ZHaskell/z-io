@@ -1,5 +1,9 @@
 # Revision history for Z-IO
 
+## 0.1.8.0  -- 2020-10-24
+
+* Remove dictionary from `BufferedInput`, `BufferedOutput`, add `readBufferText`, `sourceBufferText`.
+
 ## 0.1.7.0  -- 2020-10-24
 
 * Add `iso8016DateFormat`, change logger's default time format to include time zone.

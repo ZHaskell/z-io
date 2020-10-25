@@ -155,21 +155,21 @@ stderr :: StdStream
 stderr = unsafePerformIO (makeStdStream 2)
 
 -- |  A global buffered stdin stream protected by 'MVar'.
-stdinBuf :: MVar (BufferedInput StdStream)
+stdinBuf :: MVar BufferedInput
 {-# NOINLINE stdinBuf #-}
 stdinBuf = unsafePerformIO (newBufferedInput stdin >>= newMVar)
 
 -- |  A global buffered stdout stream protected by 'MVar'.
 --
 -- | If you want to write logs, don't use 'stdoutBuf' directly, use 'Z.IO.Logger' instead.
-stdoutBuf :: MVar (BufferedOutput StdStream)
+stdoutBuf :: MVar BufferedOutput
 {-# NOINLINE stdoutBuf #-}
 stdoutBuf = unsafePerformIO (newBufferedOutput stdout >>= newMVar)
 
 -- |  A global buffered stderr stream protected by 'MVar'.
 --
 -- | If you want to write logs, don't use 'stderrBuf' directly, use 'Z.IO.Logger' instead.
-stderrBuf :: MVar (BufferedOutput StdStream)
+stderrBuf :: MVar BufferedOutput
 {-# NOINLINE stderrBuf #-}
 stderrBuf = unsafePerformIO (newBufferedOutput stderr >>= newMVar)
 

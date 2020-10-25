@@ -108,8 +108,9 @@ data Logger = Logger
     , loggerTSCache        :: IO (B.Builder ())
     -- ^ An IO action return a formatted date\/time string
     , loggerFmt            :: LogFormatter
-    -- ^ Output logs if level is equal or higher than this value.
+    -- ^ Log formatter
     , loggerLevel          :: {-# UNPACK #-} !Level
+    -- ^ Output logs if level is equal or higher than this value.
     }
 
 -- | Logger config type used in this module.
@@ -142,9 +143,8 @@ defaultTSCache = unsafePerformIO $ do
 
 -- | Make a new simple logger.
 --
-newLogger :: Output o
-          => LoggerConfig
-          -> MVar (BufferedOutput o)
+newLogger :: LoggerConfig
+          -> MVar BufferedOutput
           -> IO Logger
 newLogger LoggerConfig{..} oLock = do
     logsRef <- newIORef []
@@ -187,7 +187,7 @@ pushLogIORef logsRef loggerLineBufSize b = do
     let !bs = B.buildBytesWith loggerLineBufSize b
     unless (V.null bs) $ atomicModifyIORef' logsRef (\ bss -> (bs:bss, ()))
 
-flushLogIORef :: (HasCallStack, Output o) => MVar (BufferedOutput o) -> IORef [V.Bytes] -> IO ()
+flushLogIORef :: HasCallStack => MVar BufferedOutput -> IORef [V.Bytes] -> IO ()
 flushLogIORef oLock logsRef =
     withMVar oLock $ \ o -> do
         bss <- atomicModifyIORef' logsRef (\ bss -> ([], bss))
@@ -247,11 +247,11 @@ setDefaultLogger !logger = atomicWriteIORef globalLogger logger
 getDefaultLogger :: IO Logger
 getDefaultLogger = readIORef globalLogger
 
--- | Manually flush stderr logger.
+-- | Manually flush global logger.
 flushDefaultLogger :: IO ()
 flushDefaultLogger = getDefaultLogger >>= flushLogger
 
--- | Flush stderr logger when program exits.
+-- | Flush global logger when program exits.
 withDefaultLogger :: IO () -> IO ()
 withDefaultLogger = (`finally` flushDefaultLogger)
 

@@ -84,7 +84,6 @@ import           System.IO.Unsafe
 import           Z.Data.CBytes
 import           Z.Data.Text.ShowT          (ShowT)
 import           Z.IO.Exception
-import           Z.IO.UV.Errno
 import           Z.Foreign
 
 #include "hs_uv.h" 
