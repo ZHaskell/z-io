@@ -1,4 +1,4 @@
-on: [push]
+on: [push, pull_request]
 name: win-ci
 jobs:
   build:
@@ -6,7 +6,7 @@ jobs:
     strategy:
       matrix:
         ghc: ['8.6.5', '8.8.4']     #8.10.2 have linker problem
-        cabal: ['3.2.0.0']  
+        cabal: ['3.2.0.0']
     name: Haskell GHC ${{ matrix.ghc }} sample
     env:
         CONFIG: "--enable-tests --enable-benchmarks"
@@ -38,7 +38,7 @@ jobs:
 
       - run: cabal v2-build $CONFIG
       - if: matrix.cabal == '2.4.1.0'
-        run: cabal v2-test 
+        run: cabal v2-test
       - if: matrix.cabal == '3.4.0.0'
         run: cabal v2-test --test-show-details=direct
       - run: cabal v2-haddock
