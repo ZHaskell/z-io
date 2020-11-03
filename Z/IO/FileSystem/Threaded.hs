@@ -112,7 +112,6 @@ import           Z.Foreign
 import           Z.IO.Buffered
 import           Z.IO.Exception
 import           Z.IO.Resource
-import           Z.IO.UV.Errno
 import           Z.IO.UV.FFI
 import           Z.IO.UV.Manager
 

@@ -40,7 +40,6 @@ import Z.Data.Vector.Base as V
 import Z.Data.CBytes
 import Z.Foreign
 import Z.IO.Exception
-import Z.IO.UV.Errno
 import Z.IO.UV.Manager
 import Foreign.Storable
 import Z.IO.UV.FFI

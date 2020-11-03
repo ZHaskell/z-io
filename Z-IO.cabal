@@ -85,6 +85,9 @@ flag no-pkg-config
 
 library
     exposed-modules:        Z.IO
+                            Z.IO.BIO
+                            Z.IO.BIO.Zlib
+
                             Z.IO.FileSystem
                             Z.IO.FileSystem.FilePath
                             Z.IO.FileSystem.Threaded
@@ -112,7 +115,7 @@ library
 
                             Z.IO.Environment
 
-                            Z.Compression.Zlib
+                            -- Z.Compression.Zlib
 
     build-depends:          base                    >= 4.12 && < 5.0
                           , Z-Data                  >= 0.1.7.2 && < 0.1.9
@@ -361,7 +364,7 @@ test-suite Z-IO-Test
                           , zlib
                           , bytestring
 
-    other-modules:          Z.Compression.ZlibSpec
+    other-modules:          Z.IO.BIO.ZlibSpec
                             Z.IO.FileSystem.ThreadedSpec
                             Z.IO.FileSystemSpec
                             Z.IO.Network.UDPSpec

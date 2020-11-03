@@ -1,20 +1,22 @@
 {-|
-Module      : Z.Compression.Zlib
+Module      : Z.IO.BIO.Zlib
 Description : The zlib
 Copyright   : (c) Dong Han, 2017-2018
 License     : BSD
 Maintainer  : winterland1989@gmail.com
 Stability   : experimental
 Portability : non-portable
-This module provides <https://zlib.net zlib> bindings.
+
+This module provides <https://zlib.net zlib> bindings using 'BIO' interface.
 -}
 
-module Z.Compression.Zlib(
+module Z.IO.BIO.Zlib(
   -- * Compression
     CompressConfig(..)
   , defaultCompressConfig
+  , newCompress
   , compress
-  , compressSink
+  , compressBlocks
   , WindowBits
   , defaultWindowBits
   , MemLevel
@@ -22,11 +24,12 @@ module Z.Compression.Zlib(
   -- * Decompression
   , DecompressConfig(..)
   , defaultDecompressConfig
+  , newDecompress
   , decompress
-  , decompressSource
+  , decompressBlocks
   -- * Constants
-  -- ** Strategy 
-  , Strategy 
+  -- ** Strategy
+  , Strategy
   , pattern Z_FILTERED
   , pattern Z_HUFFMAN_ONLY
   , pattern Z_RLE
@@ -43,41 +46,41 @@ import           Control.Monad
 import           Data.IORef
 import           Data.Typeable
 import           Data.Word
+import qualified Data.List          as List
 import           Foreign            hiding (void)
 import           Foreign.C
 import           GHC.Generics
-import           System.IO.Unsafe   (unsafePerformIO)
 import           Z.Data.Array       as A
 import           Z.Data.CBytes      as CBytes
 import           Z.Data.Vector.Base as V
 import           Z.Data.Text.ShowT  (ShowT)
 import           Z.Foreign
-import           Z.IO.Buffered
+import           Z.IO.BIO
 import           Z.IO.Exception
 
 #include "zlib.h"
 
-type Strategy = CInt 
+type Strategy = CInt
 
 pattern Z_FILTERED           :: Strategy
 pattern Z_HUFFMAN_ONLY       :: Strategy
 pattern Z_RLE                :: Strategy
 pattern Z_FIXED              :: Strategy
 pattern Z_DEFAULT_STRATEGY   :: Strategy
-pattern Z_FILTERED           = #const Z_FILTERED        
-pattern Z_HUFFMAN_ONLY       = #const Z_HUFFMAN_ONLY    
-pattern Z_RLE                = #const Z_RLE             
-pattern Z_FIXED              = #const Z_FIXED           
+pattern Z_FILTERED           = #const Z_FILTERED
+pattern Z_HUFFMAN_ONLY       = #const Z_HUFFMAN_ONLY
+pattern Z_RLE                = #const Z_RLE
+pattern Z_FIXED              = #const Z_FIXED
 pattern Z_DEFAULT_STRATEGY   = #const Z_DEFAULT_STRATEGY
 
-type CompressLevel = CInt 
+type CompressLevel = CInt
 
 -- pattern Z_NO_COMPRESSION       =  CompressLevel (#const Z_NO_COMPRESSION     )
 pattern Z_BEST_SPEED          :: CompressLevel
 pattern Z_BEST_COMPRESSION    :: CompressLevel
 pattern Z_DEFAULT_COMPRESSION :: CompressLevel
-pattern Z_BEST_SPEED          = #const Z_BEST_SPEED         
-pattern Z_BEST_COMPRESSION    = #const Z_BEST_COMPRESSION   
+pattern Z_BEST_SPEED          = #const Z_BEST_SPEED
+pattern Z_BEST_COMPRESSION    = #const Z_BEST_COMPRESSION
 pattern Z_DEFAULT_COMPRESSION = #const Z_DEFAULT_COMPRESSION
 
 {- | The 'WindowBits' is the base two logarithm of the maximum window size (the size of the history buffer).
@@ -102,21 +105,21 @@ data CompressConfig = CompressConfig
     , compressMemoryLevel :: MemLevel
     , compressDictionary :: V.Bytes
     , compressStrategy :: Strategy
+    , compressBufferSize :: Int
     }   deriving (Show, Eq, Ord, Generic)
         deriving anyclass ShowT
 
 defaultCompressConfig :: CompressConfig
 defaultCompressConfig =
     CompressConfig Z_DEFAULT_COMPRESSION  defaultWindowBits
-        defaultMemLevel V.empty Z_DEFAULT_STRATEGY
+        defaultMemLevel V.empty Z_DEFAULT_STRATEGY V.defaultChunkSize
 
 -- | Compress all the data written to a output.
 --
-compressSink :: HasCallStack
+newCompress :: HasCallStack
            => CompressConfig
-           -> Sink V.Bytes
-           -> IO (Sink V.Bytes)
-compressSink (CompressConfig level windowBits memLevel dict strategy) (write, flush) = do
+           -> IO (BIO V.Bytes V.Bytes)
+newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
     zs <- newForeignPtr free_z_stream_deflate =<< create_z_stream
     buf <- A.newPinnedPrimArray bufSiz
     set_avail_out zs buf bufSiz
@@ -128,148 +131,147 @@ compressSink (CompressConfig level windowBits memLevel dict strategy) (write, fl
             throwZlibIfMinus_ . withPrimVectorUnsafe dict $ \ pdict off len ->
             deflate_set_dictionary ps pdict off (fromIntegral $ len)
 
-    return (zwrite zs bufRef, zflush zs bufRef)
-
+    return (BIO (zwrite zs bufRef) (zflush zs bufRef []))
   where
-    bufSiz = V.defaultChunkSize
-
     zwrite zs bufRef input = do
         set_avail_in zs input (V.length input)
-        zloop zs bufRef
+        zloop zs bufRef []
 
-    zloop zs bufRef = do
+    zloop zs bufRef acc = do
         oavail :: CUInt <- withForeignPtr zs $ \ ps -> do
             throwZlibIfMinus_ (deflate ps (#const Z_NO_FLUSH))
             (#peek struct z_stream_s, avail_out) ps
-
-        when (oavail == 0) $ do
+        if oavail == 0
+        then do
             oarr <- A.unsafeFreezeArr =<< readIORef bufRef
             buf' <- A.newPinnedPrimArray bufSiz
             set_avail_out zs buf' bufSiz
             writeIORef bufRef buf'
-            write (V.PrimVector oarr 0 bufSiz)
-            zloop zs bufRef
+            zloop zs bufRef (V.PrimVector oarr 0 bufSiz : acc)
+        else do
+            let output = V.concat (List.reverse acc)
+            if V.null output then return Nothing
+                             else return (Just output)
 
-    zflush zs bufRef = do
-        r :: CInt <- withForeignPtr zs $ \ ps -> do
-            r <- throwZlibIfMinus (deflate ps (#const Z_FINISH))
-            oavail :: CUInt <- (#peek struct z_stream_s, avail_out) ps
-            when (oavail /= fromIntegral bufSiz) $ do
-                oarr <- A.unsafeFreezeArr =<< readIORef bufRef
-                write (V.PrimVector oarr 0 (bufSiz - fromIntegral oavail))
-                flush
-            return r
+    zflush zs bufRef acc = do
+        buf <- readIORef bufRef
+        s <- A.sizeofMutableArr buf
+        if s == 0
+        then return Nothing
+        else do
+            (r, osiz) <- withForeignPtr zs $ \ ps -> do
+                r <- throwZlibIfMinus (deflate ps (#const Z_FINISH))
+                oavail :: CUInt <- (#peek struct z_stream_s, avail_out) ps
+                return (r, bufSiz - fromIntegral oavail)
+            if (r /= (#const Z_STREAM_END) && osiz /= 0)
+            then do
+                oarr <- A.unsafeFreezeArr buf
+                buf' <- A.newPinnedPrimArray bufSiz
+                set_avail_out zs buf' bufSiz
+                writeIORef bufRef buf'
+                zflush zs bufRef (V.PrimVector oarr 0 osiz : acc)
+            else do
+                oarr <- A.unsafeFreezeArr buf
+                let trailing = V.concat . List.reverse $ V.PrimVector oarr 0 osiz : acc
+                -- stream ends 
+                writeIORef bufRef =<< A.newArr 0
+                if V.null trailing then return Nothing else return (Just trailing)
 
-        when (r /= (#const Z_STREAM_END)) $ do
-            buf' <- A.newPinnedPrimArray bufSiz
-            set_avail_out zs buf' bufSiz
-            writeIORef bufRef buf'
-            zflush zs bufRef
-
--- | Compress some bytes.
+-- | Decompress some bytes.
 compress :: HasCallStack => CompressConfig -> V.Bytes -> V.Bytes
-compress conf input = unsafePerformIO $ do
-    ref <- newIORef []
-    (write, flush) <- compressSink conf (\ x -> modifyIORef' ref (x:), return ())
-    write input
-    flush
-    V.concat . reverse <$> readIORef ref
+compress conf = V.concat . unsafeRunBlock (newCompress conf)
 
-
-{-
-compressBuilderStream :: HasCallStack
-                      => CompressConfig
-                      -> (B.Builder a -> IO ())
-                      -> IO (B.Builder a -> IO ())
-
-
--}
+-- | Decompress some bytes list.
+compressBlocks :: HasCallStack => CompressConfig -> [V.Bytes] -> [V.Bytes]
+compressBlocks conf = unsafeRunBlocks (newCompress conf)
 
 data DecompressConfig = DecompressConfig
     { decompressWindowBits :: WindowBits
     , decompressDictionary :: V.Bytes
+    , decompressBufferSize :: Int
     }   deriving (Show, Eq, Ord, Generic)
         deriving anyclass ShowT
 
 defaultDecompressConfig :: DecompressConfig
-defaultDecompressConfig = DecompressConfig defaultWindowBits V.empty
+defaultDecompressConfig = DecompressConfig defaultWindowBits V.empty V.defaultChunkSize
 
 -- | Decompress bytes from source.
-decompressSource :: DecompressConfig
-                 -> Source V.Bytes
-                 -> IO (Source V.Bytes)
-decompressSource (DecompressConfig windowBits dict) source = do 
+newDecompress :: DecompressConfig -> IO (BIO V.Bytes V.Bytes)
+newDecompress (DecompressConfig windowBits dict bufSiz) = do
     zs <- newForeignPtr free_z_stream_inflate =<< create_z_stream
     buf <- A.newPinnedPrimArray bufSiz
     set_avail_out zs buf bufSiz
     bufRef <- newIORef buf
-
     withForeignPtr zs $ \ ps -> do
         throwZlibIfMinus_ $ inflate_init2 ps windowBits
-
-    return (zread zs bufRef)
+    return (BIO (zwrite zs bufRef) (zflush zs bufRef []))
   where
-    bufSiz = V.defaultChunkSize
-    
-    zread zs bufRef = do 
-        bufLen <- A.sizeofMutableArr =<< readIORef bufRef 
-        if bufLen == 0
-        then return Nothing
-        else do
-            oavail :: CUInt <- withForeignPtr zs (#peek struct z_stream_s, avail_out)
-            if (oavail == 0) 
-            then do
-                oarr <- A.unsafeFreezeArr =<< readIORef bufRef
-                buf' <- A.newPinnedPrimArray bufSiz
-                set_avail_out zs buf' bufSiz
-                writeIORef bufRef buf'
-                return (Just (V.PrimVector oarr 0 bufSiz))
-            else zloop zs bufRef 
+    zwrite zs bufRef input = do
+        set_avail_in zs input (V.length input)
+        zloop zs bufRef []
 
-    zloop zs bufRef  = do
-        iavail :: CUInt <- withForeignPtr zs (#peek struct z_stream_s, avail_in) 
-        if iavail == 0
+    zloop zs bufRef acc = do
+        oavail :: CUInt <- withForeignPtr zs $ \ ps -> do
+            r <- throwZlibIfMinus (inflate ps (#const Z_NO_FLUSH))
+            when (r == (#const Z_NEED_DICT)) $
+                if V.null dict
+                then throwIO (ZlibException "Z_NEED_DICT" callStack)
+                else do
+                    throwZlibIfMinus_ . withPrimVectorUnsafe dict $ \ pdict off len ->
+                        inflate_set_dictionary ps pdict off (fromIntegral len)
+                    throwZlibIfMinus_ (inflate ps (#const Z_NO_FLUSH))
+            (#peek struct z_stream_s, avail_out) ps
+        if oavail == 0
         then do
-            input <- source
-            case input of
-                Just input' -> do
-                    set_avail_in zs input' (V.length input')
-                    withForeignPtr zs $ \ ps -> do
-                        r <- throwZlibIfMinus (inflate ps (#const Z_NO_FLUSH))
-                        when (r == (#const Z_NEED_DICT) && not (V.null dict)) $ do
-                            throwZlibIfMinus_ . withPrimVectorUnsafe dict $ \ pdict off len ->
-                                inflate_set_dictionary ps pdict off (fromIntegral len)
-                    zread zs bufRef 
-                _ -> zfinish zs bufRef []
-        else do
-            withForeignPtr zs $ \ ps ->
-                throwZlibIfMinus_ (inflate ps (#const Z_NO_FLUSH))
-            zloop zs bufRef 
-
-    zfinish zs bufRef acc = do
-        r <- withForeignPtr zs $ \ ps -> do
-            throwZlibIfMinus (inflate ps (#const Z_FINISH))
-
-        oavail :: CUInt <- withForeignPtr zs (#peek struct z_stream_s, avail_out) 
-        oarr <- A.unsafeFreezeArr =<< readIORef bufRef
-        let !v = V.PrimVector oarr 0 (bufSiz - fromIntegral oavail)
-
-        if (r == (#const Z_STREAM_END)) 
-        then do
-            writeIORef bufRef =<< A.newArr 0
-            let !v' = V.concat (reverse (v:acc))
-            return (Just v')
-        else do
+            oarr <- A.unsafeFreezeArr =<< readIORef bufRef
             buf' <- A.newPinnedPrimArray bufSiz
             set_avail_out zs buf' bufSiz
             writeIORef bufRef buf'
-            zfinish zs bufRef (v:acc)
+            zloop zs bufRef (V.PrimVector oarr 0 bufSiz : acc)
+        else do
+            let output = V.concat (List.reverse acc)
+            if V.null output then return Nothing
+                             else return (Just output)
 
-    
+    zflush zs bufRef acc = do
+        buf <- readIORef bufRef
+        s <- A.sizeofMutableArr buf
+        if s == 0
+        then return Nothing
+        else do
+            (r, osiz) <- withForeignPtr zs $ \ ps -> do
+                r <- throwZlibIfMinus (inflate ps (#const Z_FINISH))
+                r' <- if r == (#const Z_NEED_DICT)
+                then if V.null dict
+                    then throwIO (ZlibException "Z_NEED_DICT" callStack)
+                    else do
+                        throwZlibIfMinus_ . withPrimVectorUnsafe dict $ \ pdict off len ->
+                            inflate_set_dictionary ps pdict off (fromIntegral len)
+                        throwZlibIfMinus (inflate ps (#const Z_FINISH))
+                else return r
+                oavail :: CUInt <- (#peek struct z_stream_s, avail_out) ps
+                return (r', bufSiz - fromIntegral oavail)
+            if (r /= (#const Z_STREAM_END) && osiz /= 0)
+            then do
+                oarr <- A.unsafeFreezeArr buf
+                buf' <- A.newPinnedPrimArray bufSiz
+                set_avail_out zs buf' bufSiz
+                writeIORef bufRef buf'
+                zflush zs bufRef (V.PrimVector oarr 0 osiz : acc)
+            else do
+                oarr <- A.unsafeFreezeArr buf
+                let trailing = V.concat . List.reverse $ V.PrimVector oarr 0 osiz : acc
+                -- stream ends
+                writeIORef bufRef =<< A.newArr 0
+                if V.null trailing then return Nothing else return (Just trailing)
+
 -- | Decompress some bytes.
 decompress :: HasCallStack => DecompressConfig -> V.Bytes -> V.Bytes
-decompress conf input = V.concat . unsafePerformIO $ do
-     collectSource =<< decompressSource conf =<< sourceFromList [input]
+decompress conf = V.concat . unsafeRunBlock (newDecompress conf)
+
+-- | Decompress some bytes list.
+decompressBlocks :: HasCallStack => DecompressConfig -> [V.Bytes] -> [V.Bytes]
+decompressBlocks conf = unsafeRunBlocks (newDecompress conf)
 
 --------------------------------------------------------------------------------
 
