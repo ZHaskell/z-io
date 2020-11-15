@@ -220,12 +220,11 @@ instance Output FilePtr where
 --
 -- Resource closing is thread safe, on some versions of OSX, repeatly open and close same file 'Resource' may
 -- result in shared memory object error, use 'O_CREAT' to avoid that.
-initFile :: HasCallStack
-           => CBytes
-           -> FileFlag        -- ^ Opening flags, e.g. 'O_CREAT' @.|.@ 'O_RDWR'
-           -> FileMode      -- ^ Sets the file mode (permission and sticky bits),
-                              -- but only if the file was created, see 'DEFAULT_MODE'.
-           -> Resource File
+initFile :: CBytes
+         -> FileFlag        -- ^ Opening flags, e.g. 'O_CREAT' @.|.@ 'O_RDWR'
+         -> FileMode      -- ^ Sets the file mode (permission and sticky bits),
+                            -- but only if the file was created, see 'DEFAULT_MODE'.
+         -> Resource File
 initFile path flags mode =
     initResource
         (do !fd <- withCBytesUnsafe path $ \ p ->

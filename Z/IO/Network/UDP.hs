@@ -116,9 +116,7 @@ defaultUDPConfig = UDPConfig 512 Nothing
 
 -- | Initialize a UDP socket.
 --
-initUDP :: HasCallStack
-        => UDPConfig
-        -> Resource UDP
+initUDP :: UDPConfig -> Resource UDP
 initUDP (UDPConfig sbsiz maddr) = initResource
     (do uvm <- getUVManager
         (hdl, slot) <- withUVManager uvm $ \ loop -> do

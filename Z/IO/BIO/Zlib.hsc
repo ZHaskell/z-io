@@ -14,7 +14,7 @@ module Z.IO.BIO.Zlib(
   -- * Compression
     CompressConfig(..)
   , defaultCompressConfig
-  , newCompress
+  , newCompress, newCompress', compressReset
   , compress
   , compressBlocks
   , WindowBits
@@ -24,7 +24,7 @@ module Z.IO.BIO.Zlib(
   -- * Decompression
   , DecompressConfig(..)
   , defaultDecompressConfig
-  , newDecompress
+  , newDecompress, newDecompress', decompressReset
   , decompress
   , decompressBlocks
   -- * Constants
@@ -114,12 +114,23 @@ defaultCompressConfig =
     CompressConfig Z_DEFAULT_COMPRESSION  defaultWindowBits
         defaultMemLevel V.empty Z_DEFAULT_STRATEGY V.defaultChunkSize
 
+data ZStream = ZStream (ForeignPtr ZStream) (IORef Bool)
+
 -- | Compress all the data written to a output.
 --
+-- The returned 'BIO' node can not be reused after get flushed.
 newCompress :: HasCallStack
-           => CompressConfig
-           -> IO (BIO V.Bytes V.Bytes)
-newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
+            => CompressConfig
+            -> IO (BIO V.Bytes V.Bytes)
+newCompress conf = snd <$> newCompress' conf
+
+-- | Compress all the data written to a output.
+--
+-- The returned 'BIO' node can be reused after you call 'compressReset' on the 'ZStream'.
+newCompress' :: HasCallStack
+             => CompressConfig
+             -> IO (ZStream, BIO V.Bytes V.Bytes)
+newCompress' (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
     zs <- newForeignPtr free_z_stream_deflate =<< create_z_stream
     buf <- A.newPinnedPrimArray bufSiz
     set_avail_out zs buf bufSiz
@@ -131,7 +142,8 @@ newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
             throwZlibIfMinus_ . withPrimVectorUnsafe dict $ \ pdict off len ->
             deflate_set_dictionary ps pdict off (fromIntegral $ len)
 
-    return (BIO (zwrite zs bufRef) (zflush zs bufRef []))
+    finRef <- newIORef False
+    return (ZStream zs finRef, BIO (zwrite zs bufRef) (zflush finRef zs bufRef []))
   where
     zwrite zs bufRef input = do
         set_avail_in zs input (V.length input)
@@ -153,12 +165,12 @@ newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
             if V.null output then return Nothing
                              else return (Just output)
 
-    zflush zs bufRef acc = do
-        buf <- readIORef bufRef
-        s <- A.sizeofMutableArr buf
-        if s == 0
+    zflush finRef zs bufRef acc = do
+        fin <- readIORef finRef
+        if fin 
         then return Nothing
         else do
+            buf <- readIORef bufRef
             (r, osiz) <- withForeignPtr zs $ \ ps -> do
                 r <- throwZlibIfMinus (deflate ps (#const Z_FINISH))
                 oavail :: CUInt <- (#peek struct z_stream_s, avail_out) ps
@@ -169,13 +181,19 @@ newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
                 buf' <- A.newPinnedPrimArray bufSiz
                 set_avail_out zs buf' bufSiz
                 writeIORef bufRef buf'
-                zflush zs bufRef (V.PrimVector oarr 0 osiz : acc)
+                zflush finRef zs bufRef (V.PrimVector oarr 0 osiz : acc)
             else do
                 oarr <- A.unsafeFreezeArr buf
                 let trailing = V.concat . List.reverse $ V.PrimVector oarr 0 osiz : acc
                 -- stream ends 
-                writeIORef bufRef =<< A.newArr 0
+                writeIORef finRef True
                 if V.null trailing then return Nothing else return (Just trailing)
+
+-- | Reset compressor's state so that it can be reused.
+compressReset :: ZStream -> IO ()
+compressReset (ZStream fp finRef) = do
+    throwZlibIfMinus_ (withForeignPtr fp deflateReset)
+    writeIORef finRef False
 
 -- | Decompress some bytes.
 compress :: HasCallStack => CompressConfig -> V.Bytes -> V.Bytes
@@ -196,15 +214,24 @@ defaultDecompressConfig :: DecompressConfig
 defaultDecompressConfig = DecompressConfig defaultWindowBits V.empty V.defaultChunkSize
 
 -- | Decompress bytes from source.
+--
+-- The returned 'BIO' node can not be reused after get flushed.
 newDecompress :: DecompressConfig -> IO (BIO V.Bytes V.Bytes)
-newDecompress (DecompressConfig windowBits dict bufSiz) = do
+newDecompress conf = snd <$> newDecompress' conf
+
+-- | Decompress bytes from source.
+--
+-- The returned 'BIO' node can be reused after you call 'decompressReset' on the 'ZStream'.
+newDecompress' :: DecompressConfig -> IO (ZStream, BIO V.Bytes V.Bytes)
+newDecompress' (DecompressConfig windowBits dict bufSiz) = do
     zs <- newForeignPtr free_z_stream_inflate =<< create_z_stream
     buf <- A.newPinnedPrimArray bufSiz
     set_avail_out zs buf bufSiz
     bufRef <- newIORef buf
     withForeignPtr zs $ \ ps -> do
         throwZlibIfMinus_ $ inflate_init2 ps windowBits
-    return (BIO (zwrite zs bufRef) (zflush zs bufRef []))
+    finRef <- newIORef False
+    return (ZStream zs finRef, BIO (zwrite zs bufRef) (zflush finRef zs bufRef []))
   where
     zwrite zs bufRef input = do
         set_avail_in zs input (V.length input)
@@ -233,12 +260,12 @@ newDecompress (DecompressConfig windowBits dict bufSiz) = do
             if V.null output then return Nothing
                              else return (Just output)
 
-    zflush zs bufRef acc = do
-        buf <- readIORef bufRef
-        s <- A.sizeofMutableArr buf
-        if s == 0
+    zflush finRef zs bufRef acc = do
+        fin <- readIORef finRef
+        if fin
         then return Nothing
         else do
+            buf <- readIORef bufRef
             (r, osiz) <- withForeignPtr zs $ \ ps -> do
                 r <- throwZlibIfMinus (inflate ps (#const Z_FINISH))
                 r' <- if r == (#const Z_NEED_DICT)
@@ -257,13 +284,19 @@ newDecompress (DecompressConfig windowBits dict bufSiz) = do
                 buf' <- A.newPinnedPrimArray bufSiz
                 set_avail_out zs buf' bufSiz
                 writeIORef bufRef buf'
-                zflush zs bufRef (V.PrimVector oarr 0 osiz : acc)
+                zflush finRef zs bufRef (V.PrimVector oarr 0 osiz : acc)
             else do
                 oarr <- A.unsafeFreezeArr buf
                 let trailing = V.concat . List.reverse $ V.PrimVector oarr 0 osiz : acc
                 -- stream ends
-                writeIORef bufRef =<< A.newArr 0
+                writeIORef finRef True
                 if V.null trailing then return Nothing else return (Just trailing)
+
+-- | Reset decompressor's state so that it can be reused.
+decompressReset :: ZStream -> IO ()
+decompressReset (ZStream fp finRef) = do
+    throwZlibIfMinus_ (withForeignPtr fp inflateReset)
+    writeIORef finRef False
 
 -- | Decompress some bytes.
 decompress :: HasCallStack => DecompressConfig -> V.Bytes -> V.Bytes
@@ -303,8 +336,6 @@ throwZlibIfMinus f = do
 throwZlibIfMinus_ :: HasCallStack => IO CInt -> IO ()
 throwZlibIfMinus_ = void . throwZlibIfMinus
 
-data ZStream
-
 foreign import ccall unsafe
     create_z_stream :: IO (Ptr ZStream)
 
@@ -324,6 +355,9 @@ foreign import ccall unsafe
     deflate :: Ptr ZStream -> CInt -> IO CInt
 
 foreign import ccall unsafe
+    deflateReset :: Ptr ZStream -> IO CInt
+
+foreign import ccall unsafe
     inflate_init2 :: Ptr ZStream -> WindowBits -> IO CInt
 
 foreign import ccall unsafe
@@ -331,6 +365,9 @@ foreign import ccall unsafe
 
 foreign import ccall unsafe
     inflate :: Ptr ZStream -> CInt -> IO CInt
+
+foreign import ccall unsafe
+    inflateReset :: Ptr ZStream -> IO CInt
 
 set_avail_in :: ForeignPtr ZStream -> V.Bytes -> Int -> IO ()
 set_avail_in zs buf buflen = do

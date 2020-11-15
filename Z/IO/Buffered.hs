@@ -41,8 +41,6 @@ module Z.IO.Buffered
   ) where
 
 import           Control.Monad
-import           Control.Monad.Primitive     (ioToPrim, primToIO)
-import           Control.Monad.ST
 import           Data.IORef
 import           Data.Primitive.PrimArray
 import           Data.Word
@@ -410,25 +408,43 @@ writeBuilder :: HasCallStack => BufferedOutput -> B.Builder a -> IO ()
 writeBuilder BufferedOutput{..} (B.Builder b) = do
     i <- readPrimIORef bufIndex
     originBufSiz <- getSizeofMutablePrimArray outputBuffer
-    _ <- primToIO (b (B.OneShotAction action) (lastStep originBufSiz) (B.Buffer outputBuffer i))
-    return ()
+    loop originBufSiz =<< b (\ _ -> return . B.Done) (B.Buffer outputBuffer i)
   where
-    action :: V.Bytes -> ST RealWorld ()
-    action bytes = ioToPrim (withPrimVectorSafe bytes bufOutput)
+    loop originBufSiz r = case r of
+        B.Done buffer@(B.Buffer buf' i') -> do
+            if sameMutablePrimArray buf' outputBuffer
+            then writePrimIORef bufIndex i'
+            else if i' >= originBufSiz
+                then do
+                    action =<< freezeBuffer buffer
+                    writePrimIORef bufIndex 0
+                else do
+                    copyMutablePrimArray outputBuffer 0 buf' 0 i'
+                    writePrimIORef bufIndex i'
+        B.BufferFull buffer@(B.Buffer _ i') wantSiz k -> do
+            when (i' /= 0) (action =<< freezeBuffer buffer)
+            if wantSiz <= originBufSiz
+            then loop originBufSiz =<< k (B.Buffer outputBuffer 0)
+            else do
+                tempBuf <- newPinnedPrimArray wantSiz
+                loop originBufSiz =<< k (B.Buffer tempBuf 0)
+        B.InsertBytes buffer@(B.Buffer _ i')  bs@(V.PrimVector arr s l) k -> do
+            when (i' /= 0) (action =<< freezeBuffer buffer)
+            if V.length bs < originBufSiz
+            then do
+                copyPrimArray outputBuffer 0 arr s l
+                loop originBufSiz =<< k (B.Buffer outputBuffer l)
+            else do
+                action bs
+                loop originBufSiz =<< k (B.Buffer outputBuffer 0)
 
-    lastStep :: Int -> a -> B.BuildStep RealWorld
-    lastStep originBufSiz _ (B.Buffer buf offset)
-        | sameMutablePrimArray buf outputBuffer = ioToPrim $ do
-            writePrimIORef bufIndex offset   -- record new buffer index
-            return []
-        | offset >= originBufSiz = ioToPrim $ do
-            withMutablePrimArrayContents buf $ \ ptr -> bufOutput ptr offset
-            writePrimIORef bufIndex 0
-            return [] -- to match 'BuildStep' return type
-        | otherwise = ioToPrim $ do
-            copyMutablePrimArray outputBuffer 0 buf 0 offset
-            writePrimIORef bufIndex offset
-            return [] -- to match 'BuildStep' return type
+    action bytes = withPrimVectorSafe bytes bufOutput
+
+    freezeBuffer (B.Buffer buf offset) = do
+        -- we can't shrink buffer here, it will be reused
+        -- when (offset < siz) (A.shrinkMutablePrimArray buf offset)
+        !arr <- unsafeFreezePrimArray buf
+        return (V.PrimVector arr 0 offset)
 
 -- | Flush the buffer into output device(if buffer is not empty).
 --

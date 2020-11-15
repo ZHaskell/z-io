@@ -62,7 +62,7 @@ defaultIPCClientConfig = IPCClientConfig Nothing "./ipc"
 
 -- | init a IPC client 'Resource', which open a new connect when used.
 --
-initIPCClient :: HasCallStack => IPCClientConfig -> Resource UVStream
+initIPCClient :: IPCClientConfig -> Resource UVStream
 initIPCClient (IPCClientConfig cname tname) = do
     uvm <- liftIO getUVManager
     client <- initIPCStream uvm

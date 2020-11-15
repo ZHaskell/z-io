@@ -65,7 +65,7 @@ import Foreign.Ptr
 import System.IO.Unsafe
 import Z.Data.Builder as B
 import Z.Data.Vector as V
-import Z.Data.Text.ShowT (ShowT, toBuilder)
+import Z.Data.Text.ShowT (ShowT, toUTF8Builder)
 import Z.IO.UV.FFI
 import Z.IO.UV.Manager
 import Z.IO.UV.Errno
@@ -210,7 +210,7 @@ getStdoutWinSize = case stdout of
 
 -- | Print a 'ShowT' and flush to stdout.
 printStd :: (HasCallStack, ShowT a) => a -> IO ()
-printStd s = putStd (toBuilder s)
+printStd s = putStd (toUTF8Builder s)
 
 -- | Print a 'Builder' and flush to stdout.
 putStd :: HasCallStack => Builder a -> IO ()
@@ -220,7 +220,7 @@ putStd b = withMVar stdoutBuf $ \ o -> do
 
 -- | Print a 'ShowT' and flush to stdout, with a linefeed.
 printLineStd :: (HasCallStack, ShowT a) => a -> IO ()
-printLineStd s = putLineStd (toBuilder s)
+printLineStd s = putLineStd (toUTF8Builder s)
 
 -- | Print a 'Builder' and flush to stdout, with a linefeed.
 putLineStd :: HasCallStack => Builder a -> IO ()

@@ -201,7 +201,7 @@ startTCPServer TCPServerConfig{..} tcpServerWorker = do
 
 --------------------------------------------------------------------------------
 
-initTCPStream :: HasCallStack => UVManager -> Resource UVStream
+initTCPStream :: UVManager -> Resource UVStream
 initTCPStream = initUVStream (\ loop hdl -> throwUVIfMinus_ (uv_tcp_init loop hdl))
 
 -- | Enable or disable @TCP_NODELAY@, which enable or disable Nagle’s algorithm.

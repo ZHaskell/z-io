@@ -238,8 +238,7 @@ instance Output FilePtrT where
 -- be a problem if you are using multiple readers or writers in multiple threads.
 -- In that case you have to stop all reading or writing thread if you don't want to
 -- block the resource thread.
-initFileT :: HasCallStack
-          => CBytes
+initFileT :: CBytes
           -> FileFlag        -- ^ Opening flags, e.g. 'O_CREAT' @.|.@ 'O_RDWR'
           -> FileMode        -- ^ Sets the file mode (permission and sticky bits),
                                -- but only if the file was created, see 'DEFAULT_MODE'.
