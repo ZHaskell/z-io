@@ -21,7 +21,7 @@ import           Test.HUnit
 spec :: Spec
 spec = describe "zlib" $ do
 
-    describe "decompress . compress === id" . modifyMaxSize (*20) $ do
+    describe "decompress . compress === id" . modifyMaxSize (*10) $ do
         prop "decompress . compress === id" $ \ xs  -> do
             decompress defaultDecompressConfig
                 (compress defaultCompressConfig (V.pack xs)) === V.pack xs

@@ -5,9 +5,7 @@ module Z.IO.BIOSpec where
 import           Control.Monad
 import qualified Codec.Compression.Zlib as TheZlib
 import           Data.IORef
-import           Data.ByteString       as B
-import           Data.ByteString.Lazy  as BL
-import           Z.Data.Vector         as V
+import qualified Z.Data.Vector         as V
 import           Z.IO.BIO.Zlib
 import           Z.IO
 import           Test.QuickCheck
@@ -20,7 +18,7 @@ import           System.IO.Unsafe
 
 
 spec :: Spec
-spec = describe "BIO" . modifyMaxSize (*20) $ do
+spec = describe "BIO" . modifyMaxSize (*10) $ do
 
     describe "decode . encode === id(Base64)" $
         prop "Base64" $ \ xs ->
