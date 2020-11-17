@@ -728,7 +728,7 @@ newGroupingNode n
             A.shrinkMutableArr marr i
             return . Just =<< A.unsafeFreezeArr marr
 #else
-            marr' =<< A.resizeMutableArr marr i
-            return . Just =<< A.unsafeFreezeArr marr
+            marr' <- A.resizeMutableArr marr i
+            return . Just =<< A.unsafeFreezeArr marr'
 #endif
         else return Nothing
