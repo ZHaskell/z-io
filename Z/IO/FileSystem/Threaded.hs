@@ -7,7 +7,7 @@ Maintainer  : winterland1989@gmail.com
 Stability   : experimental
 Portability : non-portable
 
-This module provides IO operations related to filesystem, operations are implemented using libuv's threadpool to achieve non-block behavior (non-block here meaning won't block other haskell threads), which should be prefered when the operations' estimated time is long enough(>1ms) or running with a non-threaded haskell runtime, such as accessing network filesystem or scan a very large directory. Otherwise you may block RTS's capability thus all the other haskell threads live on it.
+This module provides filesystem API exactly same with `Z.IO.FileSystem`, operations are implemented using libuv's threadpool to achieve non-block behavior (non-block here meaning won't block other haskell threads), which would be prefered when the operations' estimated time is long(>1ms) or running with a non-threaded haskell runtime, such as accessing network filesystem or scan a very large directory. Otherwise you may block RTS's capability thus all the other haskell threads live on it.
 
 The threadpool version operations have overheads similar to safe FFI, but provide same adventages:
 
@@ -15,11 +15,13 @@ The threadpool version operations have overheads similar to safe FFI, but provid
   * The threadpool version works with non-threaded runtime, which doesn't have safe FFI available.
   * The threadpool version won't relinquish current HEC (Haskell Execution Context) a.k.a. capability.
 
+Most of the time you don't need this module though, since modern hardware(SSD) are sufficiently fast.
+
 -}
 
 module Z.IO.FileSystem.Threaded
   ( -- * regular file devices
-    FileT, initFileT, readFileT, writeFileT, getFileTFD
+    File, initFile, readFile, writeFile, getFileFD
   , quickReadFile, quickReadTextFile, quickWriteFile, quickWriteTextFile
     -- * file offset bundle
   , FilePtrT, newFilePtrT, getFileOffset, setFileOffset
@@ -32,6 +34,7 @@ module Z.IO.FileSystem.Threaded
   , scandir
   , FStat(..), UVTimeSpec(..)
   , stat, lstat, fstat
+  , isLink, isDir, isFile
   , rename
   , fsync, fdatasync
   , ftruncate
@@ -63,6 +66,11 @@ module Z.IO.FileSystem.Threaded
   , pattern S_IXGRP
   , pattern S_IRWXO
   , pattern S_IROTH
+  -- ** file type constant
+  , pattern S_IFMT
+  , pattern S_IFLNK
+  , pattern S_IFDIR
+  , pattern S_IFREG
   -- ** FileFlag
   , FileFlag
   , pattern O_APPEND
@@ -104,7 +112,7 @@ import           Data.Word
 import           Foreign.Ptr
 import           Foreign.Storable               (peekElemOff)
 import           Foreign.Marshal.Alloc          (allocaBytes)
-import           Z.Data.CBytes                 as CBytes
+import           Z.Data.CBytes                  as CBytes
 import           Z.Data.PrimRef.PrimIORef
 import qualified Z.Data.Text                    as T
 import qualified Z.Data.Vector                  as V
@@ -114,65 +122,66 @@ import           Z.IO.Exception
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
 import           Z.IO.UV.Manager
+import           Prelude hiding (writeFile, readFile)
 
 --------------------------------------------------------------------------------
 -- File
 
--- | 'FileT' and its operations are NOT thread safe, use 'MVar' 'FileT' in multiple threads.
+-- | 'File' and its operations are NOT thread safe, use 'MVar' 'File' in multiple threads.
 --
 -- Note this is a differet data type from "Z.IO.FileSystem" \'s one, the 'Input'
 -- and 'Output' instance use thread pool version functions.
 --
 -- libuv implements read and write method with both implict and explict offset capable.
 -- Implict offset interface is provided by 'Input' \/ 'Output' instances.
--- Explict offset interface is provided by 'readFileT' \/ 'writeFileT'.
+-- Explict offset interface is provided by 'readFile' \/ 'writeFile'.
 --
-data FileT =  FileT  {-# UNPACK #-} !FD      -- ^ the file
+data File =  File  {-# UNPACK #-} !FD      -- ^ the file
                      {-# UNPACK #-} !(IORef Bool)  -- ^ closed flag
 
--- | Return FileT fd.
-getFileTFD :: FileT -> IO FD
-getFileTFD (FileT fd closedRef) = do
+-- | Return File fd.
+getFileFD :: File -> IO FD
+getFileFD (File fd closedRef) = do
     closed <- readIORef closedRef
     if closed then throwECLOSED else return fd
 
 -- | If fd is -1 (closed), throw 'ResourceVanished' ECLOSED.
-checkFileTClosed :: HasCallStack => FileT -> (FD -> IO a) -> IO a
-checkFileTClosed (FileT fd closedRef) f = do
+checkFileClosed :: HasCallStack => File -> (FD -> IO a) -> IO a
+checkFileClosed (File fd closedRef) f = do
     closed <- readIORef closedRef
     if closed then throwECLOSED else f fd
 
-instance Input FileT where
-    readInput f buf bufSiz = readFileT f buf bufSiz (-1)
+instance Input File where
+    readInput f buf bufSiz = readFile f buf bufSiz (-1)
 
 -- | Read file with given offset
 --
 -- Read length may be smaller than buffer size.
-readFileT :: HasCallStack
-          => FileT
+readFile :: HasCallStack
+          => File
           -> Ptr Word8 -- ^ buffer
           -> Int       -- ^ buffer size
           -> Int64     -- ^ file offset, pass -1 to use default(system) offset
           -> IO Int    -- ^ read length
-readFileT uvf buf bufSiz off =
-    checkFileTClosed uvf  $ \ fd -> do
+readFile uvf buf bufSiz off =
+    checkFileClosed uvf  $ \ fd -> do
         uvm <- getUVManager
         withUVRequest uvm (hs_uv_fs_read_threaded fd buf bufSiz off)
 
-instance Output FileT where
-    writeOutput f buf bufSiz = writeFileT f buf bufSiz (-1)
+instance Output File where
+    writeOutput f buf bufSiz = writeFile f buf bufSiz (-1)
 
 -- | Write buffer to file
 --
 -- This function will loop until all bytes are written.
-writeFileT :: HasCallStack
-           => FileT
+writeFile :: HasCallStack
+           => File
            -> Ptr Word8 -- ^ buffer
            -> Int       -- ^ buffer size
            -> Int64     -- ^ file offset, pass -1 to use default(system) offset
            -> IO ()
-writeFileT uvf buf0 bufSiz0 off0 =
-    checkFileTClosed uvf $ \ fd -> do
+writeFile uvf buf0 bufSiz0 off0 =
+    checkFileClosed uvf $ \ fd -> do
              (if off0 == -1 then go fd buf0 bufSiz0
                             else go' fd buf0 bufSiz0 off0)
   where
@@ -198,12 +207,12 @@ writeFileT uvf buf0 bufSiz0 off0 =
 -- Reading or writing using 'Input' \/ 'Output' instance will automatically increase offset.
 -- 'FilePtrT' and its operations are NOT thread safe, use 'MVar' 'FilePtrT' in multiple threads.
 --
-data FilePtrT = FilePtrT {-# UNPACK #-} !FileT
+data FilePtrT = FilePtrT {-# UNPACK #-} !File
                          {-# UNPACK #-} !(PrimIORef Int64)
 
 -- |  Create a file offset bundle from an 'File'.
 --
-newFilePtrT :: FileT      -- ^ the file we're reading
+newFilePtrT :: File      -- ^ the file we're reading
             -> Int64      -- ^ initial offset
             -> IO FilePtrT
 newFilePtrT uvf off = FilePtrT uvf <$> newPrimIORef off
@@ -219,14 +228,14 @@ setFileOffset (FilePtrT _ offsetRef) = writePrimIORef offsetRef
 instance Input FilePtrT where
     readInput (FilePtrT file offsetRef) buf bufSiz =
         readPrimIORef offsetRef >>= \ off -> do
-            l <- readFileT file buf bufSiz off
+            l <- readFile file buf bufSiz off
             writePrimIORef offsetRef (off + fromIntegral l)
             return l
 
 instance Output FilePtrT where
     writeOutput (FilePtrT file offsetRef) buf bufSiz =
         readPrimIORef offsetRef >>= \ off -> do
-            writeFileT file buf bufSiz off
+            writeFile file buf bufSiz off
             writePrimIORef offsetRef (off + fromIntegral bufSiz)
 
 --------------------------------------------------------------------------------
@@ -238,18 +247,18 @@ instance Output FilePtrT where
 -- be a problem if you are using multiple readers or writers in multiple threads.
 -- In that case you have to stop all reading or writing thread if you don't want to
 -- block the resource thread.
-initFileT :: CBytes
+initFile :: CBytes
           -> FileFlag        -- ^ Opening flags, e.g. 'O_CREAT' @.|.@ 'O_RDWR'
           -> FileMode        -- ^ Sets the file mode (permission and sticky bits),
                                -- but only if the file was created, see 'DEFAULT_MODE'.
-          -> Resource FileT
-initFileT path flags mode =
+          -> Resource File
+initFile path flags mode =
     initResource
         (do uvm <- getUVManager
             fd <- withCBytesUnsafe path $ \ p ->
                 withUVRequest uvm (hs_uv_fs_open_threaded p flags mode)
-            FileT (fromIntegral fd) <$> newIORef False)
-        (\ (FileT fd closedRef) -> do
+            File (fromIntegral fd) <$> newIORef False)
+        (\ (File fd closedRef) -> do
             closed <- readIORef closedRef
             unless closed $ do
                 throwUVIfMinus_ (hs_uv_fs_close fd)
@@ -258,7 +267,7 @@ initFileT path flags mode =
 -- | Quickly open a file and read its content.
 quickReadFile :: HasCallStack => CBytes -> IO V.Bytes
 quickReadFile filename = do
-    withResource (initFileT filename O_RDONLY DEFAULT_MODE) $ \ file -> do
+    withResource (initFile filename O_RDONLY DEFAULT_MODE) $ \ file -> do
         readAll' =<< newBufferedInput file
 
 -- | Quickly open a file and read its content as UTF8 text.
@@ -268,7 +277,7 @@ quickReadTextFile filename = T.validate <$> quickReadFile filename
 -- | Quickly open a file and write some content.
 quickWriteFile :: HasCallStack => CBytes -> V.Bytes -> IO ()
 quickWriteFile filename content = do
-    withResource (initFileT filename (O_WRONLY .|. O_CREAT) DEFAULT_MODE) $ \ file -> do
+    withResource (initFile filename (O_WRONLY .|. O_CREAT) DEFAULT_MODE) $ \ file -> do
         withPrimVectorSafe content (writeOutput file)
 
 -- | Quickly open a file and write some content as UTF8 text.
@@ -363,12 +372,24 @@ lstat path =
             peekUVStat s
 
 -- | Equivalent to <http://linux.die.net/man/2/fstat fstat(2)>
-fstat :: HasCallStack => FileT -> IO FStat
-fstat uvf = checkFileTClosed uvf $ \ fd ->
+fstat :: HasCallStack => File -> IO FStat
+fstat uvf = checkFileClosed uvf $ \ fd ->
      (allocaBytes uvStatSize $ \ s -> do
         uvm <- getUVManager
         withUVRequest_ uvm (hs_uv_fs_fstat_threaded fd s)
         peekUVStat s)
+
+-- | If given path is a symbolic link?
+isLink :: HasCallStack => CBytes -> IO Bool
+isLink p = lstat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFLNK)
+
+-- | If given path is a directory or a symbolic link to a directory?
+isDir :: HasCallStack => CBytes -> IO Bool
+isDir p = stat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFDIR)
+
+-- | If given path is a file or a symbolic link to a file?
+isFile :: HasCallStack => CBytes -> IO Bool
+isFile p = stat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFREG)
 
 --------------------------------------------------------------------------------
 
@@ -383,20 +404,20 @@ rename path path' = do
             withUVRequest_ uvm (hs_uv_fs_rename_threaded p p')
 
 -- | Equivalent to <http://linux.die.net/man/2/fsync fsync(2)>.
-fsync :: HasCallStack => FileT -> IO ()
-fsync uvf = checkFileTClosed uvf $ \ fd -> do
+fsync :: HasCallStack => File -> IO ()
+fsync uvf = checkFileClosed uvf $ \ fd -> do
     uvm <- getUVManager
     withUVRequest_ uvm (hs_uv_fs_fsync_threaded fd)
 
 -- | Equivalent to <http://linux.die.net/man/2/fdatasync fdatasync(2)>.
-fdatasync :: HasCallStack => FileT -> IO ()
-fdatasync uvf = checkFileTClosed uvf $ \ fd -> do
+fdatasync :: HasCallStack => File -> IO ()
+fdatasync uvf = checkFileClosed uvf $ \ fd -> do
     uvm <- getUVManager
     withUVRequest_ uvm (hs_uv_fs_fdatasync_threaded fd)
 
 -- | Equivalent to <http://linux.die.net/man/2/ftruncate ftruncate(2)>.
-ftruncate :: HasCallStack => FileT -> Int64 -> IO ()
-ftruncate uvf off = checkFileTClosed uvf $ \ fd -> do
+ftruncate :: HasCallStack => File -> Int64 -> IO ()
+ftruncate uvf off = checkFileClosed uvf $ \ fd -> do
     uvm <- getUVManager
     withUVRequest_ uvm (hs_uv_fs_ftruncate_threaded fd off)
 
@@ -435,8 +456,8 @@ chmod path mode = do
         withUVRequest_ uvm (hs_uv_fs_chmod_threaded p mode)
 
 -- | Equivalent to <http://linux.die.net/man/2/fchmod fchmod(2)>.
-fchmod :: HasCallStack => FileT -> FileMode -> IO ()
-fchmod uvf mode = checkFileTClosed uvf $ \ fd -> do
+fchmod :: HasCallStack => File -> FileMode -> IO ()
+fchmod uvf mode = checkFileClosed uvf $ \ fd -> do
     uvm <- getUVManager
     withUVRequest_ uvm (hs_uv_fs_fchmod_threaded fd mode)
 
@@ -457,8 +478,8 @@ utime path atime mtime = do
 -- | Equivalent to <https://man7.org/linux/man-pages/man3/futimes.3.html futime(3)>.
 --
 -- Same precision notes with 'utime'.
-futime :: HasCallStack => FileT -> Double -> Double -> IO ()
-futime uvf atime mtime = checkFileTClosed uvf $ \ fd -> do
+futime :: HasCallStack => File -> Double -> Double -> IO ()
+futime uvf atime mtime = checkFileClosed uvf $ \ fd -> do
     uvm <- getUVManager
     withUVRequest_ uvm (hs_uv_fs_futime_threaded fd atime mtime)
 

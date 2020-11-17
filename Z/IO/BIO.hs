@@ -168,7 +168,7 @@ BIO pushA pullA >|> BIO pushB pullB = BIO push_ pull_
         case x of
             Just x' -> do
                 y <- pushB x'
-                case y of Nothing -> pull_  -- ^ draw input from A until there's an output from B
+                case y of Nothing -> pull_  -- draw input from A until there's an output from B
                           _ -> return y
             _       -> pullB
 

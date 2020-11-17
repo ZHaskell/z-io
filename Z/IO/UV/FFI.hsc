@@ -305,6 +305,22 @@ pattern S_IXOTH = #const S_IXOTH
 pattern DEFAULT_MODE :: FileMode
 pattern DEFAULT_MODE = 0o666
 
+-- | This is the file type mask.
+pattern S_IFMT :: FileMode
+pattern S_IFMT = #const S_IFMT
+
+-- | This is the file type constant of a symbolic link.
+pattern S_IFLNK :: FileMode
+pattern S_IFLNK = #const S_IFLNK
+
+-- | This is the file type constant of a directory file.
+pattern S_IFDIR :: FileMode
+pattern S_IFDIR = #const S_IFDIR
+
+-- | This is the file type constant of a regular file.
+pattern S_IFREG :: FileMode
+pattern S_IFREG = #const S_IFREG
+
 -- non-threaded functions
 foreign import ccall unsafe hs_uv_fs_open    :: BA## Word8 -> FileFlag -> FileMode -> IO FD
 foreign import ccall unsafe hs_uv_fs_close   :: FD -> IO Int
@@ -349,20 +365,20 @@ pattern O_DIRECT = #const UV_FS_O_DIRECT
 
 -- | If the path is not a directory, fail the open. (Not useful on regular file)
 --
--- Note 'o_DIRECTORY' is not supported on Windows.
+-- Note 'O_DIRECTORY' is not supported on Windows.
 pattern O_DIRECTORY :: FileFlag
 pattern O_DIRECTORY = #const UV_FS_O_DIRECTORY
 
 -- |The file is opened for synchronous IO. Write operations will complete once all data and a minimum of metadata are flushed to disk.
 --
--- Note 'o_DSYNC' is supported on Windows via @FILE_FLAG_WRITE_THROUGH@.
+-- Note 'O_DSYNC' is supported on Windows via @FILE_FLAG_WRITE_THROUGH@.
 pattern O_DSYNC :: FileFlag
 pattern O_DSYNC = #const UV_FS_O_DSYNC
 
--- | If the 'o_CREAT' flag is set and the file already exists, fail the open.
+-- | If the 'O_CREAT' flag is set and the file already exists, fail the open.
 --
--- Note In general, the behavior of 'o_EXCL' is undefined if it is used without 'o_CREAT'. There is one exception: on 
--- Linux 2.6 and later, 'o_EXCL' can be used without 'o_CREAT' if pathname refers to a block device. If the block 
+-- Note In general, the behavior of 'O_EXCL' is undefined if it is used without 'O_CREAT'. There is one exception: on 
+-- Linux 2.6 and later, 'O_EXCL' can be used without 'O_CREAT' if pathname refers to a block device. If the block 
 -- device is in use by the system (e.g., mounted), the open will fail with the error @EBUSY@.
 pattern O_EXCL :: FileFlag
 pattern O_EXCL = #const UV_FS_O_EXCL
@@ -376,31 +392,31 @@ pattern O_EXLOCK = #const UV_FS_O_EXLOCK
 
 -- | Do not update the file access time when the file is read.
 -- 
--- Note 'o_NOATIME' is not supported on Windows.
+-- Note 'O_NOATIME' is not supported on Windows.
 pattern O_NOATIME :: FileFlag
 pattern O_NOATIME = #const UV_FS_O_NOATIME
 
 -- | If the path identifies a terminal device, opening the path will not cause that terminal to become the controlling terminal for the process (if the process does not already have one). (Not sure if this flag is useful)
 --
--- Note 'o_NOCTTY' is not supported on Windows.
+-- Note 'O_NOCTTY' is not supported on Windows.
 pattern O_NOCTTY :: FileFlag
 pattern O_NOCTTY = #const UV_FS_O_NOCTTY
 
 -- | If the path is a symbolic link, fail the open.
 --
--- Note 'o_NOFOLLOW' is not supported on Windows.
+-- Note 'O_NOFOLLOW' is not supported on Windows.
 pattern O_NOFOLLOW :: FileFlag
 pattern O_NOFOLLOW = #const UV_FS_O_NOFOLLOW
 
 -- | Open the file in nonblocking mode if possible. (Definitely not useful in Z-IO)
 --
--- Note 'o_NONBLOCK' is not supported on Windows. (Not useful on regular file anyway)
+-- Note 'O_NONBLOCK' is not supported on Windows. (Not useful on regular file anyway)
 pattern O_NONBLOCK :: FileFlag
 pattern O_NONBLOCK = #const UV_FS_O_NONBLOCK
 
 -- | Access is intended to be random. The system can use this as a hint to optimize file caching.
 -- 
--- Note 'o_RANDOM' is only supported on Windows via @FILE_FLAG_RANDOM_ACCESS@.
+-- Note 'O_RANDOM' is only supported on Windows via @FILE_FLAG_RANDOM_ACCESS@.
 pattern O_RANDOM :: FileFlag
 pattern O_RANDOM = #const UV_FS_O_RANDOM
 
@@ -415,13 +431,13 @@ pattern O_RDWR = #const UV_FS_O_RDWR
 
 -- | Access is intended to be sequential from beginning to end. The system can use this as a hint to optimize file caching.
 -- 
--- Note 'o_SEQUENTIAL' is only supported on Windows via @FILE_FLAG_SEQUENTIAL_SCAN@.
+-- Note 'O_SEQUENTIAL' is only supported on Windows via @FILE_FLAG_SEQUENTIAL_SCAN@.
 pattern O_SEQUENTIAL :: FileFlag
 pattern O_SEQUENTIAL = #const UV_FS_O_SEQUENTIAL
 
 -- | The file is temporary and should not be flushed to disk if possible.
 --
--- Note 'o_SHORT_LIVED' is only supported on Windows via @FILE_ATTRIBUTE_TEMPORARY@.
+-- Note 'O_SHORT_LIVED' is only supported on Windows via @FILE_ATTRIBUTE_TEMPORARY@.
 pattern O_SHORT_LIVED :: FileFlag
 pattern O_SHORT_LIVED = #const UV_FS_O_SHORT_LIVED
 
@@ -431,13 +447,13 @@ pattern O_SYMLINK = #const UV_FS_O_SYMLINK
 
 -- | The file is opened for synchronous IO. Write operations will complete once all data and all metadata are flushed to disk.
 --
--- Note 'o_SYNC' is supported on Windows via @FILE_FLAG_WRITE_THROUGH@.
+-- Note 'O_SYNC' is supported on Windows via @FILE_FLAG_WRITE_THROUGH@.
 pattern O_SYNC :: FileFlag
 pattern O_SYNC = #const UV_FS_O_SYNC
 
 -- | The file is temporary and should not be flushed to disk if possible.
 --
--- Note 'o_TEMPORARY' is only supported on Windows via @FILE_ATTRIBUTE_TEMPORARY@.
+-- Note 'O_TEMPORARY' is only supported on Windows via @FILE_ATTRIBUTE_TEMPORARY@.
 pattern O_TEMPORARY :: FileFlag
 pattern O_TEMPORARY = #const UV_FS_O_TEMPORARY
 
@@ -511,10 +527,10 @@ instance Storable UVTimeSpec where
 
 data FStat = FStat
     { stDev      :: {-# UNPACK #-} !Word64
-    , stMode     :: {-# UNPACK #-} !Word64
+    , stMode     :: {-# UNPACK #-} !FileMode
     , stNlink    :: {-# UNPACK #-} !Word64
-    , stUid      :: {-# UNPACK #-} !Word64
-    , stGid      :: {-# UNPACK #-} !Word64
+    , stUID      :: {-# UNPACK #-} !UID
+    , stGID      :: {-# UNPACK #-} !GID
     , stRdev     :: {-# UNPACK #-} !Word64
     , stIno      :: {-# UNPACK #-} !Word64
     , stSize     :: {-# UNPACK #-} !Word64
@@ -535,10 +551,10 @@ uvStatSize = #{size uv_stat_t}
 peekUVStat :: Ptr FStat -> IO FStat
 peekUVStat p = FStat
     <$> (#{peek uv_stat_t, st_dev          } p)
-    <*> (#{peek uv_stat_t, st_mode         } p)
+    <*> (fromIntegral <$> (#{peek uv_stat_t, st_mode } p :: IO Word64))
     <*> (#{peek uv_stat_t, st_nlink        } p)
-    <*> (#{peek uv_stat_t, st_uid          } p)
-    <*> (#{peek uv_stat_t, st_gid          } p)
+    <*> (fromIntegral <$> (#{peek uv_stat_t, st_uid } p :: IO Word64))
+    <*> (fromIntegral <$> (#{peek uv_stat_t, st_gid } p :: IO Word64))
     <*> (#{peek uv_stat_t, st_rdev         } p)
     <*> (#{peek uv_stat_t, st_ino          } p)
     <*> (#{peek uv_stat_t, st_size         } p)
@@ -692,7 +708,7 @@ newtype UID = UID
 #else
     Word32
 #endif
-   deriving (Eq, Ord, Show, Generic)
+   deriving (Eq, Ord, Show, Read, Generic)
    deriving newtype (Storable, Prim, Unaligned, Num, EncodeJSON, ToValue, FromValue)
    deriving anyclass ShowT
 
@@ -702,7 +718,7 @@ newtype GID = GID
 #else
     Word32
 #endif
-   deriving (Eq, Ord, Show, Generic)
+   deriving (Eq, Ord, Show, Read, Generic)
    deriving newtype (Storable, Prim, Unaligned, Num, EncodeJSON, ToValue, FromValue)
    deriving anyclass ShowT
 
@@ -774,14 +790,14 @@ data ProcessOptions = ProcessOptions
     , processGID :: GID -- ^ This happens only when the appropriate bits are set in the flags fields.
     , processStdStreams :: (ProcessStdStream, ProcessStdStream, ProcessStdStream) -- ^ Specifying how (stdin, stdout, stderr) should be passed/created to the child, see 'ProcessStdStream'
                             
-    }   deriving (Eq, Ord, Show, Generic)
+    }   deriving (Eq, Ord, Show, Read, Generic)
         deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 data ProcessStdStream
     = ProcessIgnore     -- ^ redirect process std stream to \/dev\/null
     | ProcessCreate     -- ^ create a new std stream
     | ProcessInherit FD -- ^ pass an existing FD to child process as std stream
-  deriving  (Eq, Ord, Show, Generic)
+  deriving  (Eq, Ord, Show, Read, Generic)
   deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 processStdStreamFlag :: ProcessStdStream -> CInt
@@ -921,7 +937,7 @@ foreign import ccall unsafe uv_os_getpriority :: PID -> MBA## CInt -> IO CInt
 foreign import ccall unsafe uv_os_setpriority :: PID -> CInt -> IO CInt
 
 newtype PID = PID CInt 
-    deriving (Eq, Ord, Show, Generic)
+    deriving (Eq, Ord, Show, Read, Generic)
     deriving newtype (Storable, Prim, Unaligned, EncodeJSON, ToValue, FromValue)
     deriving anyclass ShowT
 
@@ -957,7 +973,7 @@ data OSName = OSName
     , os_release :: CBytes
     , os_version :: CBytes
     , os_machine :: CBytes
-    }   deriving (Eq, Ord, Show, Generic)
+    }   deriving (Eq, Ord, Show, Read, Generic)
         deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 getOSName :: IO OSName
@@ -982,7 +998,7 @@ data PassWD = PassWD
     , passwd_gid :: GID
     , passwd_shell :: CBytes
     , passwd_homedir :: CBytes
-    }   deriving (Eq, Ord, Show, Generic)
+    }   deriving (Eq, Ord, Show, Read, Generic)
         deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 foreign import ccall unsafe uv_os_get_passwd :: MBA## PassWD -> IO CInt
@@ -1024,7 +1040,7 @@ data CPUInfo = CPUInfo
     , cpu_times_sys  :: Word64  -- ^ milliseconds 
     , cpu_times_idle :: Word64  -- ^ milliseconds  
     , cpu_times_irq  :: Word64  -- ^ milliseconds
-    }   deriving (Eq, Ord, Show, Generic)
+    }   deriving (Eq, Ord, Show, Read, Generic)
         deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 -- | Gets information about the CPUs on the system.

@@ -26,6 +26,7 @@ module Z.IO.FileSystem
   , scandir
   , FStat(..), UVTimeSpec(..)
   , stat, lstat, fstat
+  , isLink, isDir, isFile
   , rename
   , fsync, fdatasync
   , ftruncate
@@ -57,6 +58,11 @@ module Z.IO.FileSystem
   , pattern S_IXGRP
   , pattern S_IRWXO
   , pattern S_IROTH
+  -- ** file type constant
+  , pattern S_IFMT
+  , pattern S_IFLNK
+  , pattern S_IFDIR
+  , pattern S_IFREG
   -- ** FileFlag
   , FileFlag
   , pattern O_APPEND
@@ -335,6 +341,18 @@ fstat uvf = checkFileClosed uvf $ \ fd ->
         throwUVIfMinus_ (hs_uv_fs_fstat fd s)
         peekUVStat s
 
+-- | If given path is a symbolic link?
+isLink :: HasCallStack => CBytes -> IO Bool
+isLink p = lstat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFLNK)
+
+-- | If given path is a directory or a symbolic link to a directory?
+isDir :: HasCallStack => CBytes -> IO Bool
+isDir p = stat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFDIR)
+
+-- | If given path is a file or a symbolic link to a file?
+isFile :: HasCallStack => CBytes -> IO Bool
+isFile p = stat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFREG)
+
 --------------------------------------------------------------------------------
 
 -- | Equivalent to <http://linux.die.net/man/2/rename rename(2)>.
@@ -477,3 +495,7 @@ fchown uvf uid gid = checkFileClosed uvf $ \ fd -> throwUVIfMinus_ $ hs_uv_fs_fc
 -- | Equivalent to <http://linux.die.net/man/2/lchown lchown(2)>.
 lchown :: HasCallStack => CBytes -> UID -> GID -> IO ()
 lchown path uid gid = throwUVIfMinus_ . withCBytesUnsafe path $ \ p -> hs_uv_fs_lchown p uid gid
+
+--------------------------------------------------------------------------------
+-- high level utilities
+
