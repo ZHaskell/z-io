@@ -18,8 +18,8 @@ All sources and sinks return by this module, are safe(some are intended) to be u
   * Use 'newBroadcastTChanNode' if you want messages get broadcasted, i.e. every message written by
     producers will be received by every consumers.
 
-It's important to correctly set the numebr of producers, because we keep a counter on how many producers
-reached their ends, and send a EOF to all consumers when the last producer ends.
+It's important to correctly set the numebr of producers, internally it keeps a counter on how many producers
+reached their ends, and send EOF to all consumers when last producer ends.
 
 @
 (sink, src) <- newTQueueNode 2  -- it's important to correctly set the numebr of producers
@@ -27,16 +27,18 @@ reached their ends, and send a EOF to all consumers when the last producer ends.
 forkIO $ do
     ...
     push x sink             -- producer using push
+    ...
+    pull sink               -- when EOF is reached, manually pull
 
 forkIO $ do
     ...
-    runBIO $ ... >|> sink   -- producter using BIO
+    runBIO $ ... >|> sink   -- producer using BIO
 
 forkIO $ do
     ...
     r <- pull src           -- consumer using pull
     case r of Just r' -> ...
-              _ -> ...      -- Nothing indicate all producers reached their end
+              _ -> ...      -- Nothing indicate all producers reached EOF
 
 forkIO $ do
     ...

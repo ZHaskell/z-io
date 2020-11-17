@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wno-missing-fields #-}
 {-|
-Module      : Z.IO.Buffered
+Module      : Z.IO.BIO
 Description : Buffered IO interface
 Copyright   : (c) Dong Han, 2017-2018
 License     : BSD
@@ -25,7 +25,7 @@ We use @BIO inp out@ type to represent all the objects above, and @BIO Void out@
 and @BIO inp ()@ to represent an 'IO' sink, which can all be connected with '>|>' to build a larger 'BIO' node.
 
 @
-
+import
 
 @
 
@@ -99,45 +99,46 @@ import           Z.IO.Resource
 --
 --  * @BIO inp out@ describe an IO state machine(e.g. z_stream in zlib),
 --    which takes some input in block, then outputs.
---  * @BIO Void out@ describe an IO source, which never takes input,
---    but gives output until EOF when 'pull'_ed.
---  * @BIO inp ()@ describe an IO sink, which takes input and perform some IO effects,
+--  * @type Source out = BIO Void out@ described an IO source, which never takes input,
+--    but gives output until EOF when 'pull'ed.
+--  * @type Sink inp = BIO inp Void@ described an IO sink, which takes input and perform some IO effects,
 --    such as writing to terminal or files.
 --
--- You can connect these 'BIO' nodes with '>|>', which connect left node's output to right node's input, which gives
--- you a new 'BIO' node with left node's input type and right node's output type.
+-- You can connect these 'BIO' nodes with '>|>', which connect left node's output to right node's input,
+-- and return a new 'BIO' node with left node's input type and right node's output type.
 --
 -- You can run a 'BIO' node in different ways:
 --
+--   * 'runBIO' will continuously pull value from source, push to sink until source reaches EOF.
 --   * 'runSource' will continuously pull value from source, and perform effects along the way.
---   * 'runBlock' will supply a single block of input, and return output if there's any.
---   * 'runBlocks' will supply a list of blocks, and return a list of output blocks.
+--   * 'runBlock' will supply a single block of input as whole input, and return output if there's any.
+--   * 'runBlocks' will supply a list of blocks as whole input, and return a list of output blocks.
 --
 -- Note 'BIO' usually contains some IO states, you can consider it as an opaque 'IORef':
 --
---   * You shouldn't reuse a 'BIO' node after connect it to a 'BIO' chain.
+--   * You shouldn't use a 'BIO' node across multiple 'BIO' chain.
 --   * You shouldn't use a 'BIO' node across multiple threads.
 --
--- Remember 'BIO' is just a convenient way to construct single-thread streaming computation, to use 'BIO'
+-- Note 'BIO' is just a convenient way to construct single-thread streaming computation, to use 'BIO'
 -- in multiple threads, check "Z.IO.BIO.Concurrent" module.
 --
 data BIO inp out = BIO
     { push :: HasCallStack => inp -> IO (Maybe out)
-      -- ^ push a block of input, perform some effect, and return output,
+      -- ^ Push a block of input, perform some effect, and return output,
       -- if input is not enough to produce any output yet, return 'Nothing'.
     , pull :: HasCallStack => IO (Maybe out)
-      -- ^ when input reaches EOF, there may a finalize stage to output trailing output blocks.
+      -- ^ When input reaches EOF, there may be a finalize stage to output trailing output blocks.
       -- return 'Nothing' to indicate current node reaches EOF too.
     }
 
 -- | Type alias for 'BIO' node which never takes input.
 --
--- 'push' is not available by type system, and 'pull'_ return 'Nothing' when reaches EOF.
+-- 'push' is not available by type system, and 'pull' return 'Nothing' when reaches EOF.
 type Source out = BIO Void out
 
 -- | Type alias for 'BIO' node which only takes input and perform effects.
 --
--- 'pull'_ return 'Nothing' when don't want to take more input(usually after flushed).
+-- 'push' doesn't produce any meaningful output, and 'pull' usually does a flush.
 type Sink inp = BIO inp Void
 
 instance Functor (BIO inp) where
@@ -227,7 +228,7 @@ zipSource (BIO _ pullA) (BIO _ pullB) = BIO { pull = do
     mB <- pullB
     return ((,) <$> mA <*> mB)}
 
--- | Run a 'BIO' loop (source >|> sink).
+-- | Run a 'BIO' loop (source >|> ... >|> sink).
 runBIO :: BIO Void Void -> IO ()
 {-# INLINABLE runBIO #-}
 runBIO BIO{..} = pull >> return ()
@@ -479,7 +480,7 @@ sourceParsedInput i p =
 -- | Make a chunk size divider.
 --
 -- A divider size divide each chunk's size to the nearest multiplier to granularity,
--- last trailing chunk is directly returned, which may not satisfy.
+-- last trailing chunk is directly returned.
 newReChunk :: Int                -- ^ chunk granularity
            -> IO (BIO V.Bytes V.Bytes)
 {-# INLINABLE newReChunk #-}
@@ -640,24 +641,27 @@ newLineSplitter = do
             Just r | r == 13   -> V.PrimVector arr s (l-2)
                    | otherwise -> V.PrimVector arr s (l-1)
 
-
+-- | Make a new base64 encoder node.
 newBase64Encoder :: IO (BIO V.Bytes V.Bytes)
 {-# INLINABLE newBase64Encoder #-}
 newBase64Encoder = do
     re <- newReChunk 3
     return (re >~> base64Encode)
 
+-- | Make a new base64 decoder node.
 newBase64Decoder :: IO (BIO V.Bytes V.Bytes)
 {-# INLINABLE newBase64Decoder #-}
 newBase64Decoder = do
     re <- newReChunk 4
     return (re >~> base64Decode')
 
+-- | Make a new hex encoder node.
 hexEncoder :: Bool   -- ^ uppercase?
            -> BIO V.Bytes V.Bytes
 {-# INLINABLE hexEncoder #-}
 hexEncoder upper = pureBIO (hexEncode upper)
 
+-- | Make a new hex decoder node.
 newHexDecoder :: IO (BIO V.Bytes V.Bytes)
 {-# INLINABLE newHexDecoder #-}
 newHexDecoder = do
@@ -724,7 +728,7 @@ newGroupingNode n
             A.shrinkMutableArr marr i
             return . Just =<< A.unsafeFreezeArr marr
 #else
-            marr' =<< A.resizeMutableArr marr i
-            return . Just =<< A.unsafeFreezeArr marr
+            marr' <- A.resizeMutableArr marr i
+            return . Just =<< A.unsafeFreezeArr marr'
 #endif
         else return Nothing
