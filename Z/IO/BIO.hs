@@ -33,7 +33,7 @@ import
 module Z.IO.BIO (
   -- * The BIO type
     BIO(..), Source, Sink
-  , (>|>), (>~>), appendSource
+  , (>|>), (>~>), (>!>), appendSource
   , concatSource, zipSource
   , joinSink, fuseSink
   , ParseException(..)
@@ -57,7 +57,7 @@ module Z.IO.BIO (
   , sinkToOutput
   , sinkToFile
   , sinkBuilderToOutput
-  , sinkToOutputAlwaysFlush
+  , sinkToIO
   -- * Bytes specific
   , newParserNode, newReChunk, newUTF8Decoder, newMagicSplitter, newLineSplitter
   , newBase64Encoder, newBase64Decoder
@@ -177,6 +177,18 @@ BIO pushA pullA >|> BIO pushB pullB = BIO push_ pull_
 (>~>) :: BIO a b -> (b -> c) -> BIO a c
 {-# INLINE (>~>) #-}
 (>~>) = flip fmap
+
+-- | Connect BIO to an effectful function.
+(>!>) :: BIO a b -> (b -> IO c) -> BIO a c
+{-# INLINE (>!>) #-}
+(>!>) BIO{..} f = BIO push_ pull_
+  where
+    push_ x = push x >>= \ r ->
+        case r of Just r' -> Just <$!> f r'
+                  _       -> return Nothing
+    pull_ = pull >>= \ r ->
+        case r of Just r' -> Just <$!> f r'
+                  _       -> return Nothing
 
 -- | BIO node from a pure function.
 pureBIO :: (a -> b) -> BIO a b
@@ -386,16 +398,12 @@ sinkBuilderToOutput o =
 -- | Turn an 'Output' into 'BIO' sink.
 --
 -- 'push' will write input to buffer then perform flush, tend to degrade performance.
-sinkToOutputAlwaysFlush :: Output o => o -> IO (Sink V.Bytes)
-{-# INLINABLE sinkToOutputAlwaysFlush #-}
-sinkToOutputAlwaysFlush o =
-    newBufferedOutput o >>= \ bo -> return (BIO (push_ bo) (pull_ bo))
+sinkToIO :: (a -> IO ()) -> Sink a
+{-# INLINABLE sinkToIO #-}
+sinkToIO f = BIO push_ pull_
   where
-    push_ bo inp = do
-        writeBuffer bo inp
-        flushBuffer bo
-        pure Nothing
-    pull_ _ = pure Nothing
+    push_ x = f x >> pure Nothing
+    pull_ = pure Nothing
 
 -- | Source a list from memory.
 --

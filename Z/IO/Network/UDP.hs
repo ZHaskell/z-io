@@ -73,7 +73,6 @@ import Z.Data.Vector.Extra    as V
 import Z.Data.CBytes          as CBytes
 import Z.IO.Network.SocketAddr
 import Z.Foreign
-import Z.IO.UV.Errno          (pattern UV_EMSGSIZE)
 import Z.IO.UV.FFI
 import Z.IO.UV.Manager
 import Z.IO.Exception
@@ -120,16 +119,11 @@ initUDP :: UDPConfig -> Resource UDP
 initUDP (UDPConfig sbsiz maddr) = initResource
     (do uvm <- getUVManager
         (hdl, slot) <- withUVManager uvm $ \ loop -> do
-            bracketOnError
-                (hs_uv_handle_alloc loop)
-                hs_uv_handle_free
-                ( \ hdl -> do
-                    slot <- getUVSlot uvm (peekUVHandleData hdl)
-                    -- clean up
-                    _ <- tryTakeMVar =<< getBlockMVar uvm slot
-                    -- init uv struct
-                    throwUVIfMinus_ (uv_udp_init loop hdl)
-                    return (hdl, slot))
+            hdl <- hs_uv_handle_alloc loop
+            slot <- getUVSlot uvm (peekUVHandleData hdl)
+            -- init uv struct
+            throwUVIfMinus_ (uv_udp_init loop hdl)
+            return (hdl, slot)
 
         -- bind the socket if address is available
         -- This is safe without lock UV manager
@@ -431,7 +425,8 @@ recvUDPWith udp@(UDP hdl slot uvm _ _) (rubf, rbufArr) bufSiz =
         r <- takeMVar m `onException` (do
                 -- normally we call 'uv_udp_recv_stop' in C read callback
                 -- but when exception raise, here's the place to stop
-                throwUVIfMinus_ $ withUVManager' uvm (uv_udp_recv_stop hdl)
+                -- stop a handle twice will be a libuv error, so we don't check result
+                _ <- withUVManager' uvm (uv_udp_recv_stop hdl)
                 void (tryTakeMVar m))
 
         forM [r+1..bufArrSiz-1] $ \ i -> do

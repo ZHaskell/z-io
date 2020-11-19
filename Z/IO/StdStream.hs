@@ -104,7 +104,10 @@ instance Input StdStream where
         -- since we are inside mask, this is the only place
         -- async exceptions could possibly kick in, and we should stop reading
         r <- takeMVar m `onException` (do
-                throwUVIfMinus_ $ withUVManager' uvm (uv_read_stop hdl)
+                -- normally we call 'uv_read_stop' in C read callback
+                -- but when exception raise, here's the place to stop
+                -- stop a handle twice will be a libuv error, so we don't check result
+                _ <- withUVManager' uvm (uv_read_stop hdl)
                 void (tryTakeMVar m))
         if  | r > 0  -> return r
             | r == fromIntegral UV_EOF -> return 0
@@ -126,6 +129,12 @@ instance Output StdStream where
             m <- getBlockMVar uvm reqSlot
             _ <- tryTakeMVar m
             return m
+        -- we can't cancel uv_write_t with current libuv,
+        -- otherwise disaster will happen if buffer got collected.
+        -- so we have to turn to uninterruptibleMask_'s help.
+        -- i.e. writing UVStream is an uninterruptible operation.
+        -- OS will guarantee writing TTY and socket will not
+        -- hang forever anyway.
         throwUVIfMinus_ (uninterruptibleMask_ $ takeMVar m)
     writeOutput (StdFile fd) buf len = go buf len
       where
@@ -177,17 +186,14 @@ makeStdStream :: HasCallStack => FD -> IO StdStream
 makeStdStream fd = do
     typ <- uv_guess_handle fd
     if typ == UV_TTY
-    then do
+    then mask_ $ do
         uvm <- getUVManager
         withUVManager uvm $ \ loop -> do
-            bracketOnError
-                (hs_uv_handle_alloc loop)
-                hs_uv_handle_free
-                ( \ hdl -> do
-                    slot <- getUVSlot uvm (peekUVHandleData hdl)
-                    _ <- tryTakeMVar =<< getBlockMVar uvm slot   -- clear the parking spot
-                    throwUVIfMinus_ (uv_tty_init loop hdl (fromIntegral fd))
-                    return (StdTTY hdl slot uvm))
+            hdl <- hs_uv_handle_alloc loop
+            slot <- getUVSlot uvm (peekUVHandleData hdl)
+            _ <- tryTakeMVar =<< getBlockMVar uvm slot   -- clear the parking spot
+            throwUVIfMinus_ (uv_tty_init loop hdl (fromIntegral fd))
+            return (StdTTY hdl slot uvm)
     else return (StdFile fd)
 
 -- | Change terminal's mode if stdin is connected to a terminal.
