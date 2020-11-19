@@ -27,7 +27,8 @@ module Z.IO.UV.Manager
   ( UVManager
   , getUVManager
   , getBlockMVar
-  , peekBufferTable
+  , peekBufferSizeTable
+  , pokeBufferSizeTable
   , pokeBufferTable
   , withUVManager
   , withUVManager'
@@ -140,11 +141,23 @@ pokeBufferTable uvm slot buf bufSiz = do
     pokeElemOff bufTable slot buf
     pokeElemOff bufSizTable slot (fromIntegral bufSiz)
 
-peekBufferTable :: UVManager -> UVSlot -> IO Int
-{-# INLINABLE peekBufferTable #-}
-peekBufferTable uvm slot = do
+-- | Peek buffer size table
+--
+-- The notes on 'pokeBufferTable' apply here too.
+peekBufferSizeTable :: UVManager -> UVSlot -> IO Int
+{-# INLINABLE peekBufferSizeTable #-}
+peekBufferSizeTable uvm slot = do
     (_, bufSizTable) <- peekUVBufferTable (uvmLoopData uvm)
     fromIntegral <$> peekElemOff bufSizTable slot
+
+-- | Poke buffer size table
+--
+-- The notes on 'pokeBufferTable' apply here too.
+pokeBufferSizeTable :: UVManager -> UVSlot -> Int -> IO ()
+{-# INLINABLE pokeBufferSizeTable #-}
+pokeBufferSizeTable uvm slot bufSiz = do
+    (_, bufSizTable) <- peekUVBufferTable (uvmLoopData uvm)
+    pokeElemOff bufSizTable slot (fromIntegral bufSiz)
 
 initUVManager :: HasCallStack => Int -> Int -> Resource UVManager
 initUVManager siz cap = do
@@ -240,7 +253,7 @@ startUVManager uvm@(UVManager _ _ _ runningLock _) = poll -- use a closure captu
                 -- After step finished, other threads are free to take the same slot,
                 -- thus can overwrite the buffer size table, i.e. the previous result.
                 --
-                r <- peekBufferTable uvm slot
+                r <- peekBufferSizeTable uvm slot
                 tryPutMVar lock r
             return c
 

@@ -92,6 +92,8 @@ library
                             Z.IO.FileSystem
                             Z.IO.FileSystem.FilePath
                             Z.IO.FileSystem.Threaded
+                            Z.IO.FileSystem.Watch
+
                             Z.IO.Network.SocketAddr
                             Z.IO.Network.DNS
                             Z.IO.Network.TCP
@@ -185,6 +187,7 @@ library
     c-sources:              cbits/hs_uv_base.c
                             cbits/hs_uv_dns.c
                             cbits/hs_uv_file.c
+                            cbits/hs_uv_fs_event.c
                             cbits/hs_uv_stream.c
                             cbits/hs_uv_process.c
                             cbits/hs_uv_udp.c

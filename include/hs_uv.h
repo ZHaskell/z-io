@@ -253,16 +253,20 @@ void hs_uv_handle_close(uv_handle_t* handle);
 // request
 void hs_uv_cancel(uv_loop_t* loop, HsInt slot);
 
+
+////////////////////////////////////////////////////////////////////////////////
+// request
+uv_check_t* hs_uv_check_alloc();
+int hs_uv_check_init(uv_check_t* check, uv_handle_t* handle);
+void hs_uv_check_close(uv_check_t* check);
+
 ////////////////////////////////////////////////////////////////////////////////
 // stream
 int hs_uv_listen(uv_stream_t* stream, int backlog);
 void hs_uv_listen_resume(uv_stream_t* server);
 int hs_uv_read_start(uv_stream_t* handle);
 HsInt hs_uv_write(uv_stream_t* handle, char* buf, HsInt buf_size);
-uv_check_t* hs_uv_accept_check_alloc();
-int hs_uv_accept_check_init(uv_check_t* check, uv_stream_t* server);
 int hs_uv_accept_check_start(uv_check_t* check);
-void hs_uv_accept_check_close(uv_check_t* check);
 
 ////////////////////////////////////////////////////////////////////////////////
 // tcp and pipe
@@ -300,10 +304,7 @@ void uv__io_start(uv_loop_t* loop, uv__io_t* w, unsigned int events);
 int hs_uv_udp_recv_start(uv_udp_t* handle);
 HsInt hs_uv_udp_send_connected(uv_udp_t* handle, char* buf, HsInt buf_siz);
 HsInt hs_uv_upd_send(uv_udp_t* handle, const struct sockaddr* addr, char* buf, HsInt buf_siz);
-uv_check_t* hs_uv_udp_check_alloc();
-int hs_uv_udp_check_init(uv_check_t* check, uv_udp_t* server);
 int hs_uv_udp_check_start(uv_check_t* check);
-void hs_uv_udp_check_close(uv_check_t* check);
 
 ////////////////////////////////////////////////////////////////////////////////
 // fs
@@ -689,3 +690,8 @@ HsInt hs_getnameinfo(const struct sockaddr *addr, socklen_t addrlen,
 // random
 HsInt hs_uv_random(char* buf, size_t len, unsigned int flags);
 HsInt hs_uv_random_threaded(char* buf, size_t len, unsigned int flags, uv_loop_t* loop);
+
+////////////////////////////////////////////////////////////////////////////////
+// fs event
+int hs_uv_fs_event_start(uv_fs_event_t* handle, const char* path, unsigned int flags);
+int hs_uv_fs_event_check_start(uv_check_t* check);

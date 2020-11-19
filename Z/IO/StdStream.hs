@@ -180,12 +180,14 @@ makeStdStream fd = do
     then do
         uvm <- getUVManager
         withUVManager uvm $ \ loop -> do
-            hdl <- hs_uv_handle_alloc loop
-            slot <- getUVSlot uvm (peekUVHandleData hdl)
-            _ <- tryTakeMVar =<< getBlockMVar uvm slot   -- clear the parking spot
-            throwUVIfMinus_ (uv_tty_init loop hdl (fromIntegral fd))
-                `onException` hs_uv_handle_free hdl
-            return (StdTTY hdl slot uvm)
+            bracketOnError
+                (hs_uv_handle_alloc loop)
+                hs_uv_handle_free
+                ( \ hdl -> do
+                    slot <- getUVSlot uvm (peekUVHandleData hdl)
+                    _ <- tryTakeMVar =<< getBlockMVar uvm slot   -- clear the parking spot
+                    throwUVIfMinus_ (uv_tty_init loop hdl (fromIntegral fd))
+                    return (StdTTY hdl slot uvm))
     else return (StdFile fd)
 
 -- | Change terminal's mode if stdin is connected to a terminal.

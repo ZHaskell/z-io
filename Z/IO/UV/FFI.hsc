@@ -126,6 +126,13 @@ foreign import ccall unsafe uv_unref :: Ptr UVHandle -> IO ()
 foreign import ccall unsafe hs_uv_cancel :: Ptr UVLoop -> UVSlot -> IO ()
 
 --------------------------------------------------------------------------------
+-- check
+foreign import ccall unsafe hs_uv_check_alloc :: IO (Ptr UVHandle)
+foreign import ccall unsafe hs_uv_check_init :: Ptr UVHandle    -- ^ uv_check_t
+                                             -> Ptr UVHandle    -- ^ uv_handle_t
+                                             -> IO CInt
+foreign import ccall unsafe hs_uv_check_close :: Ptr UVHandle -> IO ()
+--------------------------------------------------------------------------------
 -- stream
 
 foreign import ccall unsafe hs_uv_listen  :: Ptr UVHandle -> CInt -> IO CInt
@@ -135,12 +142,7 @@ foreign import ccall unsafe hs_uv_read_start :: Ptr UVHandle -> IO CInt
 foreign import ccall unsafe uv_read_stop :: Ptr UVHandle -> IO CInt
 foreign import ccall unsafe hs_uv_write :: Ptr UVHandle -> Ptr Word8 -> Int -> IO UVSlotUnsafe
 
-foreign import ccall unsafe hs_uv_accept_check_alloc :: IO (Ptr UVHandle)
-foreign import ccall unsafe hs_uv_accept_check_init :: Ptr UVHandle -- ^ uv_check_t
-                                                    -> Ptr UVHandle -- ^ uv_stream_t
-                                                    -> IO CInt
 foreign import ccall unsafe hs_uv_accept_check_start :: Ptr UVHandle -> IO CInt
-foreign import ccall unsafe hs_uv_accept_check_close :: Ptr UVHandle -> IO ()
 
 --------------------------------------------------------------------------------
 -- tcp & pipe
@@ -210,12 +212,7 @@ foreign import ccall unsafe uv_udp_set_ttl :: Ptr UVHandle -> CInt -> IO CInt
 foreign import ccall unsafe hs_uv_udp_recv_start :: Ptr UVHandle -> IO CInt
 foreign import ccall unsafe uv_udp_recv_stop :: Ptr UVHandle -> IO CInt
 
-foreign import ccall unsafe hs_uv_udp_check_alloc :: IO (Ptr UVHandle)
-foreign import ccall unsafe hs_uv_udp_check_init :: Ptr UVHandle    -- ^ uv_check_t
-                                                 -> Ptr UVHandle    -- ^ udp server
-                                                 -> IO CInt
 foreign import ccall unsafe hs_uv_udp_check_start :: Ptr UVHandle -> IO CInt
-foreign import ccall unsafe hs_uv_udp_check_close :: Ptr UVHandle -> IO ()
 
 foreign import ccall unsafe hs_uv_udp_send 
     :: Ptr UVHandle -> MBA## SocketAddr -> Ptr Word8 -> Int -> IO UVSlotUnsafe
@@ -1074,3 +1071,20 @@ getLoadAvg = do
     return ( indexPrimArray arr 0
            , indexPrimArray arr 1
            , indexPrimArray arr 2)
+
+--------------------------------------------------------------------------------
+-- fs event
+
+foreign import ccall unsafe uv_fs_event_init :: Ptr UVLoop -> Ptr UVHandle -> IO CInt
+foreign import ccall unsafe hs_uv_fs_event_start :: Ptr UVHandle -> BA## Word8 -> CUInt -> IO CInt
+foreign import ccall unsafe uv_fs_event_stop :: Ptr UVHandle -> IO CInt
+foreign import ccall unsafe hs_uv_fs_event_check_start :: Ptr UVHandle -> IO CInt
+
+pattern UV_RENAME :: Word8
+pattern UV_RENAME = #const UV_RENAME
+
+pattern UV_CHANGE :: Word8
+pattern UV_CHANGE = #const UV_CHANGE
+
+pattern UV_FS_EVENT_RECURSIVE :: CUInt
+pattern UV_FS_EVENT_RECURSIVE = #const UV_FS_EVENT_RECURSIVE

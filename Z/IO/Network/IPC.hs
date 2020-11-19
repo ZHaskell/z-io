@@ -111,10 +111,10 @@ startIPCServer IPCServerConfig{..} ipcServerWorker = do
         withCBytesUnsafe ipcListenName $ \ name_p -> do
             throwUVIfMinus_ (uv_pipe_bind serverHandle name_p)
         bracket
-            (do check <- throwOOMIfNull $ hs_uv_accept_check_alloc
-                throwUVIfMinus_ (hs_uv_accept_check_init check serverHandle)
+            (do check <- throwOOMIfNull $ hs_uv_check_alloc
+                throwUVIfMinus_ (hs_uv_check_init check serverHandle)
                 return check)
-            hs_uv_accept_check_close $
+            hs_uv_check_close $
             \ check -> do
 
 -- The buffer passing of accept is a litte complicated here, to get maximum performance,
@@ -155,8 +155,8 @@ startIPCServer IPCServerConfig{..} ipcServerWorker = do
                     -- we lock uv manager here in case of next uv_run overwrite current accept buffer
                     acceptBufCopy <- withUVManager' serverUVManager $ do
                         _ <- tryTakeMVar m
-                        acceptCountDown <- peekBufferTable serverUVManager serverSlot
-                        pokeBufferTable serverUVManager serverSlot acceptBufPtr (backLog-1)
+                        acceptCountDown <- peekBufferSizeTable serverUVManager serverSlot
+                        pokeBufferSizeTable serverUVManager serverSlot (backLog-1)
 
                         -- if acceptCountDown count to -1, we should resume on haskell side
                         when (acceptCountDown == -1) (hs_uv_listen_resume serverHandle)

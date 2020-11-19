@@ -257,7 +257,7 @@ spawn ProcessOptions{..} = do
                     withUVManager uvm $ \ loop -> do
                         slot <- throwUVIfMinus (hs_uv_spawn loop popts## pfile
                                         pargs argsLen penv envLen pcwd pstdio##)
-                        pid <- peekBufferTable uvm slot
+                        pid <- peekBufferSizeTable uvm slot
                         return (slot, pid)
 
     exitLock <- getBlockMVar uvm slot

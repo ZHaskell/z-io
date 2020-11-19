@@ -69,12 +69,15 @@ initUVStream :: HasCallStack
              -> Resource UVStream
 initUVStream f uvm = initResource
     (withUVManager uvm $ \ loop -> do
-        hdl <- hs_uv_handle_alloc loop
-        slot <- getUVSlot uvm (peekUVHandleData hdl)
-        _ <- tryTakeMVar =<< getBlockMVar uvm slot   -- clear the parking spot
-        f loop hdl `onException` hs_uv_handle_free hdl
-        closed <- newIORef False
-        return (UVStream hdl slot uvm closed))
+        bracketOnError
+            (hs_uv_handle_alloc loop)
+            hs_uv_handle_free
+            ( \ hdl -> do
+                slot <- getUVSlot uvm (peekUVHandleData hdl)
+                _ <- tryTakeMVar =<< getBlockMVar uvm slot   -- clear the parking spot
+                f loop hdl
+                closed <- newIORef False
+                return (UVStream hdl slot uvm closed)))
     closeUVStream
 
 -- | Manually close a uv stream.

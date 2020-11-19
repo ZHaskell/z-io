@@ -120,15 +120,16 @@ initUDP :: UDPConfig -> Resource UDP
 initUDP (UDPConfig sbsiz maddr) = initResource
     (do uvm <- getUVManager
         (hdl, slot) <- withUVManager uvm $ \ loop -> do
-            hdl <- hs_uv_handle_alloc loop
-            slot <- getUVSlot uvm (peekUVHandleData hdl)
-            -- clean up
-            _ <- tryTakeMVar =<< getBlockMVar uvm slot
-
-            -- init uv struct
-            (do throwUVIfMinus_ (uv_udp_init loop hdl)
-                ) `onException` hs_uv_handle_free hdl
-            return (hdl, slot)
+            bracketOnError
+                (hs_uv_handle_alloc loop)
+                hs_uv_handle_free
+                ( \ hdl -> do
+                    slot <- getUVSlot uvm (peekUVHandleData hdl)
+                    -- clean up
+                    _ <- tryTakeMVar =<< getBlockMVar uvm slot
+                    -- init uv struct
+                    throwUVIfMinus_ (uv_udp_init loop hdl)
+                    return (hdl, slot))
 
         -- bind the socket if address is available
         -- This is safe without lock UV manager
@@ -371,10 +372,10 @@ recvUDPLoop :: HasCallStack
             -> IO ()
 recvUDPLoop (UDPRecvConfig bufSiz bufArrSiz) udp@(UDP hdl slot uvm _ _) worker = do
     bracket
-        (do check <- throwOOMIfNull $ hs_uv_udp_check_alloc
-            throwUVIfMinus_ (hs_uv_udp_check_init check hdl)
+        (do check <- throwOOMIfNull $ hs_uv_check_alloc
+            throwUVIfMinus_ (hs_uv_check_init check hdl)
             return check)
-        hs_uv_udp_check_close $
+        hs_uv_check_close $
         \ check -> do
             buf@(_, rbufArr) <- newRecvBuf bufSiz bufArrSiz
             withMutablePrimArrayContents rbufArr $ \ p -> do
@@ -383,8 +384,7 @@ recvUDPLoop (UDPRecvConfig bufSiz bufArrSiz) udp@(UDP hdl slot uvm _ _) worker =
                 throwUVIfMinus_ $ hs_uv_udp_check_start check
             forever $ do
                 msgs <- recvUDPWith udp buf bufSiz
-                withMutablePrimArrayContents rbufArr $ \ p ->
-                    pokeBufferTable uvm slot (castPtr p) (bufArrSiz-1)
+                pokeBufferSizeTable uvm slot (bufArrSiz-1)
                 forM_ msgs worker
 
 -- | Recv messages from UDP socket, return source address if available, and a `Bool`
@@ -393,10 +393,10 @@ recvUDPLoop (UDPRecvConfig bufSiz bufArrSiz) udp@(UDP hdl slot uvm _ _) worker =
 recvUDP :: HasCallStack => UDPRecvConfig -> UDP -> IO [(Maybe SocketAddr, Bool, V.Bytes)]
 recvUDP (UDPRecvConfig bufSiz bufArrSiz) udp@(UDP hdl slot uvm _ _)  = do
     bracket
-        (do check <- throwOOMIfNull $ hs_uv_udp_check_alloc
-            throwUVIfMinus_ (hs_uv_udp_check_init check hdl)
+        (do check <- throwOOMIfNull $ hs_uv_check_alloc
+            throwUVIfMinus_ (hs_uv_check_init check hdl)
             return check)
-        hs_uv_udp_check_close $
+        hs_uv_check_close $
         \ check -> do
             buf@(_, rbufArr) <- newRecvBuf bufSiz bufArrSiz
             withMutablePrimArrayContents rbufArr $ \ p -> do
