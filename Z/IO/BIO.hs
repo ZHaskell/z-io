@@ -14,19 +14,32 @@ This module provides 'BIO' (block IO) type to facilitate writing streaming progr
   * Running in constant spaces, which means the memory usage won't accumulate.
   * Keep some state in IO, which is sealed in 'BIO' closure.
 
-Some example of such nodes are:
+Some examples of such nodes are:
 
   * Compressor \/ decompressor, e.g. zlib, etc.
-  * Ciphers.
   * Codec, e.g. utf8 codec, base64 codec.
+  * Ciphers.
   * Packet parsers.
 
-We use @BIO inp out@ type to represent all the objects above, and @BIO Void out@ to represent an 'IO' source,
-and @BIO inp ()@ to represent an 'IO' sink, which can all be connected with '>|>' to build a larger 'BIO' node.
+We use @BIO inp out@ type to represent all the objects above, @BIO Void out@ to represent an 'IO' source,
+and @BIO inp Void@ to represent an 'IO' sink, which can all be connected with '>|>' to build a larger 'BIO' node.
 
 @
-import
+import Z.Data.CBytes    (CBytes)
+import Z.IO
+import Z.IO.BIO
+import Z.IO.BIO.Zlib
 
+base64AndCompressFile :: HasCallStack => CBytes -> CBytes -> IO ()
+base64AndCompressFile origin target = do
+    enc <- newBase64Encoder
+    (_, compressor) <- newCompress defaultCompressConfig{compressWindowBits = 31}
+    withResource (sourceFromFile origin) $ \ src ->
+        withResource (sinkToFile target) $ \ sink ->
+            runBIO $ src >|> enc >|> compressor >|> sink
+
+> base64AndCompressFile "./test" "/test.gz"
+-- run 'zcat "/test.gz" | base64 -d' will give you original file
 @
 
 -}

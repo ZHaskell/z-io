@@ -18,7 +18,7 @@ module Z.IO.FileSystem
     -- * file offset bundle
   , FilePtr, newFilePtr, getFileOffset, setFileOffset
   -- * filesystem operations
-  , mkdir
+  , mkdir, mkdirp
   , unlink
   , mkdtemp
   , rmdir
@@ -113,6 +113,7 @@ import           Z.IO.Buffered
 import           Z.IO.Exception
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
+import qualified Z.IO.FileSystem.FilePath       as P
 import           Prelude hiding (writeFile, readFile)
 
 --------------------------------------------------------------------------------
@@ -266,15 +267,38 @@ quickWriteTextFile filename content = quickWriteFile filename (T.getUTF8Bytes co
 
 -- | Equivalent to <http://linux.die.net/man/2/mkdir mkdir(2)>.
 --
--- Note mode is currently not implemented on Windows.
+-- Note mode is currently not implemented on Windows. On unix you should set execute bit
+-- if you want the directory is accessable, e.g. 0o777.
 mkdir :: HasCallStack => CBytes -> FileMode -> IO ()
 mkdir path mode = throwUVIfMinus_ . withCBytesUnsafe path $ \ p ->
      hs_uv_fs_mkdir p mode
 
+-- | Equivalent to @mkdir -p@
+--
+-- Note mode is currently not implemented on Windows. On unix you should set execute bit
+-- if you want the directory is accessable(so that child folder can be created), e.g. 0o777.
+mkdirp :: HasCallStack => CBytes -> FileMode -> IO ()
+mkdirp path mode = do
+    r <- withCBytesUnsafe path $ \ p -> hs_uv_fs_mkdir p mode
+    if fromIntegral r == UV_ENOENT
+    then do
+        (root, segs) <- P.splitSegments path
+        case segs of
+            seg:segs' -> loop segs' =<< P.join root seg
+            _ -> throwUVIfMinus_ (return r)
+    else throwUVIfMinus_ (return r)
+  where
+    loop [] _ = return ()
+    loop (nextp:ps) p = do
+        a <- access p F_OK
+        case a of
+            AccessOK     -> loop ps =<< P.join p nextp
+            NoExistence  -> mkdir p mode >> (loop ps =<< P.join p nextp)
+            NoPermission -> throwUVIfMinus_ (return UV_EACCES)
+
 -- | Equivalent to <http://linux.die.net/man/2/unlink unlink(2)>.
 unlink :: HasCallStack => CBytes -> IO ()
 unlink path = throwUVIfMinus_ (withCBytesUnsafe path hs_uv_fs_unlink)
-
 
 -- | Equivalent to <mkdtemp http://linux.die.net/man/3/mkdtemp>
 --

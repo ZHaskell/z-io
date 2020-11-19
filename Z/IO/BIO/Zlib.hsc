@@ -14,7 +14,7 @@ module Z.IO.BIO.Zlib(
   -- * Compression
     CompressConfig(..)
   , defaultCompressConfig
-  , newCompress, newCompress', compressReset
+  , newCompress, compressReset
   , compress
   , compressBlocks
   , WindowBits
@@ -24,7 +24,7 @@ module Z.IO.BIO.Zlib(
   -- * Decompression
   , DecompressConfig(..)
   , defaultDecompressConfig
-  , newDecompress, newDecompress', decompressReset
+  , newDecompress, decompressReset
   , decompress
   , decompressBlocks
   -- * Constants
@@ -118,19 +118,11 @@ data ZStream = ZStream (ForeignPtr ZStream) (IORef Bool)
 
 -- | Compress all the data written to a output.
 --
--- The returned 'BIO' node can not be reused after get flushed.
+-- The returned 'BIO' node can be reused only if you call 'compressReset' on the 'ZStream'.
 newCompress :: HasCallStack
             => CompressConfig
-            -> IO (BIO V.Bytes V.Bytes)
-newCompress conf = snd <$> newCompress' conf
-
--- | Compress all the data written to a output.
---
--- The returned 'BIO' node can be reused after you call 'compressReset' on the 'ZStream'.
-newCompress' :: HasCallStack
-             => CompressConfig
-             -> IO (ZStream, BIO V.Bytes V.Bytes)
-newCompress' (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
+            -> IO (ZStream, BIO V.Bytes V.Bytes)
+newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
     zs <- newForeignPtr free_z_stream_deflate =<< create_z_stream
     buf <- A.newPinnedPrimArray bufSiz
     set_avail_out zs buf bufSiz
@@ -197,11 +189,11 @@ compressReset (ZStream fp finRef) = do
 
 -- | Decompress some bytes.
 compress :: HasCallStack => CompressConfig -> V.Bytes -> V.Bytes
-compress conf = V.concat . unsafeRunBlock (newCompress conf)
+compress conf = V.concat . unsafeRunBlock (snd <$> newCompress conf)
 
 -- | Decompress some bytes list.
 compressBlocks :: HasCallStack => CompressConfig -> [V.Bytes] -> [V.Bytes]
-compressBlocks conf = unsafeRunBlocks (newCompress conf)
+compressBlocks conf = unsafeRunBlocks (snd <$> newCompress conf)
 
 data DecompressConfig = DecompressConfig
     { decompressWindowBits :: WindowBits
@@ -215,15 +207,9 @@ defaultDecompressConfig = DecompressConfig defaultWindowBits V.empty V.defaultCh
 
 -- | Decompress bytes from source.
 --
--- The returned 'BIO' node can not be reused after get flushed.
-newDecompress :: DecompressConfig -> IO (BIO V.Bytes V.Bytes)
-newDecompress conf = snd <$> newDecompress' conf
-
--- | Decompress bytes from source.
---
--- The returned 'BIO' node can be reused after you call 'decompressReset' on the 'ZStream'.
-newDecompress' :: DecompressConfig -> IO (ZStream, BIO V.Bytes V.Bytes)
-newDecompress' (DecompressConfig windowBits dict bufSiz) = do
+-- The returned 'BIO' node can be reused only if you call 'decompressReset' on the 'ZStream'.
+newDecompress :: DecompressConfig -> IO (ZStream, BIO V.Bytes V.Bytes)
+newDecompress (DecompressConfig windowBits dict bufSiz) = do
     zs <- newForeignPtr free_z_stream_inflate =<< create_z_stream
     buf <- A.newPinnedPrimArray bufSiz
     set_avail_out zs buf bufSiz
@@ -300,11 +286,11 @@ decompressReset (ZStream fp finRef) = do
 
 -- | Decompress some bytes.
 decompress :: HasCallStack => DecompressConfig -> V.Bytes -> V.Bytes
-decompress conf = V.concat . unsafeRunBlock (newDecompress conf)
+decompress conf = V.concat . unsafeRunBlock (snd <$> newDecompress conf)
 
 -- | Decompress some bytes list.
 decompressBlocks :: HasCallStack => DecompressConfig -> [V.Bytes] -> [V.Bytes]
-decompressBlocks conf = unsafeRunBlocks (newDecompress conf)
+decompressBlocks conf = unsafeRunBlocks (snd <$> newDecompress conf)
 
 --------------------------------------------------------------------------------
 

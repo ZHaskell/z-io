@@ -49,8 +49,8 @@ spec = describe "zlib" $ do
             B.concat vs @=? BL.toStrict vs'
 
         prop "compress >|> decompress" $ \ xss -> do
-            c <- newCompress defaultCompressConfig
-            d <- newDecompress defaultDecompressConfig
+            (_, c) <- newCompress defaultCompressConfig
+            (_, d) <- newDecompress defaultDecompressConfig
 
             let vs = Prelude.map V.pack xss
             vs' <- runBlocks (c >|> d) vs
@@ -60,8 +60,8 @@ spec = describe "zlib" $ do
         prop "compress >|> decompress (with dict)" $ \ xss -> do
             let dict = "aabbccdd"
 
-            c <- newCompress defaultCompressConfig{compressDictionary = dict}
-            d <- newDecompress defaultDecompressConfig{decompressDictionary = dict}
+            (_, c) <- newCompress defaultCompressConfig{compressDictionary = dict}
+            (_, d) <- newDecompress defaultDecompressConfig{decompressDictionary = dict}
 
             let vs = Prelude.map V.pack xss
             vs' <- runBlocks (c >|> d) vs
