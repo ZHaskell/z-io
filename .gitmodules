@@ -7,6 +7,3 @@
 [submodule "third_party/cwalk"]
 	path = third_party/cwalk
 	url = https://github.com/likle/cwalk.git
-[submodule "third_party/base64"]
-	path = third_party/base64
-	url = https://github.com/aklomp/base64.git
