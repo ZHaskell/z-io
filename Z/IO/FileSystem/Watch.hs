@@ -11,7 +11,7 @@ This module provides fs watcher based on libuv's fs_event, we also maintain watc
 support recursive watch(Linux's inotify).
 
 @
--- start watch threads, use returned close function to cleanup watching threads.
+-- start watching threads, use returned close function to cleanup watching threads.
 (close, srcf) <- watchDir "fold_to_be_watch"
 -- dup a file event source
 src <- srcf
@@ -33,10 +33,10 @@ import           Data.IORef
 import qualified Data.HashMap.Strict      as HM
 import qualified Data.List                as List
 import           Data.Word
-import           Foreign.Ptr              (plusPtr)
-import           Foreign.Storable         (peek)
 import           GHC.Generics
+import           Data.Primitive.PrimArray
 import           Z.Data.Array
+import           Z.Data.Array.Unaligned
 import           Z.Data.CBytes            (CBytes)
 import qualified Z.Data.CBytes            as CBytes
 import           Z.Data.JSON              (EncodeJSON, FromValue, ToValue)
@@ -76,7 +76,7 @@ watchDirsRecursively dirs = do
     subDirs <- forM dirs (\ dir -> scandirRecursively dir (\ _ t -> return (t == DirEntDir)))
     watch_ UV_FS_EVENT_RECURSIVE (List.concat (dirs:subDirs))
 #else
-    watch_ UV_FS_EVENT_RECURSIVE [dir]
+    watch_ UV_FS_EVENT_RECURSIVE dirs
 #endif
 
 -- Internal function to start watching
@@ -112,7 +112,7 @@ watch_ flag dirs = do
                     -- init uv struct
                     throwUVIfMinus_ (uv_fs_event_init loop hdl)
 
-                    buf <- newPrimArray eventBufSiz :: IO (MutablePrimArray RealWorld Word8)
+                    buf <- newPinnedPrimArray eventBufSiz :: IO (MutablePrimArray RealWorld Word8)
 
                     check <- throwOOMIfNull $ hs_uv_check_alloc
                     throwUVIfMinus_ (hs_uv_check_init check hdl)
@@ -128,33 +128,41 @@ watch_ flag dirs = do
 
             (\ (hdl, slot, buf, _) -> do
                 m <- getBlockMVar uvm slot
-                (forever $ do
+                withUVManager' uvm $ do
+                    _ <- tryTakeMVar m
+                    pokeBufferSizeTable uvm slot eventBufSiz
+                    CBytes.withCBytesUnsafe dir $ \ p ->
+                        throwUVIfMinus_ (hs_uv_fs_event_start hdl p flag)
 
-                    withUVManager' uvm $ do
-                        _ <- tryTakeMVar m
-                        pokeBufferSizeTable uvm slot eventBufSiz
-                        CBytes.withCBytesUnsafe dir $ \ p ->
-                            throwUVIfMinus_ (hs_uv_fs_event_start hdl p flag)
+                forever $ do
 
-                    r <- takeMVar m `onException` (do
+                    _ <- takeMVar m `onException` (do
                             _ <- withUVManager' uvm $ uv_fs_event_stop hdl
                             void (tryTakeMVar m))
 
-                    events <- withMutablePrimArrayContents buf $ \ p -> do
-                        loopReadFileEvent (p `plusPtr` r) (p `plusPtr` eventBufSiz) []
+                    (PrimArray buf#) <- withUVManager' uvm $ do
+                        _ <- tryTakeMVar m
+                        r <- peekBufferSizeTable uvm slot
+                        pokeBufferSizeTable uvm slot eventBufSiz
 
-                    forkIO $ processEvent dir mRef eRef sink events))
+                        let eventSiz = eventBufSiz - r
+                        buf' <- newPrimArray eventSiz
+                        copyMutablePrimArray buf' 0 buf r eventSiz
+                        unsafeFreezePrimArray buf'
+
+                    forkIO $ processEvent dir mRef eRef sink =<< loopReadFileEvent buf# 0 [])
             ) `catch`
                 -- when a directory is removed, either watcher is killed
                 -- or hs_uv_fs_event_start return ENOENT
                 (\ (_ :: NoSuchThing) -> return ())
 
-    loopReadFileEvent p pend acc
-        | p >= pend = return acc
-        | otherwise = do
-            event   <- peek p
-            path    <- CBytes.fromCString (p `plusPtr` 1)
-            loopReadFileEvent (p `plusPtr` (CBytes.length path + 2)) pend ((event,path):acc)
+    loopReadFileEvent buf# i acc
+        | i >= siz = return acc
+        | otherwise =
+            let !event  = indexBA buf# i
+                !path   = indexBA buf# (i + 1)
+            in loopReadFileEvent buf# (i + CBytes.length path + 2) ((event,path):acc)
+      where siz = sizeofPrimArray (PrimArray buf# :: PrimArray Word8)
 
     processEvent pdir mRef eRef sink = mapM_ $ \ (e, path) -> do
         f <- pdir `P.join` path

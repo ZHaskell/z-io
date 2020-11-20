@@ -62,8 +62,6 @@ void hs_fs_event_check_cb(uv_check_t* check){
     HsInt* buffer_ptr = (HsInt*)loop_data->buffer_table[slot];
     HsInt buffer_total_len = *(buffer_ptr-1);
     if (buffer_index < buffer_total_len ) {
-        // will resume from haskell
-        uv_fs_event_stop(f);
         loop_data->event_queue[loop_data->event_counter] = slot; // push the slot to event queue
         loop_data->event_counter += 1;
     }
