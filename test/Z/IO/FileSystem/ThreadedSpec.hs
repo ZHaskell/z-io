@@ -38,12 +38,12 @@ spec = describe "filesystem (threadpool version) operations" $ do
             filename = "test-file"
 
         it "Opens and writes a file" $ do
-            withResource (initFileT filename flags mode) $ \ file -> do
+            withResource (initFile filename flags mode) $ \ file -> do
                 o <- newBufferedOutput' 4096 file
                 writeBuffer o content
                 flushBuffer o
 
-            withResource (initFileT filename flags mode) $ \ file -> do
+            withResource (initFile filename flags mode) $ \ file -> do
                 i <- newBufferedInput' 4096 file
                 written <- readExactly size i
                 written @?= content
@@ -56,17 +56,17 @@ spec = describe "filesystem (threadpool version) operations" $ do
             unlink filename
 
         it "Opens and writes a file II" $ do
-            withResource (initFileT filename flags mode) $ \ file -> do
+            withResource (initFile filename flags mode) $ \ file -> do
                 o <- newBufferedOutput' 4096 file
                 writeBuffer o content2
                 flushBuffer o
 
-            withResource (initFileT filename flags mode) $ \ file -> do
+            withResource (initFile filename flags mode) $ \ file -> do
                 i <- newBufferedInput' 4096 file
                 written <- readExactly size2 i
                 written @=? content2
 
-            withResource (initFileT filename flags mode) $ \ file -> do
+            withResource (initFile filename flags mode) $ \ file -> do
                 i <- newBufferedInput' 4096 file
                 Just firstLine <- readLine i
                 firstLine  @=? fst (V.break (== V.c2w '\n') content2)
@@ -96,7 +96,7 @@ spec = describe "filesystem (threadpool version) operations" $ do
 
         it "link stat should be equal to target file" $ ( do
 
-            withResource (initFileT filename flags mode) $ \ file -> return ()
+            withResource (initFile filename flags mode) $ \ file -> return ()
 
             s0 <- stat filename
 
@@ -114,7 +114,7 @@ spec = describe "filesystem (threadpool version) operations" $ do
             s0 @=? s2 {stNlink = 1, stCtim = stCtim s0}
             s0 @=? s2' {stNlink = 1, stCtim = stCtim s0}
 
-            withResource (initFileT filename flags mode) $ \ file -> do
+            withResource (initFile filename flags mode) $ \ file -> do
                 s4 <- fstat file
                 s0 @?= s4 {stNlink = 1, stCtim = stCtim s0}
             ) `finally` ( do
@@ -125,7 +125,7 @@ spec = describe "filesystem (threadpool version) operations" $ do
             )
 
         it "utime result in stat change" $ do
-            withResource (initFileT filename flags mode) $ \ file -> return ()
+            withResource (initFile filename flags mode) $ \ file -> return ()
             utime filename 1000.2000 3000.4000
             s <- stat filename
             print s
@@ -136,7 +136,7 @@ spec = describe "filesystem (threadpool version) operations" $ do
             unlink filename
 
         it "futime result in fstat change" $ do
-            withResource (initFileT filename flags mode) $ \ file -> do
+            withResource (initFile filename flags mode) $ \ file -> do
                 futime file 5000.6000 7000.8000
                 s <- fstat file
                 print s

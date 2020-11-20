@@ -18,14 +18,16 @@ module Z.IO.FileSystem
     -- * file offset bundle
   , FilePtr, newFilePtr, getFileOffset, setFileOffset
   -- * filesystem operations
-  , mkdir
+  , mkdir, mkdirp
   , unlink
   , mkdtemp
-  , rmdir
+  , rmdir, rmdirrf
   , DirEntType(..)
   , scandir
+  , scandirRecursively
   , FStat(..), UVTimeSpec(..)
   , stat, lstat, fstat
+  , isLink, isDir, isFile
   , rename
   , fsync, fdatasync
   , ftruncate
@@ -57,6 +59,11 @@ module Z.IO.FileSystem
   , pattern S_IXGRP
   , pattern S_IRWXO
   , pattern S_IROTH
+  -- ** file type constant
+  , pattern S_IFMT
+  , pattern S_IFLNK
+  , pattern S_IFDIR
+  , pattern S_IFREG
   -- ** FileFlag
   , FileFlag
   , pattern O_APPEND
@@ -105,8 +112,8 @@ import qualified Z.Data.Vector                  as V
 import           Z.Foreign
 import           Z.IO.Buffered
 import           Z.IO.Exception
+import qualified Z.IO.FileSystem.FilePath       as P
 import           Z.IO.Resource
-import           Z.IO.UV.Errno
 import           Z.IO.UV.FFI
 import           Prelude hiding (writeFile, readFile)
 
@@ -221,12 +228,11 @@ instance Output FilePtr where
 --
 -- Resource closing is thread safe, on some versions of OSX, repeatly open and close same file 'Resource' may
 -- result in shared memory object error, use 'O_CREAT' to avoid that.
-initFile :: HasCallStack
-           => CBytes
-           -> FileFlag        -- ^ Opening flags, e.g. 'O_CREAT' @.|.@ 'O_RDWR'
-           -> FileMode      -- ^ Sets the file mode (permission and sticky bits),
-                              -- but only if the file was created, see 'DEFAULT_MODE'.
-           -> Resource File
+initFile :: CBytes
+         -> FileFlag        -- ^ Opening flags, e.g. 'O_CREAT' @.|.@ 'O_RDWR'
+         -> FileMode      -- ^ Sets the file mode (permission and sticky bits),
+                            -- but only if the file was created, see 'DEFAULT_MODE'.
+         -> Resource File
 initFile path flags mode =
     initResource
         (do !fd <- withCBytesUnsafe path $ \ p ->
@@ -262,15 +268,40 @@ quickWriteTextFile filename content = quickWriteFile filename (T.getUTF8Bytes co
 
 -- | Equivalent to <http://linux.die.net/man/2/mkdir mkdir(2)>.
 --
--- Note mode is currently not implemented on Windows.
+-- Note mode is currently not implemented on Windows. On unix you should set execute bit
+-- if you want the directory is accessable, e.g. 0o777.
 mkdir :: HasCallStack => CBytes -> FileMode -> IO ()
 mkdir path mode = throwUVIfMinus_ . withCBytesUnsafe path $ \ p ->
      hs_uv_fs_mkdir p mode
 
+-- | Equivalent to @mkdir -p@
+--
+-- Note mode is currently not implemented on Windows. On unix you should set execute bit
+-- if you want the directory is accessable(so that child folder can be created), e.g. 0o777.
+mkdirp :: HasCallStack => CBytes -> FileMode -> IO ()
+mkdirp path mode = do
+    r <- withCBytesUnsafe path $ \ p -> hs_uv_fs_mkdir p mode
+    if fromIntegral r == UV_ENOENT
+    then do
+        (root, segs) <- P.splitSegments path
+        case segs of
+            seg:segs' -> loop segs' =<< P.join root seg
+            _ -> throwUVIfMinus_ (return r)
+    else throwUVIfMinus_ (return r)
+  where
+    loop segs p = do
+        a <- access p F_OK
+        case a of
+            AccessOK     -> return ()
+            NoExistence  -> mkdir p mode
+            NoPermission -> throwUVIfMinus_ (return UV_EACCES)
+        case segs of
+            (nextp:ps) -> P.join p nextp >>= loop ps
+            _  -> return ()
+
 -- | Equivalent to <http://linux.die.net/man/2/unlink unlink(2)>.
 unlink :: HasCallStack => CBytes -> IO ()
 unlink path = throwUVIfMinus_ (withCBytesUnsafe path hs_uv_fs_unlink)
-
 
 -- | Equivalent to <mkdtemp http://linux.die.net/man/3/mkdtemp>
 --
@@ -292,8 +323,22 @@ mkdtemp path = do
         return p'
 
 -- | Equivalent to <http://linux.die.net/man/2/rmdir rmdir(2)>.
+--
+-- Note this function may inherent OS limitations such as argument must be an empty folder.
 rmdir :: HasCallStack => CBytes -> IO ()
 rmdir path = throwUVIfMinus_ (withCBytesUnsafe path hs_uv_fs_rmdir)
+
+-- | Equivalent to @rmdir -rf@
+--
+-- This function will try to remove folder and files contained by it.
+rmdirrf :: HasCallStack => CBytes -> IO ()
+rmdirrf path = do
+    ds <- scandir path
+    forM_ ds $ \ (d, t) -> do
+        if t /= DirEntDir
+        then unlink d
+        else rmdirrf =<< path `P.join` d
+    rmdir path
 
 -- | Equivalent to <http://linux.die.net/man/3/scandir scandir(3)>.
 --
@@ -313,6 +358,26 @@ scandir path = do
             let !typ' = fromUVDirEntType typ
             !p' <- fromCString p
             return (p', typ'))
+
+-- | Find all files and directories within a given directory with a predicator.
+--
+-- @
+--  import Z.IO.FileSystem.FilePath (splitExtension)
+--  -- find all haskell source file within current dir
+--  scandirRecursively "."  (\ p _ -> (== ".hs") . snd <$> splitExtension p)
+-- @
+scandirRecursively :: HasCallStack => CBytes -> (CBytes -> DirEntType -> IO Bool) -> IO [CBytes]
+scandirRecursively dir p = loop [] =<< P.normalize dir
+  where
+    loop acc0 pdir =
+        foldM (\ acc (d,t) -> do
+            d' <- pdir `P.join` d
+            r <- p d' t
+            let acc' = if r then (d':acc) else acc
+            if (t == DirEntDir)
+            then loop acc' d'
+            else return acc'
+        ) acc0 =<< scandir pdir
 
 --------------------------------------------------------------------------------
 
@@ -336,6 +401,18 @@ fstat uvf = checkFileClosed uvf $ \ fd ->
     allocaBytes uvStatSize $ \ s -> do
         throwUVIfMinus_ (hs_uv_fs_fstat fd s)
         peekUVStat s
+
+-- | If given path is a symbolic link?
+isLink :: HasCallStack => CBytes -> IO Bool
+isLink p = lstat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFLNK)
+
+-- | If given path is a directory or a symbolic link to a directory?
+isDir :: HasCallStack => CBytes -> IO Bool
+isDir p = stat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFDIR)
+
+-- | If given path is a file or a symbolic link to a file?
+isFile :: HasCallStack => CBytes -> IO Bool
+isFile p = stat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFREG)
 
 --------------------------------------------------------------------------------
 
@@ -479,3 +556,7 @@ fchown uvf uid gid = checkFileClosed uvf $ \ fd -> throwUVIfMinus_ $ hs_uv_fs_fc
 -- | Equivalent to <http://linux.die.net/man/2/lchown lchown(2)>.
 lchown :: HasCallStack => CBytes -> UID -> GID -> IO ()
 lchown path uid gid = throwUVIfMinus_ . withCBytesUnsafe path $ \ p -> hs_uv_fs_lchown p uid gid
+
+--------------------------------------------------------------------------------
+-- high level utilities
+

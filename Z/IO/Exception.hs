@@ -190,14 +190,10 @@ data IOEInfo = IOEInfo
     , ioeCallStack   :: CallStack   -- ^ lightweight partial call-stack
     }
 
-instance Show IOEInfo where
-    show (IOEInfo errno desc cstack) =
-         "{name:" ++ T.unpack errno ++
-         ", description:" ++ T.unpack desc ++
-         ", callstack:" ++ prettyCallStack cstack ++ "}"
+instance Show IOEInfo where show = T.toString
 
 instance T.ShowT IOEInfo where
-    toTextBuilder _ (IOEInfo errno desc cstack) = do
+    toUTF8BuilderP _ (IOEInfo errno desc cstack) = do
          "{name:"
          T.text errno
          ", description:"

@@ -251,20 +251,22 @@ changeRoot p r = do
 
 -- | Split file path into (root, segments, basename) tuple.
 --
--- Root and basename may be empty, segments are separated by 'pathSeparator' and never be empty if any.
+-- Root may be empty, segments are separated by 'pathSeparator' and never be empty if any.
 splitSegments :: CBytes
-              -> IO (CBytes, [CBytes], CBytes) -- ^ return (root, segments, basename)
+              -> IO (CBytes, [CBytes]) -- ^ return (root, segments)
 {-# INLINABLE splitSegments #-}
 splitSegments p = do
-    (root, rest) <- splitRoot p
-    (CB seg, basename) <- splitBaseName rest
+    (root, CB seg) <- splitRoot =<< normalize p
     sty <- getPathStyle
-    let segs = case sty of
-            UnixStyle ->
-                V.splitWith (== (#const SLASH)) seg
-            _ ->
-                V.splitWith (\ w -> w == (#const SLASH) || w == (#const BACKSLASH)) seg
-    return (root, (map CB (filter (not . V.null) segs)), basename)
+    let segs =
+            if V.null seg
+            then []
+            else case sty of
+                UnixStyle ->
+                    V.splitWith (== (#const SLASH)) seg
+                _ ->
+                    V.splitWith (\ w -> w == (#const SLASH) || w == (#const BACKSLASH)) seg
+    return (root, (map CB segs))
 
 -- | Determine whether the path is absolute or not.
 --

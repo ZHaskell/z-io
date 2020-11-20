@@ -1,15 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Z.Compression.ZlibSpec where
+module Z.IO.BIO.ZlibSpec where
 
 import           Control.Monad
+import qualified Codec.Compression.Zlib as TheZlib
 import           Data.IORef
 import           Data.ByteString       as B
 import           Data.ByteString.Lazy  as BL
 import           Z.Data.Vector         as V
-import           Z.Compression.Zlib
-import qualified Codec.Compression.Zlib as TheZlib
-import           Z.IO.Buffered
+import           Z.IO.BIO.Zlib
+import           Z.IO
 import           Test.QuickCheck
 import           Test.QuickCheck.Function
 import           Test.QuickCheck.Property
@@ -21,7 +21,7 @@ import           Test.HUnit
 spec :: Spec
 spec = describe "zlib" $ do
 
-    describe "decompress . compress === id" . modifyMaxSize (*50) $ do
+    describe "decompress . compress === id" . modifyMaxSize (*10) $ do
         prop "decompress . compress === id" $ \ xs  -> do
             decompress defaultDecompressConfig
                 (compress defaultCompressConfig (V.pack xs)) === V.pack xs
@@ -42,36 +42,28 @@ spec = describe "zlib" $ do
                     TheZlib.defaultCompressParams{TheZlib.compressDictionary = Just "aabbccdd" }
                         (BL.pack xs))
 
-        prop "decompressSink . compressSource === id" $ \ xss -> do
-            ref <- newIORef []
-            (write, flush) <- compressSink defaultCompressConfig
-                (\ x -> modifyIORef' ref (x:), return ())
+        prop "TheZlib.decompress . TheZlib.compress == id(performace benchmark)" $ \ xss -> do
+            let vs = Prelude.map B.pack xss
+                vs' = TheZlib.decompress . TheZlib.compress $ BL.fromChunks vs
+
+            B.concat vs @=? BL.toStrict vs'
+
+        prop "compress >|> decompress" $ \ xss -> do
+            (_, c) <- newCompress defaultCompressConfig
+            (_, d) <- newDecompress defaultDecompressConfig
 
             let vs = Prelude.map V.pack xss
-
-            forM_ vs write
-            flush
-
-            source <- sourceFromList . Prelude.reverse =<< readIORef ref
-            vs' <- collectSource =<< decompressSource defaultDecompressConfig source
+            vs' <- runBlocks (c >|> d) vs
 
             V.concat vs @=? V.concat vs'
 
-        prop "decompressSink . compressSource === id(with dict)" $ \ xss -> do
+        prop "compress >|> decompress (with dict)" $ \ xss -> do
             let dict = "aabbccdd"
-            ref <- newIORef []
-            (write, flush) <- compressSink defaultCompressConfig{compressDictionary = dict}
 
-                (\ x -> modifyIORef' ref (x:), return ())
+            (_, c) <- newCompress defaultCompressConfig{compressDictionary = dict}
+            (_, d) <- newDecompress defaultDecompressConfig{decompressDictionary = dict}
 
             let vs = Prelude.map V.pack xss
-
-            forM_ vs write
-            flush
-
-            source <- sourceFromList . Prelude.reverse =<< readIORef ref
-            vs' <- collectSource =<< decompressSource
-                defaultDecompressConfig{decompressDictionary = dict} source
+            vs' <- runBlocks (c >|> d) vs
 
             V.concat vs @=? V.concat vs'
-
