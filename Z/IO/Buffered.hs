@@ -7,7 +7,8 @@ Maintainer  : winterland1989@gmail.com
 Stability   : experimental
 Portability : non-portable
 
-This module provides basic buffered IO interface, A higher level streaming interface "Z.IO.BIO" is also provided.
+This module provides low level buffered IO interface, it's recommended to check higher level streaming interface
+"Z.IO.BIO" first as it provides more features.
 
 -}
 

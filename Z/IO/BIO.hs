@@ -32,11 +32,12 @@ import Z.IO.BIO.Zlib
 
 base64AndCompressFile :: HasCallStack => CBytes -> CBytes -> IO ()
 base64AndCompressFile origin target = do
-    enc <- newBase64Encoder
-    (_, compressor) <- newCompress defaultCompressConfig{compressWindowBits = 31}
+    base64Enc <- newBase64Encoder
+    (_, zlibCompressor) <- newCompress defaultCompressConfig{compressWindowBits = 31}
+
     withResource (sourceFromFile origin) $ \ src ->
         withResource (sinkToFile target) $ \ sink ->
-            runBIO $ src >|> enc >|> compressor >|> sink
+            runBIO $ src >|> base64Enc >|> zlibCompressor >|> sink
 
 > base64AndCompressFile "./test" "/test.gz"
 -- run 'zcat "/test.gz" | base64 -d' will give you original file
@@ -390,7 +391,7 @@ sinkToOutput o =
 -- | Turn a file into a 'V.Bytes' sink.
 --
 -- Note the file will be opened in @'FS.O_APPEND' .|. 'FS.O_CREAT' .|. 'FS.O_WRONLY'@ mode,
--- bytes will be written after the end of the original file if there's one.
+-- bytes will be written after the end of the original file if there'are old bytes.
 sinkToFile :: HasCallStack => CBytes -> Resource (Sink V.Bytes)
 {-# INLINABLE sinkToFile #-}
 sinkToFile p = do
@@ -586,6 +587,12 @@ newParserNode p = do
 
 -- | Make a new UTF8 decoder, which decode bytes streams into text streams.
 --
+--  Note this node is supposed to be used with preprocess node such as compressor, decoder, etc. where bytes
+--  boundary cannot be controlled, UTF8 decoder will concat trailing bytes from last block to next one.
+--  Use this node directly with 'sourceFromBuffered' \/ 'sourceFromInput' will not be as efficient as directly use
+--  'sourceTextFromBuffered' \/ 'sourceTextFromInput', because 'BufferedInput' provides push back capability,
+--  trailing bytes can be pushde back to reading buffer and returned with next block input together.
+--
 newUTF8Decoder :: IO (BIO V.Bytes T.Text)
 {-# INLINABLE newUTF8Decoder #-}
 newUTF8Decoder = do
@@ -691,7 +698,7 @@ newHexDecoder = do
 
 -- | Make a new BIO node which counts items flow throught it.
 --
--- Returned 'Counter' is increased atomically, it's safe to read the counter in other threads.
+-- Returned 'Counter' is increased atomically, it's safe to read \/ reset the counter from other threads.
 newCounterNode :: IO (Counter, BIO a a)
 {-# INLINABLE newCounterNode #-}
 newCounterNode = do
@@ -704,7 +711,7 @@ newCounterNode = do
 
 -- | Make a new BIO node which counts items, and label item with a sequence number.
 --
--- Returned 'Counter' is increased atomically, it's safe to read \/ reset the counter in other threads.
+-- Returned 'Counter' is increased atomically, it's safe to read \/ reset the counter from other threads.
 newSeqNumNode :: IO (Counter, BIO a (Int, a))
 {-# INLINABLE newSeqNumNode #-}
 newSeqNumNode = do

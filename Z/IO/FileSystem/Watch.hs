@@ -174,10 +174,11 @@ watch_ flag dirs = do
                     modifyMVar_ mRef $ \ m -> do
                         case HM.lookup f m of
                             Just _ -> return m
-                            _ -> getAllDirs_ f [f] >>=
+                            _ -> do
+                                ds <- scandirRecursively f (\ _ t -> return (t == DirEntDir))
                                 foldM (\ m' d -> do
                                     tid <- forkIO $ watchThread mRef eRef d sink
-                                    return $! HM.insert d tid m') m
+                                    return $! HM.insert d tid m') m (f:ds)
 #endif
                 pushDedup eRef sink (FileAdd f))
             (\ (_ :: NoSuchThing) -> do

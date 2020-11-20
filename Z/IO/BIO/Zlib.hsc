@@ -181,7 +181,7 @@ newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
                 writeIORef finRef True
                 if V.null trailing then return Nothing else return (Just trailing)
 
--- | Reset compressor's state so that it can be reused.
+-- | Reset compressor's state so that related 'BIO' can be reused.
 compressReset :: ZStream -> IO ()
 compressReset (ZStream fp finRef) = do
     throwZlibIfMinus_ (withForeignPtr fp deflateReset)
@@ -278,7 +278,7 @@ newDecompress (DecompressConfig windowBits dict bufSiz) = do
                 writeIORef finRef True
                 if V.null trailing then return Nothing else return (Just trailing)
 
--- | Reset decompressor's state so that it can be reused.
+-- | Reset decompressor's state so that related 'BIO' can be reused.
 decompressReset :: ZStream -> IO ()
 decompressReset (ZStream fp finRef) = do
     throwZlibIfMinus_ (withForeignPtr fp inflateReset)

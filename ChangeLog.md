@@ -3,6 +3,10 @@
 ## 0.1.8.0  -- 2020-10-24
 
 * Remove dictionary from `BufferedInput`, `BufferedOutput`, add `readBufferText`, `sourceBufferText`.
+* Add `Z.IO.BIO` module to facilitate streaming process.
+* Move `Z.IO.Compression.Zlib` to `Z.IO.BIO.Zlib`, change API to `BIO` style.
+* Add `Z.IO.FileSystem.Watch` module, a cross-platform filesystem watcher.
+* Remove streamming related functions from `Z.IO.Buffered`, use `Z.IO.BIO` instead.
 
 ## 0.1.7.0  -- 2020-10-24
 
