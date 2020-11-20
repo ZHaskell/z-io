@@ -277,6 +277,8 @@ readAll' :: HasCallStack => BufferedInput -> IO V.Bytes
 readAll' i = V.concat <$> readAll i
 
 -- | Exceptions when read not enough input.
+--
+-- Note this exception is a sub-type of 'SomeIOException'.
 data IncompleteInput = IncompleteInput CallStack deriving Show
 instance Exception IncompleteInput where
     toException = ioExceptionToException

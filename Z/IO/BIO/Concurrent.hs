@@ -11,7 +11,7 @@ Stability   : experimental
 Portability : non-portable
 
 This module provides some concurrent 'BIO' node, to ease the implementation of producer-consumer model.
-All sources and sinks return by this module, are safe(some are intended) to be used in multiple threads.
+All sources and sinks return by this module are safe to be used in multiple threads.
 
   * Use 'newTQueueNode' for common cases.
   * Use 'newTBQueueNode' if you have a fast producer and you don't want input get piled up in memory.
@@ -19,7 +19,8 @@ All sources and sinks return by this module, are safe(some are intended) to be u
     producers will be received by every consumers.
 
 It's important to correctly set the numebr of producers, internally it keeps a counter on how many producers
-reached their ends, and send EOF to all consumers when last producer ends.
+reached their ends, and send EOF to all consumers when last producer ends. So it's a good idea to catch
+exceptions and pull the sink(which indicate EOF) on producer side.
 
 @
 (sink, src) <- newTQueueNode 2  -- it's important to correctly set the numebr of producers
@@ -28,12 +29,12 @@ forkIO $ do
     ...
     push x sink             -- producer using push
     ...
-    pull sink               -- when EOF is reached, manually pull
+    pull sink               -- when EOF is reached, manually pull, you may consider put it in a bracket.
 
 forkIO $ do
     ...
-    runBIO $ ... >|> sink   -- producer using BIO
-
+    (runBIO $ ... >|> sink) -- producer using BIO
+        `onException` (pull sink)
 forkIO $ do
     ...
     r <- pull src           -- consumer using pull
@@ -43,7 +44,6 @@ forkIO $ do
 forkIO $ do
     ...
     runBIO $ src >|> ...    -- consumer using BIO
-
 @
 
 -}
@@ -94,7 +94,7 @@ newTBQueueNode n bound = do
 
 -- | Make a broadcast chan and a sink connected to it, and a function return sources to receive broadcast message.
 newBroadcastTChanNode :: Int                        -- ^ number of producers
-                      -> IO (Sink a, IO (Source a)) -- ^ (The broadcast TChan, Sink, IO Source)
+                      -> IO (Sink a, IO (Source a)) -- ^ (Sink, IO Source)
 newBroadcastTChanNode n = do
     b <- newBroadcastTChanIO
     ec <- newCounter 0

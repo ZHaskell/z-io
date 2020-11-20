@@ -39,8 +39,8 @@ base64AndCompressFile origin target = do
         withResource (sinkToFile target) $ \ sink ->
             runBIO $ src >|> base64Enc >|> zlibCompressor >|> sink
 
-> base64AndCompressFile "./test" "/test.gz"
--- run 'zcat "/test.gz" | base64 -d' will give you original file
+> base64AndCompressFile "test" "test.gz"
+-- run 'zcat "test.gz" | base64 -d' will give you original file
 @
 
 -}
@@ -213,7 +213,7 @@ appendSource :: Source a -> Source a  -> IO (Source a)
 {-# INLINE appendSource #-}
 b1 `appendSource` b2 = concatSource [b1, b2]
 
--- | Fuse two 'BIO' sink, i.e. everything written to the fused sink will be written to left and right sink.
+-- | Fuse two 'BIO' sinks, i.e. everything written to the fused sink will be written to left and right sink.
 --
 -- Flush result 'BIO' will effectively flush both sink.
 joinSink :: Sink out -> Sink out -> Sink out
@@ -533,6 +533,8 @@ newReChunk n = do
 
 
 -- | Exception when parsing failed in streams.
+--
+-- Note this exception is a sub-type of 'SomeIOException'.
 data ParseException = ParseException P.ParseError CallStack deriving Show
 instance Exception ParseException where
     toException = ioExceptionToException
