@@ -295,6 +295,26 @@ void hs_uv_cancel(uv_loop_t* loop, HsInt slot){
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// check
+
+// It's hard to arrange accepting notification without check handler, we can't
+// do it in listen's callback, since it'll be called multiple times during uv_run.
+uv_check_t* hs_uv_check_alloc(){
+    uv_check_t* check = malloc(sizeof(uv_check_t));
+    return check;
+}
+
+int hs_uv_check_init(uv_check_t* check, uv_handle_t* handle){
+    int r = uv_check_init(handle->loop, check);
+    check->data = (void*)handle;    // we link server to check's data field
+    return r;
+}
+
+void hs_uv_check_close(uv_check_t* check){
+    uv_close((uv_handle_t*)check, (uv_close_cb)free);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // random
 
 // non thread pool version of random

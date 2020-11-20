@@ -13,7 +13,8 @@ such as resource management, buffered IO and std streams.
 -}
 
 module Z.IO
-  ( module Z.IO.Buffered
+  ( module Z.IO.BIO
+  , module Z.IO.Buffered
   , module Z.IO.Environment
   , module Z.IO.Exception
   , module Z.IO.Logger
@@ -21,6 +22,7 @@ module Z.IO
   , module Z.IO.StdStream
   ) where
 
+import Z.IO.BIO
 import Z.IO.Buffered
 import Z.IO.Environment
 import Z.IO.Exception

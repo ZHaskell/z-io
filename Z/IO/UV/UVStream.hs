@@ -72,7 +72,8 @@ initUVStream f uvm = initResource
         hdl <- hs_uv_handle_alloc loop
         slot <- getUVSlot uvm (peekUVHandleData hdl)
         _ <- tryTakeMVar =<< getBlockMVar uvm slot   -- clear the parking spot
-        f loop hdl `onException` hs_uv_handle_free hdl
+        -- this function should be run inside mask, no need to protect
+        f loop hdl -- `onException` hs_uv_handle_free hdl
         closed <- newIORef False
         return (UVStream hdl slot uvm closed))
     closeUVStream
@@ -109,7 +110,8 @@ instance Input UVStream where
         r <- takeMVar m `onException` (do
                 -- normally we call 'uv_read_stop' in C read callback
                 -- but when exception raise, here's the place to stop
-                throwUVIfMinus_ $ withUVManager' uvm (uv_read_stop hdl)
+                -- stop a handle twice will be a libuv error, so we don't check result
+                _ <- withUVManager' uvm (uv_read_stop hdl)
                 void (tryTakeMVar m))
 
         if  | r > 0  -> return r
