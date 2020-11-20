@@ -1,7 +1,7 @@
 {-|
 Module      : Z.IO.Process
 Description : Process utilities
-Copyright   : (c) Dong Han, 2018~2019
+Copyright   : (c) Dong Han, 2018-2020
 License     : BSD
 Maintainer  : winterland1989@gmail.com
 Stability   : experimental

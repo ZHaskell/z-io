@@ -1,7 +1,7 @@
 {-|
 Module      : Z.IO.FileSystem.Threaded
 Description : Filesystem IO using threadpool
-Copyright   : (c) Dong Han, 2017~2019
+Copyright   : (c) Dong Han, 2017-2020
 License     : BSD
 Maintainer  : winterland1989@gmail.com
 Stability   : experimental

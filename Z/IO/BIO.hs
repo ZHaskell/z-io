@@ -2,7 +2,7 @@
 {-|
 Module      : Z.IO.BIO
 Description : Buffered IO interface
-Copyright   : (c) Dong Han, 2017-2018
+Copyright   : (c) Dong Han, 2017-2020
 License     : BSD
 Maintainer  : winterland1989@gmail.com
 Stability   : experimental
@@ -130,8 +130,8 @@ import           Z.IO.Resource
 --
 -- Note 'BIO' usually contains some IO states, you can consider it as an opaque 'IORef':
 --
---   * You shouldn't use a 'BIO' node across multiple 'BIO' chain.
---   * You shouldn't use a 'BIO' node across multiple threads.
+--   * You shouldn't use a 'BIO' node across multiple 'BIO' chain unless the state can be reset.
+--   * You shouldn't use a 'BIO' node across multiple threads unless document states otherwise.
 --
 -- Note 'BIO' is just a convenient way to construct single-thread streaming computation, to use 'BIO'
 -- in multiple threads, check "Z.IO.BIO.Concurrent" module.

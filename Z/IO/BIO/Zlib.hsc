@@ -1,7 +1,7 @@
 {-|
 Module      : Z.IO.BIO.Zlib
-Description : The zlib
-Copyright   : (c) Dong Han, 2017-2018
+Description : The zlib binding
+Copyright   : (c) Dong Han, 2017-2020
 License     : BSD
 Maintainer  : winterland1989@gmail.com
 Stability   : experimental
@@ -12,22 +12,25 @@ This module provides <https://zlib.net zlib> bindings using 'BIO' interface.
 
 module Z.IO.BIO.Zlib(
   -- * Compression
-    CompressConfig(..)
-  , defaultCompressConfig
-  , newCompress, compressReset
+    newCompress, compressReset
   , compress
   , compressBlocks
-  , WindowBits
-  , defaultWindowBits
-  , MemLevel
-  , defaultMemLevel
+  , ZStream
+  , CompressConfig(..)
+  , defaultCompressConfig
   -- * Decompression
-  , DecompressConfig(..)
-  , defaultDecompressConfig
   , newDecompress, decompressReset
   , decompress
   , decompressBlocks
+  , DecompressConfig(..)
+  , defaultDecompressConfig
   -- * Constants
+  -- ** Windows bits
+  , WindowBits
+  , defaultWindowBits
+  -- ** Memory level
+  , MemLevel
+  , defaultMemLevel
   -- ** Strategy
   , Strategy
   , pattern Z_FILTERED
@@ -114,9 +117,10 @@ defaultCompressConfig =
     CompressConfig Z_DEFAULT_COMPRESSION  defaultWindowBits
         defaultMemLevel V.empty Z_DEFAULT_STRATEGY V.defaultChunkSize
 
+-- | A foreign pointer to a zlib\'s @z_stream_s@ struct.
 data ZStream = ZStream (ForeignPtr ZStream) (IORef Bool)
 
--- | Compress all the data written to a output.
+-- | Make a new compress node.
 --
 -- The returned 'BIO' node can be reused only if you call 'compressReset' on the 'ZStream'.
 newCompress :: HasCallStack
@@ -205,7 +209,7 @@ data DecompressConfig = DecompressConfig
 defaultDecompressConfig :: DecompressConfig
 defaultDecompressConfig = DecompressConfig defaultWindowBits V.empty V.defaultChunkSize
 
--- | Decompress bytes from source.
+-- | Make a new decompress node.
 --
 -- The returned 'BIO' node can be reused only if you call 'decompressReset' on the 'ZStream'.
 newDecompress :: DecompressConfig -> IO (ZStream, BIO V.Bytes V.Bytes)

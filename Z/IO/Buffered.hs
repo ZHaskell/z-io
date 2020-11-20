@@ -1,7 +1,7 @@
 {-|
 Module      : Z.IO.Buffered
 Description : Buffered IO interface
-Copyright   : (c) Dong Han, 2017-2018
+Copyright   : (c) Dong Han, 2017-2020
 License     : BSD
 Maintainer  : winterland1989@gmail.com
 Stability   : experimental
