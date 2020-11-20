@@ -4,7 +4,7 @@
 {-|
 Module      : Z.IO.BIO.Concurrent
 Description : Base64 codec
-Copyright   : (c) Dong Han, 2017-2018
+Copyright   : (c) Dong Han, 2017-2020
 License     : BSD
 Maintainer  : winterland1989@gmail.com
 Stability   : experimental

@@ -1,5 +1,9 @@
 # Revision history for Z-IO
 
+## 0.1.8.1  -- 2020-10-24
+
+* Export `ZStream` type from `Z.IO.BIO.Zlib`
+
 ## 0.1.8.0  -- 2020-10-24
 
 * Remove type index from `BufferedInput`, `BufferedOutput`.

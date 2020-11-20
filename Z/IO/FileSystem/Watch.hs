@@ -1,7 +1,7 @@
 {-|
 Module      : Z.IO.FileSystem.Watch
 Description : cross-platform recursive fs watcher
-Copyright   : (c) Dong Han, 2017~2019
+Copyright   : (c) Dong Han, 2017-2020
 License     : BSD
 Maintainer  : winterland1989@gmail.com
 Stability   : experimental

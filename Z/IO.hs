@@ -1,7 +1,7 @@
 {-|
 Module      : Z.IO
 Description : IO Umbrella module
-Copyright   : (c) Dong Han, 2017
+Copyright   : (c) Dong Han, 2020
 License     : BSD
 Maintainer  : winterland1989@gmail.com
 Stability   : experimental
