@@ -1,13 +1,13 @@
 {-|
 Module      : Z.IO.LowResTimer
-Description : Low resolution (0.1s) timing wheel
+Description : Low resolution (decisecond) timing wheel
 Copyright   : (c) Dong Han, 2017-2018
 License     : BSD
 Maintainer  : winterland1989@gmail.com
 Stability   : experimental
 Portability : non-portable
 
-This module provide low resolution (0.1s) timers using a timing wheel of size 128 per capability,
+This module provide low resolution (decisecond, i.e. 0.1s) timers using a timing wheel of size 128 per capability,
 each timer thread will automatically started or stopped based on demannd. register or cancel a timeout is O(1),
 and each step only need scan n\/128 items given timers are registered in an even fashion.
 
@@ -141,7 +141,7 @@ isLowResTimerManagerRunning (LowResTimerManager _ _ _ runningLock) = readMVar ru
 --   registerLowResTimer 100 (forkIO $ killThread tid)
 -- @
 --
-registerLowResTimer :: Int          -- ^ timeout in unit of 0.1s
+registerLowResTimer :: Int          -- ^ timeout in unit of decisecond(0.1s)
                     -> IO ()        -- ^ the action you want to perform, it should not block
                     -> IO LowResTimer
 registerLowResTimer t action = do
@@ -149,7 +149,7 @@ registerLowResTimer t action = do
     registerLowResTimerOn lrtm t action
 
 -- | 'void' ('registerLowResTimer' t action)
-registerLowResTimer_ :: Int          -- ^ timeout in unit of 0.1s
+registerLowResTimer_ :: Int          -- ^ timeout in unit of decisecond(0.1s)
                      -> IO ()        -- ^ the action you want to perform, it should not block
                      -> IO ()
 registerLowResTimer_ t action = void (registerLowResTimer t action)
@@ -157,7 +157,7 @@ registerLowResTimer_ t action = void (registerLowResTimer t action)
 -- | Same as 'registerLowResTimer', but allow you choose timer manager.
 --
 registerLowResTimerOn :: LowResTimerManager   -- ^ a low resolution timer manager
-                      -> Int          -- ^ timeout in unit of 0.1s
+                      -> Int          -- ^ timeout in unit of decisecond(0.1s)
                       -> IO ()        -- ^ the action you want to perform, it should not block
                       -> IO LowResTimer
 registerLowResTimerOn lrtm@(LowResTimerManager queue indexLock regCounter _) t action = do
@@ -205,7 +205,7 @@ cancelLowResTimer_ = void . cancelLowResTimer
 -- Note timeoutLowRes is also implemented with 'Exception' underhood, which can have some surprising
 -- effects on some devices, e.g. use 'timeoutLowRes' with reading or writing on 'UVStream's may close
 -- the 'UVStream' once a reading or writing is not able to be done in time.
-timeoutLowRes :: Int    -- ^ timeout in unit of 0.1s
+timeoutLowRes :: Int    -- ^ timeout in unit of decisecond(0.1s)
               -> IO a
               -> IO (Maybe a)
 timeoutLowRes timeo io = do
@@ -220,7 +220,7 @@ timeoutLowRes timeo io = do
 -- | Similar to 'timeoutLowRes', but raise a 'TimeOutException' to current thread
 -- instead of return 'Nothing' if timeout.
 timeoutLowResEx :: HasCallStack
-                => Int    -- ^ timeout in unit of 0.1s
+                => Int    -- ^ timeout in unit of decisecond(0.1s)
                 -> IO a
                 -> IO a
 timeoutLowResEx timeo io = do
@@ -312,7 +312,7 @@ fireLowResTimerQueue (LowResTimerManager queue indexLock regCounter _) = do
 -- One common way to get a shared periodical updated value is to start a seperate thread and do calculation
 -- periodically, but doing that will stop system from being idle, which stop idle GC from running,
 -- and in turn disable deadlock detection, which is too bad. This function solves that.
-throttle :: Int         -- ^ cache time in unit of 0.1s
+throttle :: Int         -- ^ cache time in unit of decisecond(0.1s)
          -> IO a        -- ^ the original IO action
          -> IO (IO a)   -- ^ throttled IO action
 throttle t action = do
@@ -334,7 +334,7 @@ throttle t action = do
 -- no-ops.
 --
 -- Note the action will run in the calling thread.
-throttle_ :: Int            -- ^ cache time in unit of 0.1s
+throttle_ :: Int            -- ^ cache time in unit of decisecond(0.1s)
           -> IO ()          -- ^ the original IO action
           -> IO (IO ())     -- ^ throttled IO action
 throttle_ t action = do

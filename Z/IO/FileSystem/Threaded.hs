@@ -26,12 +26,13 @@ module Z.IO.FileSystem.Threaded
     -- * file offset bundle
   , FilePtrT, newFilePtrT, getFileOffset, setFileOffset
   -- * filesystem operations
-  , mkdir
+  , mkdir, mkdirp
   , unlink
   , mkdtemp
-  , rmdir
+  , rmdir, rmdirrf
   , DirEntType(..)
   , scandir
+  , scandirRecursively
   , FStat(..), UVTimeSpec(..)
   , stat, lstat, fstat
   , isLink, isDir, isFile
@@ -119,6 +120,7 @@ import qualified Z.Data.Vector                  as V
 import           Z.Foreign
 import           Z.IO.Buffered
 import           Z.IO.Exception
+import qualified Z.IO.FileSystem.FilePath       as P
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
 import           Z.IO.UV.Manager
@@ -288,12 +290,42 @@ quickWriteTextFile filename content = quickWriteFile filename (T.getUTF8Bytes co
 
 -- | Equivalent to <http://linux.die.net/man/2/mkdir mkdir(2)>.
 --
--- Note mode is currently not implemented on Windows.
+-- Note mode is currently not implemented on Windows. On unix you should set execute bit
+-- if you want the directory is accessable, e.g. 0o777.
 mkdir :: HasCallStack => CBytes -> FileMode -> IO ()
 mkdir path mode = do
     uvm <- getUVManager
     withCBytesUnsafe path $ \ p ->
         withUVRequest_ uvm (hs_uv_fs_mkdir_threaded p mode)
+
+-- | Equivalent to @mkdir -p@
+--
+-- Note mode is currently not implemented on Windows. On unix you should set execute bit
+-- if you want the directory is accessable(so that child folder can be created), e.g. 0o777.
+mkdirp :: HasCallStack => CBytes -> FileMode -> IO ()
+mkdirp path mode = do
+    uvm <- getUVManager
+    r <- withCBytesUnsafe path $ \ p ->
+        withUVRequest' uvm (hs_uv_fs_mkdir_threaded p mode)
+            (\ r -> do
+                when (r < 0 && fromIntegral r /= UV_ENOENT)
+                    (throwUVIfMinus_ (return r))
+                return r)
+    when (fromIntegral r == UV_ENOENT) $ do
+        (root, segs) <- P.splitSegments path
+        case segs of
+            seg:segs' -> loop segs' =<< P.join root seg
+            _ -> throwUVIfMinus_ (return r)
+  where
+    loop segs p = do
+        a <- access p F_OK
+        case a of
+            AccessOK     -> return ()
+            NoExistence  -> mkdir p mode
+            NoPermission -> throwUVIfMinus_ (return UV_EACCES)
+        case segs of
+            (nextp:ps) -> P.join p nextp >>= loop ps
+            _  -> return ()
 
 -- | Equivalent to <http://linux.die.net/man/2/unlink unlink(2)>.
 unlink :: HasCallStack => CBytes -> IO ()
@@ -322,10 +354,24 @@ mkdtemp path = do
         return p''
 
 -- | Equivalent to <http://linux.die.net/man/2/rmdir rmdir(2)>.
+--
+-- Note this function may inherent OS limitations such as argument must be an empty folder.
 rmdir :: HasCallStack => CBytes -> IO ()
 rmdir path = do
     uvm <- getUVManager
     withCBytesUnsafe path (\ p -> void . withUVRequest uvm $ hs_uv_fs_rmdir_threaded p)
+
+-- | Equivalent to @rmdir -rf@
+--
+-- This function will try to remove folder and files contained by it.
+rmdirrf :: HasCallStack => CBytes -> IO ()
+rmdirrf path = do
+    ds <- scandir path
+    forM_ ds $ \ (d, t) -> do
+        if t /= DirEntDir
+        then unlink d
+        else rmdirrf =<< path `P.join` d
+    rmdir path
 
 --------------------------------------------------------------------------------
 
@@ -350,6 +396,26 @@ scandir path = do
             let !typ' = fromUVDirEntType typ
             !p' <- fromCString p
             return (p', typ'))
+
+-- | Find all files and directories within a given directory with a predicator.
+--
+-- @
+--  import Z.IO.FileSystem.FilePath (splitExtension)
+--  -- find all haskell source file within current dir
+--  scandirRecursively "."  (\ p _ -> (== ".hs") . snd <$> splitExtension p)
+-- @
+scandirRecursively :: HasCallStack => CBytes -> (CBytes -> DirEntType -> IO Bool) -> IO [CBytes]
+scandirRecursively dir p = loop [] =<< P.normalize dir
+  where
+    loop acc0 pdir =
+        foldM (\ acc (d,t) -> do
+            d' <- pdir `P.join` d
+            r <- p d' t
+            let acc' = if r then (d':acc) else acc
+            if (t == DirEntDir)
+            then loop acc' d'
+            else return acc'
+        ) acc0 =<< scandir pdir
 
 --------------------------------------------------------------------------------
 

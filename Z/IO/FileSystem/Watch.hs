@@ -20,13 +20,18 @@ runBIO $ src >|> sinkToIO printLineStd
 @
 -}
 
-module Z.IO.FileSystem.Watch (watchDir) where
+module Z.IO.FileSystem.Watch (
+    FileEvent(..)
+  , watchDirs
+  , watchDirsRecursively
+  ) where
 
 import           Control.Concurrent
 import           Control.Monad
 import           Data.Bits
 import           Data.IORef
 import qualified Data.HashMap.Strict      as HM
+import qualified Data.List                as List
 import           Data.Word
 import           Foreign.Ptr              (plusPtr)
 import           Foreign.Storable         (peek)
@@ -52,40 +57,41 @@ data FileEvent = FileAdd CBytes | FileRemove CBytes | FileModify CBytes
   deriving (Show, Read, Ord, Eq, Generic)
   deriving anyclass (ShowT, FromValue, ToValue, EncodeJSON)
 
--- | Start watching a given file or directory recursively.
+
+-- | Start watching a list of given directories.
 --
-watchDir :: CBytes -> IO (IO (), IO (Source FileEvent))
-watchDir dir = do
-    b <- isDir dir
-    unless b (throwUVIfMinus_ (return UV_ENOTDIR))
+watchDirs :: [CBytes] -> IO (IO (), IO (Source FileEvent))
+watchDirs dirs =  do
+    forM_ dirs $ \ dir -> do
+        b <- isDir dir
+        unless b (throwUVIfMinus_ (return UV_ENOTDIR))
+    watch_ 0 dirs
+
+-- | Start watching a list of given directories recursively.
+--
+watchDirsRecursively :: [CBytes] -> IO (IO (), IO (Source FileEvent))
+watchDirsRecursively dirs = do
 #if defined(linux_HOST_OS)
     -- inotify doesn't support recursive watch, so we manually maintain watch list
-    watchDirs_ 0 =<< getAllDirs_ dir [dir]
+    subDirs <- forM dirs (\ dir -> scandirRecursively dir (\ _ t -> return (t == DirEntDir)))
+    watch_ UV_FS_EVENT_RECURSIVE (List.concat (dirs:subDirs))
 #else
-    watchDirs_ UV_FS_EVENT_RECURSIVE [dir]
+    watch_ UV_FS_EVENT_RECURSIVE [dir]
 #endif
 
--- | Add all sub dir to an accumulator.
-getAllDirs_ :: CBytes -> [CBytes] -> IO [CBytes]
-getAllDirs_ pdir acc = do
-    foldM (\ acc' (d,t) -> if (t == DirEntDir)
-            then do
-                d' <- pdir `P.join` d
-                (getAllDirs_ d' (d':acc'))
-            else return acc'
-        ) acc =<< scandir pdir
-
 -- Internal function to start watching
-watchDirs_ :: CUInt -> [CBytes] -> IO (IO (), IO (Source FileEvent))
-watchDirs_ flag dirs = do
+watch_ :: CUInt -> [CBytes] -> IO (IO (), IO (Source FileEvent))
+watch_ flag dirs = do
     -- HashMap to store all watchers
     mRef <- newMVar HM.empty
+    -- IORef store temp events to de-duplicated
+    eRef <- newIORef Nothing
     -- there's only one place to pull the sink, that is cleanUpWatcher
     (sink, srcf) <- newBroadcastTChanNode 1
     -- lock UVManager first
     (forM_ dirs $ \ dir -> do
         dir' <- P.normalize dir
-        tid <- forkIO $ watchThread mRef dir' sink
+        tid <- forkIO $ watchThread mRef eRef dir' sink
         modifyMVar_ mRef $ \ m ->
             return $! HM.insert dir' tid m) `onException` cleanUpWatcher mRef sink
     return (cleanUpWatcher mRef sink, srcf)
@@ -97,10 +103,8 @@ watchDirs_ flag dirs = do
         forM_ m killThread
         void (pull sink)
 
-    watchThread mRef dir sink = do
+    watchThread mRef eRef dir sink = do
         uvm <- getUVManager
-        -- IORef store temp event to de-duplicated
-        eRef <- newIORef Nothing
         (bracket
             (do withUVManager uvm $ \ loop -> do
                     hdl <- hs_uv_handle_alloc loop
@@ -156,15 +160,15 @@ watchDirs_ flag dirs = do
         f <- pdir `P.join` path
         if (e .&. UV_RENAME) /= 0
         then catch
-            (do s <- lstat f
+            (do _s <- lstat f
 #if defined(linux_HOST_OS)
-                when (stMode s .&. S_IFMT == S_IFDIR) $ do
+                when ((stMode _s .&. S_IFMT == S_IFDIR) && (flag .&. UV_FS_EVENT_RECURSIVE /= 0)) $ do
                     modifyMVar_ mRef $ \ m -> do
                         case HM.lookup f m of
                             Just _ -> return m
                             _ -> getAllDirs_ f [f] >>=
                                 foldM (\ m' d -> do
-                                    tid <- forkIO $ watchThread mRef d sink
+                                    tid <- forkIO $ watchThread mRef eRef d sink
                                     return $! HM.insert d tid m') m
 #endif
                 pushDedup eRef sink (FileAdd f))

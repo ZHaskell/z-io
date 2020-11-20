@@ -21,9 +21,10 @@ module Z.IO.FileSystem
   , mkdir, mkdirp
   , unlink
   , mkdtemp
-  , rmdir
+  , rmdir, rmdirrf
   , DirEntType(..)
   , scandir
+  , scandirRecursively
   , FStat(..), UVTimeSpec(..)
   , stat, lstat, fstat
   , isLink, isDir, isFile
@@ -111,9 +112,9 @@ import qualified Z.Data.Vector                  as V
 import           Z.Foreign
 import           Z.IO.Buffered
 import           Z.IO.Exception
+import qualified Z.IO.FileSystem.FilePath       as P
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
-import qualified Z.IO.FileSystem.FilePath       as P
 import           Prelude hiding (writeFile, readFile)
 
 --------------------------------------------------------------------------------
@@ -288,13 +289,15 @@ mkdirp path mode = do
             _ -> throwUVIfMinus_ (return r)
     else throwUVIfMinus_ (return r)
   where
-    loop [] _ = return ()
-    loop (nextp:ps) p = do
+    loop segs p = do
         a <- access p F_OK
         case a of
-            AccessOK     -> loop ps =<< P.join p nextp
-            NoExistence  -> mkdir p mode >> (loop ps =<< P.join p nextp)
+            AccessOK     -> return ()
+            NoExistence  -> mkdir p mode
             NoPermission -> throwUVIfMinus_ (return UV_EACCES)
+        case segs of
+            (nextp:ps) -> P.join p nextp >>= loop ps
+            _  -> return ()
 
 -- | Equivalent to <http://linux.die.net/man/2/unlink unlink(2)>.
 unlink :: HasCallStack => CBytes -> IO ()
@@ -320,8 +323,22 @@ mkdtemp path = do
         return p'
 
 -- | Equivalent to <http://linux.die.net/man/2/rmdir rmdir(2)>.
+--
+-- Note this function may inherent OS limitations such as argument must be an empty folder.
 rmdir :: HasCallStack => CBytes -> IO ()
 rmdir path = throwUVIfMinus_ (withCBytesUnsafe path hs_uv_fs_rmdir)
+
+-- | Equivalent to @rmdir -rf@
+--
+-- This function will try to remove folder and files contained by it.
+rmdirrf :: HasCallStack => CBytes -> IO ()
+rmdirrf path = do
+    ds <- scandir path
+    forM_ ds $ \ (d, t) -> do
+        if t /= DirEntDir
+        then unlink d
+        else rmdirrf =<< path `P.join` d
+    rmdir path
 
 -- | Equivalent to <http://linux.die.net/man/3/scandir scandir(3)>.
 --
@@ -341,6 +358,26 @@ scandir path = do
             let !typ' = fromUVDirEntType typ
             !p' <- fromCString p
             return (p', typ'))
+
+-- | Find all files and directories within a given directory with a predicator.
+--
+-- @
+--  import Z.IO.FileSystem.FilePath (splitExtension)
+--  -- find all haskell source file within current dir
+--  scandirRecursively "."  (\ p _ -> (== ".hs") . snd <$> splitExtension p)
+-- @
+scandirRecursively :: HasCallStack => CBytes -> (CBytes -> DirEntType -> IO Bool) -> IO [CBytes]
+scandirRecursively dir p = loop [] =<< P.normalize dir
+  where
+    loop acc0 pdir =
+        foldM (\ acc (d,t) -> do
+            d' <- pdir `P.join` d
+            r <- p d' t
+            let acc' = if r then (d':acc) else acc
+            if (t == DirEntDir)
+            then loop acc' d'
+            else return acc'
+        ) acc0 =<< scandir pdir
 
 --------------------------------------------------------------------------------
 
