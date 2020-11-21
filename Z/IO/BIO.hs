@@ -50,6 +50,7 @@ module Z.IO.BIO (
   , (>|>), (>~>), (>!>), appendSource
   , concatSource, zipSource
   , joinSink, fuseSink
+  , pureBIO, ioBIO
   , ParseException(..)
   -- * Run BIO chain
   , runBIO
@@ -193,7 +194,7 @@ BIO pushA pullA >|> BIO pushB pullB = BIO push_ pull_
 (>~>) = flip fmap
 
 -- | Connect BIO to an effectful function.
-(>!>) :: BIO a b -> (b -> IO c) -> BIO a c
+(>!>) :: BIO a b -> (HasCallStack => b -> IO c) -> BIO a c
 {-# INLINE (>!>) #-}
 (>!>) BIO{..} f = BIO push_ pull_
   where
@@ -205,8 +206,17 @@ BIO pushA pullA >|> BIO pushB pullB = BIO push_ pull_
                   _       -> return Nothing
 
 -- | BIO node from a pure function.
+--
+-- BIO node made with this funtion are stateless, thus can be reused across chains.
 pureBIO :: (a -> b) -> BIO a b
-pureBIO f = BIO (\ x -> return (Just (f x))) (return Nothing)
+pureBIO f = BIO (\ x -> let !r = f x in return (Just r)) (return Nothing)
+
+-- | BIO node from an IO function.
+--
+-- BIO node made with this funtion may not be stateless, it depends on if the IO function use
+-- IO state.
+ioBIO :: (HasCallStack => a -> IO b) -> BIO a b
+ioBIO f = BIO (\ x -> Just <$!> f x) (return Nothing)
 
 -- | Connect two 'BIO' source, after first reach EOF, draw element from second.
 appendSource :: Source a -> Source a  -> IO (Source a)
@@ -685,7 +695,9 @@ newBase64Decoder = do
     re <- newReChunk 4
     return (re >~> base64Decode')
 
--- | Make a new hex encoder node.
+-- | Make a hex encoder node.
+--
+-- Hex encoder is stateless, it can be reused across chains.
 hexEncoder :: Bool   -- ^ uppercase?
            -> BIO V.Bytes V.Bytes
 {-# INLINABLE hexEncoder #-}
@@ -721,7 +733,7 @@ newSeqNumNode = do
     return (c, BIO (push_ c) (return Nothing))
   where
     push_ c x = do
-        i <- atomicAddCounter c 1
+        !i <- atomicAddCounter c 1
         return (Just (i, x))
 
 -- | Make a BIO node grouping items into fixed size arrays.
