@@ -7,7 +7,7 @@ Maintainer  : winterland1989@gmail.com
 Stability   : experimental
 Portability : non-portable
 
-This module provides <https://zlib.net zlib> bindings using 'BIO' interface.
+This module provides <https://zlib.net zlib> bindings, with 'BIO' streaming interface.
 -}
 
 module Z.IO.BIO.Zlib(
@@ -191,11 +191,11 @@ compressReset (ZStream fp finRef) = do
     throwZlibIfMinus_ (withForeignPtr fp deflateReset)
     writeIORef finRef False
 
--- | Decompress some bytes.
+-- | Compress some bytes.
 compress :: HasCallStack => CompressConfig -> V.Bytes -> V.Bytes
 compress conf = V.concat . unsafeRunBlock (snd <$> newCompress conf)
 
--- | Decompress some bytes list.
+-- | Compress some bytes in blocks.
 compressBlocks :: HasCallStack => CompressConfig -> [V.Bytes] -> [V.Bytes]
 compressBlocks conf = unsafeRunBlocks (snd <$> newCompress conf)
 
@@ -292,7 +292,7 @@ decompressReset (ZStream fp finRef) = do
 decompress :: HasCallStack => DecompressConfig -> V.Bytes -> V.Bytes
 decompress conf = V.concat . unsafeRunBlock (snd <$> newDecompress conf)
 
--- | Decompress some bytes list.
+-- | Decompress some bytes in blocks.
 decompressBlocks :: HasCallStack => DecompressConfig -> [V.Bytes] -> [V.Bytes]
 decompressBlocks conf = unsafeRunBlocks (snd <$> newDecompress conf)
 
