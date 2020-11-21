@@ -84,14 +84,12 @@ watch_ :: CUInt -> [CBytes] -> IO (IO (), IO (Source FileEvent))
 watch_ flag dirs = do
     -- HashMap to store all watchers
     mRef <- newMVar HM.empty
-    -- IORef store temp events to de-duplicated
-    eRef <- newIORef Nothing
     -- there's only one place to pull the sink, that is cleanUpWatcher
     (sink, srcf) <- newBroadcastTChanNode 1
     -- lock UVManager first
     (forM_ dirs $ \ dir -> do
         dir' <- P.normalize dir
-        tid <- forkIO $ watchThread mRef eRef dir' sink
+        tid <- forkIO $ watchThread mRef dir' sink
         modifyMVar_ mRef $ \ m ->
             return $! HM.insert dir' tid m) `onException` cleanUpWatcher mRef sink
     return (cleanUpWatcher mRef sink, srcf)
@@ -103,7 +101,9 @@ watch_ flag dirs = do
         forM_ m killThread
         void (pull sink)
 
-    watchThread mRef eRef dir sink = do
+    watchThread mRef dir sink = do
+        -- IORef store temp events to de-duplicated
+        eRef <- newIORef Nothing
         uvm <- getUVManager
         (bracket
             (do withUVManager uvm $ \ loop -> do
@@ -164,29 +164,31 @@ watch_ flag dirs = do
             in loopReadFileEvent buf# (i + CBytes.length path + 2) ((event,path):acc)
       where siz = sizeofPrimArray (PrimArray buf# :: PrimArray Word8)
 
-    processEvent pdir mRef eRef sink = mapM_ $ \ (e, path) -> do
-        f <- pdir `P.join` path
-        if (e .&. UV_RENAME) /= 0
-        then catch
-            (do _s <- lstat f
+    processEvent pdir mRef eRef sink = mapM_ $ \ (e, path) ->
+        -- don't report event about directory itself, it will reported by its parent
+        unless (CBytes.null path) $ do
+            f <- pdir `P.join` path
+            if (e .&. UV_RENAME) /= 0
+            then catch
+                (do _s <- lstat f
 #if defined(linux_HOST_OS)
-                when ((stMode _s .&. S_IFMT == S_IFDIR) && (flag .&. UV_FS_EVENT_RECURSIVE /= 0)) $ do
-                    modifyMVar_ mRef $ \ m -> do
-                        case HM.lookup f m of
-                            Just _ -> return m
-                            _ -> do
-                                ds <- scandirRecursively f (\ _ t -> return (t == DirEntDir))
-                                foldM (\ m' d -> do
-                                    tid <- forkIO $ watchThread mRef eRef d sink
-                                    return $! HM.insert d tid m') m (f:ds)
+                    when ((stMode _s .&. S_IFMT == S_IFDIR) && (flag .&. UV_FS_EVENT_RECURSIVE /= 0)) $ do
+                        modifyMVar_ mRef $ \ m -> do
+                            case HM.lookup f m of
+                                Just _ -> return m
+                                _ -> do
+                                    ds <- scandirRecursively f (\ _ t -> return (t == DirEntDir))
+                                    foldM (\ m' d -> do
+                                        tid <- forkIO $ watchThread mRef d sink
+                                        return $! HM.insert d tid m') m (f:ds)
 #endif
-                pushDedup eRef sink (FileAdd f))
-            (\ (_ :: NoSuchThing) -> do
-                modifyMVar_ mRef $ \ m -> do
-                    forM_ (HM.lookup f m) killThread
-                    return (HM.delete f m)
-                pushDedup eRef sink (FileRemove f))
-        else pushDedup eRef sink (FileModify f)
+                    pushDedup eRef sink (FileAdd f))
+                (\ (_ :: NoSuchThing) -> do
+                    modifyMVar_ mRef $ \ m -> do
+                        forM_ (HM.lookup f m) killThread
+                        return (HM.delete f m)
+                    pushDedup eRef sink (FileRemove f))
+            else pushDedup eRef sink (FileModify f)
 
     pushDedup eRef sink event = do
         registerLowResTimer_ 1 $ do

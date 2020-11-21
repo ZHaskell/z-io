@@ -36,14 +36,25 @@ void hs_fs_event_cb(uv_fs_event_t* handle, const char* filename, int events, int
     HsInt slot = (HsInt)handle->data;
     hs_loop_data* loop_data = handle->loop->data;
 
-    size_t l = strlen(filename) + 2; // including the \NUL and event byte
-    // we simply ignore more events if buffer can't hold it
-    // libuv use a buffer size 4096, so on haskell side anything > 4096 should work
-    if (loop_data->buffer_size_table[slot] >= l){
-        loop_data->buffer_size_table[slot] -= l;
-        char* buf = loop_data->buffer_table[slot] + loop_data->buffer_size_table[slot];
-        *buf = (uint8_t)events;
-        memcpy(buf+1, filename, l-1);
+    // OSX fsevent backend filename could be NULL
+    if (filename == NULL){
+        if (loop_data->buffer_size_table[slot] >= 2){
+            loop_data->buffer_size_table[slot] -= 2;
+            char* buf = loop_data->buffer_table[slot] + loop_data->buffer_size_table[slot];
+            *buf = (uint8_t)events;
+            // empty filename will be filtered on Haskell side
+            *(buf+1) = 0;  
+        }
+    } else {
+        size_t l = strlen(filename) + 2; // including the \NUL and event byte
+        // we simply ignore more events if buffer can't hold it
+        // libuv use a buffer size 4096, so on haskell side anything > 4096 should work
+        if (loop_data->buffer_size_table[slot] >= l){
+            loop_data->buffer_size_table[slot] -= l;
+            char* buf = loop_data->buffer_table[slot] + loop_data->buffer_size_table[slot];
+            *buf = (uint8_t)events;
+            memcpy(buf+1, filename, l-1);
+        }
     }
 }
 
