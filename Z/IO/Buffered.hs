@@ -337,9 +337,10 @@ readLine i = do
     if l == 0
     then return Nothing
     else return $ case bs `V.indexMaybe` (l-2) of
-        Nothing -> Just (V.PrimVector arr s (l-1))
         Just r | r == 13   -> Just (V.PrimVector arr s (l-2))
                | otherwise -> Just (V.PrimVector arr s (l-1))
+        _ | V.head bs == 10 -> Just (V.PrimVector arr s (l-1))
+          | otherwise -> Just (V.PrimVector arr s l)
 
 --------------------------------------------------------------------------------
 

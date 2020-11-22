@@ -735,9 +735,10 @@ newLineSplitter = do
   where
     dropLineEnd bs@(V.PrimVector arr s l) =
         case bs `V.indexMaybe` (l-2) of
-            Nothing -> V.PrimVector arr s (l-1)
             Just r | r == 13   -> V.PrimVector arr s (l-2)
                    | otherwise -> V.PrimVector arr s (l-1)
+            _ | V.head bs == 10 -> V.PrimVector arr s (l-1)
+              | otherwise -> V.PrimVector arr s l
 
 -- | Make a new base64 encoder node.
 newBase64Encoder :: IO (BIO V.Bytes V.Bytes)
