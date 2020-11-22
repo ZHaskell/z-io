@@ -214,7 +214,7 @@ defaultHints = AddrInfo {
   , addrFamily     = AF_UNSPEC
   , addrSocketType = SOCK_ANY
   , addrProtocol   = IPPROTO_DEFAULT
-  , addrAddress    = SocketAddrInet inetAny portAny
+  , addrAddress    = SocketAddrIPv4 ipv4Any portAny
   , addrCanonName  = empty
   }
 

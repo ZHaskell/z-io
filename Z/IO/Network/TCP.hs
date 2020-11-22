@@ -64,7 +64,7 @@ data TCPClientConfig = TCPClientConfig
 -- | Default config, connect to @localhost:8888@.
 --
 defaultTCPClientConfig :: TCPClientConfig
-defaultTCPClientConfig = TCPClientConfig Nothing (SocketAddrInet inetLoopback 8888) True 30
+defaultTCPClientConfig = TCPClientConfig Nothing (SocketAddrIPv4 ipv4Loopback 8888) True 30
 
 -- | init a TCP client 'Resource', which open a new connect when used.
 --
@@ -105,7 +105,7 @@ data TCPServerConfig = TCPServerConfig
 --
 defaultTCPServerConfig :: TCPServerConfig
 defaultTCPServerConfig = TCPServerConfig
-    (SocketAddrInet inetAny 8888)
+    (SocketAddrIPv4 ipv4Any 8888)
     128
     True
     30
