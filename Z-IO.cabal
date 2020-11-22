@@ -185,7 +185,7 @@ library
                             zconf.h
                             hs_cwalk.h
 
-    cc-options:             -march=native
+    cc-options:             -march=native -D_FILE_OFFSET_BITS=64
     c-sources:              cbits/hs_uv_base.c
                             cbits/hs_uv_dns.c
                             cbits/hs_uv_file.c
