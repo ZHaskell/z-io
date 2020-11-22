@@ -48,7 +48,7 @@ module Z.IO.BIO (
   -- * The BIO type
     BIO(..), Source, Sink
   , (>|>), (>~>), (>!>), appendSource
-  , concatSource, zipSource
+  , concatSource, zipSource, zipBIO
   , joinSink, fuseSink
   , pureBIO, ioBIO
   , ParseException(..)
@@ -90,6 +90,8 @@ import qualified Data.List             as List
 import           Data.Void
 import           Data.Word
 import           Data.Bits             ((.|.))
+import qualified Data.Sequence         as Seq
+import           Data.Sequence         (Seq(..))
 import           System.IO.Unsafe      (unsafePerformIO)
 import qualified Z.Data.Array          as A
 import qualified Z.Data.Builder        as B
@@ -134,7 +136,7 @@ import           Z.IO.Resource
 --   * You shouldn't use a 'BIO' node across multiple 'BIO' chain unless the state can be reset.
 --   * You shouldn't use a 'BIO' node across multiple threads unless document states otherwise.
 --
--- Note 'BIO' is just a convenient way to construct single-thread streaming computation, to use 'BIO'
+-- 'BIO' is simply a convenient way to construct single-thread streaming computation, to use 'BIO'
 -- in multiple threads, check "Z.IO.BIO.Concurrent" module.
 --
 data BIO inp out = BIO
@@ -257,12 +259,67 @@ concatSource ss0 = newIORef ss0 >>= \ ref -> return (BIO{ pull = loop ref})
 
 
 -- | Zip two 'BIO' source into one, reach EOF when either one reached EOF.
-zipSource :: Source a -> Source b -> Source (a,b)
+zipSource :: Source a -> Source b -> IO (Source (a,b))
 {-# INLINABLE zipSource #-}
-zipSource (BIO _ pullA) (BIO _ pullB) = BIO { pull = do
-    mA <- pullA
-    mB <- pullB
-    return ((,) <$> mA <*> mB)}
+zipSource (BIO _ pullA) (BIO _ pullB) = do
+    finRef <- newIORef False
+    return $ BIO { pull = do
+        fin <- readIORef finRef
+        if fin
+        then return Nothing
+        else do
+            mA <- pullA
+            mB <- pullB
+            let r = (,) <$> mA <*> mB
+            case r of
+                Just _ -> return r
+                _ -> writeIORef finRef True >> return Nothing
+            }
+
+-- | Zip two 'BIO' node into one, reach EOF when either one reached EOF.
+--
+-- The output item number should match, unmatched output will be discarded.
+zipBIO :: BIO a b -> BIO a c -> IO (BIO a (b, c))
+{-# INLINABLE zipBIO #-}
+zipBIO (BIO pushA pullA) (BIO pushB pullB) = do
+    finRef <- newIORef False
+    aSeqRef <- newIORef Seq.Empty
+    bSeqRef <- newIORef Seq.Empty
+    return (BIO (push_ aSeqRef bSeqRef) (pull_ finRef aSeqRef bSeqRef))
+  where
+    push_ aSeqRef bSeqRef x = do
+        ma <- pushA x
+        mb <- pushB x
+        forM_ ma (\ a -> modifyIORef' aSeqRef (a :<|))
+        forM_ mb (\ b -> modifyIORef' bSeqRef (b :<|))
+        aSeq <- readIORef aSeqRef
+        bSeq <- readIORef bSeqRef
+        case aSeq of
+            (!as :|> a) -> case bSeq of
+                (!bs :|> b) -> do
+                    writeIORef aSeqRef as
+                    writeIORef bSeqRef bs
+                    return (Just (a, b))
+                _ -> return Nothing
+            _ -> return Nothing
+
+    pull_ finRef aSeqRef bSeqRef = do
+        fin <- readIORef finRef
+        if fin
+        then return Nothing
+        else do
+            aSeq <- readIORef aSeqRef
+            bSeq <- readIORef bSeqRef
+            ma <- case aSeq of (_ :|> a) -> return (Just a)
+                               _ -> pullA
+            mb <- case bSeq of (_ :|> b) -> return (Just b)
+                               _ -> pullB
+            case ma of
+                Just a -> case mb of
+                    Just b -> return (Just (a, b))
+                    _ -> writeIORef finRef True >> return Nothing
+                _ -> writeIORef finRef True >> return Nothing
+
 
 -- | Run a 'BIO' loop (source >|> ... >|> sink).
 runBIO :: BIO Void Void -> IO ()
