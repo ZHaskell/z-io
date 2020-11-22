@@ -13,10 +13,10 @@ This module provide IO operations related to filesystem, operations are implemen
 
 module Z.IO.FileSystem
   ( -- * regular file devices
-    File, initFile, readFile, writeFile, getFileFD
+    File, initFile, readFile, writeFile, getFileFD, seek
   , quickReadFile, quickReadTextFile, quickWriteFile, quickWriteTextFile
     -- * file offset bundle
-  , FilePtr, newFilePtr, getFileOffset, setFileOffset
+  , FilePtr, newFilePtr, getFilePtrOffset, setFilePtrOffset
   -- * filesystem operations
   , mkdir, mkdirp
   , unlink
@@ -95,6 +95,11 @@ module Z.IO.FileSystem
   , pattern SYMLINK_DEFAULT
   , pattern SYMLINK_DIR
   , pattern SYMLINK_JUNCTION
+  -- ** Whence
+  , Whence
+  , pattern SEEK_SET
+  , pattern SEEK_CUR
+  , pattern SEEK_END
   ) where
 
 import           Control.Monad
@@ -147,6 +152,12 @@ checkFileClosed (File fd closedRef) f = do
     closed <- readIORef closedRef
     if closed then throwECLOSED else f fd
 
+-- | Set file's system offset.
+--
+-- Equivalent to <https://linux.die.net/man/3/lseek64 lseek64(3)>.
+seek :: HasCallStack => File -> Int64 -> Whence -> IO Int64
+seek uvf off w = checkFileClosed uvf $ \ fd -> throwUVIfMinus $ hs_seek fd off w
+
 instance Input File where
     -- readInput :: HasCallStack => File -> Ptr Word8 -> Int -> IO Int
     -- use -1 offset to use fd's default offset
@@ -170,6 +181,15 @@ instance Output File where
 -- | Write buffer to file
 --
 -- This function will loop until all bytes are written.
+--
+-- Note on linux files opened with 'O_APPEND' behave differently since this function use @pwrite@:
+--
+-- @
+-- POSIX requires that opening a file with the O_APPEND flag should have no effect
+-- on the location at which pwrite() writes data. However, on Linux,
+-- if a file is opened with O_APPEND, pwrite() appends data to the end of the file,
+-- regardless of the value of offset.
+-- @
 writeFile :: HasCallStack
             => File
             -> Ptr Word8 -- ^ buffer
@@ -197,6 +217,7 @@ writeFile uvf buf0 bufSiz0 off0 =
 -- Reading or writing using 'Input' \/ 'Output' instance will automatically increase offset.
 -- 'FilePtr' and its operations are NOT thread safe, use 'MVar' 'FilePtr' in multiple threads.
 --
+-- The notes on linux 'writeFile' applied to 'FilePtr' too.
 data FilePtr = FilePtr {-# UNPACK #-} !File
                        {-# UNPACK #-} !(PrimIORef Int64)
 
@@ -208,12 +229,12 @@ newFilePtr :: File       -- ^ the file we're reading
 newFilePtr uvf off = FilePtr uvf <$> newPrimIORef off
 
 -- | Get current offset.
-getFileOffset :: FilePtr -> IO Int64
-getFileOffset (FilePtr _ offsetRef) = readPrimIORef offsetRef
+getFilePtrOffset :: FilePtr -> IO Int64
+getFilePtrOffset (FilePtr _ offsetRef) = readPrimIORef offsetRef
 
 -- | Change current offset.
-setFileOffset :: FilePtr -> Int64 -> IO ()
-setFileOffset (FilePtr _ offsetRef) = writePrimIORef offsetRef
+setFilePtrOffset :: FilePtr -> Int64 -> IO ()
+setFilePtrOffset (FilePtr _ offsetRef) = writePrimIORef offsetRef
 
 instance Input FilePtr where
     readInput (FilePtr file offsetRef) buf bufSiz =

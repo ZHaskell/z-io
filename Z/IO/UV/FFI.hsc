@@ -462,6 +462,22 @@ pattern O_TRUNC = #const UV_FS_O_TRUNC
 pattern O_WRONLY :: FileFlag
 pattern O_WRONLY = #const UV_FS_O_WRONLY
 
+
+type Whence = CInt
+
+-- | Beginning of the file.
+pattern SEEK_SET :: Whence
+pattern SEEK_SET = #const SEEK_SET
+-- | Current position of the file pointer.
+pattern SEEK_CUR :: Whence
+pattern SEEK_CUR = #const SEEK_CUR
+-- | End of file.
+pattern SEEK_END :: Whence
+pattern SEEK_END = #const SEEK_END
+
+foreign import ccall unsafe hs_seek :: FD -> Int64 -> Whence -> IO Int64
+
+
 #if defined(_WIN32)
 type UVDirEntType = CInt
 #else
