@@ -826,7 +826,7 @@ int64_t hs_seek(int file, int64_t off, int origin){
 #if defined(_WIN32)
     int64_t r = (int64_t)_lseeki64(file, off, origin);
 #else
-    int64_t r = (int64_t)lseek64(file, off, origin);
+    int64_t r = (int64_t)lseek(file, off, origin);
 #endif
     if (r < 0) {
         return uv_translate_sys_error(errno);
