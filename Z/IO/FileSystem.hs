@@ -108,6 +108,7 @@ import           Foreign.Marshal.Alloc          (allocaBytes)
 import           Z.Data.CBytes                  as CBytes
 import           Z.Data.PrimRef.PrimIORef
 import qualified Z.Data.Text                    as T
+import qualified Z.Data.Text.ShowT              as T
 import qualified Z.Data.Vector                  as V
 import           Z.Foreign
 import           Z.IO.Buffered
@@ -128,6 +129,11 @@ import           Prelude hiding (writeFile, readFile)
 --
 data File =  File  {-# UNPACK #-} !FD      -- ^ the file
                    {-# UNPACK #-} !(IORef Bool)  -- ^ closed flag
+
+instance Show File where show = T.toString
+
+instance T.ShowT File where
+    toUTF8BuilderP _ (File fd _) = "File " >> T.int fd
 
 -- | Return File fd.
 getFileFD :: File -> IO FD
@@ -364,7 +370,7 @@ scandir path = do
 -- @
 --  import Z.IO.FileSystem.FilePath (splitExtension)
 --  -- find all haskell source file within current dir
---  scandirRecursively "."  (\ p _ -> (== ".hs") . snd <$> splitExtension p)
+--  scandirRecursively "."  (\\ p _ -> (== ".hs") . snd \<$\> splitExtension p)
 -- @
 scandirRecursively :: HasCallStack => CBytes -> (CBytes -> DirEntType -> IO Bool) -> IO [CBytes]
 scandirRecursively dir p = loop [] =<< P.normalize dir

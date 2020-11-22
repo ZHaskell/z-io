@@ -1,5 +1,12 @@
 # Revision history for Z-IO
 
+## 0.1.9.0  -- 2020-10-24
+
+* Clean up API in `Z.IO.Buffered`, remove `readToMagic'`, `readLine'`, `readExactly'`.
+* `readExactly` now throw exception when not reading enough bytes before EOF.
+* Add `Show/ShowT` instance to `UVStream`, `StdStream`, `UDP`, `UVManager`.
+* Add JSON instance to various types: `SocketAddr` and all configure types.
+
 ## 0.1.8.1  -- 2020-10-24
 
 * Export `ZStream` type from `Z.IO.BIO.Zlib`

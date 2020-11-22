@@ -116,6 +116,7 @@ import           Foreign.Marshal.Alloc          (allocaBytes)
 import           Z.Data.CBytes                  as CBytes
 import           Z.Data.PrimRef.PrimIORef
 import qualified Z.Data.Text                    as T
+import qualified Z.Data.Text.ShowT              as T
 import qualified Z.Data.Vector                  as V
 import           Z.Foreign
 import           Z.IO.Buffered
@@ -138,8 +139,13 @@ import           Prelude hiding (writeFile, readFile)
 -- Implict offset interface is provided by 'Input' \/ 'Output' instances.
 -- Explict offset interface is provided by 'readFile' \/ 'writeFile'.
 --
-data File =  File  {-# UNPACK #-} !FD      -- ^ the file
-                     {-# UNPACK #-} !(IORef Bool)  -- ^ closed flag
+data File = File {-# UNPACK #-} !FD      -- ^ the file
+                 {-# UNPACK #-} !(IORef Bool)  -- ^ closed flag
+
+instance Show File where show = T.toString
+
+instance T.ShowT File where
+    toUTF8BuilderP _ (File fd _) = "File " >> T.int fd
 
 -- | Return File fd.
 getFileFD :: File -> IO FD
