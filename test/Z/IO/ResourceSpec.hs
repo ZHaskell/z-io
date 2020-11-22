@@ -80,12 +80,10 @@ spec = describe "resource tests" $ do
             s <- poolStat pool
             assertEqual "pool should be scanning returned resources" PoolScanning s
 
-            threadDelay 5000000  -- after 5s, 1000 thread should release all resources
+            threadDelay 10000000
 
             r <- readPrimIORef resCounter
             assertEqual "pool should reap unused resources" 0 r
-
-            threadDelay 5000000 -- another 5s
 
             s <- poolStat pool
             assertEqual "pool should stop scanning returned resources" PoolEmpty s
@@ -112,12 +110,10 @@ spec = describe "resource tests" $ do
             s <- poolStat pool
             assertEqual "pool should be scanning returned resources" PoolScanning s
 
-            threadDelay 5000000  -- after 5s, 1000 thread should release all resources
+            threadDelay 10000000
 
             r <- readPrimIORef resCounter
             assertEqual "pool should reap unused resources" 0 r
-
-            threadDelay 5000000  -- after 5s, scanning thread should stoped
 
             s <- poolStat pool
             assertEqual "pool should stop scanning returned resources" PoolEmpty s

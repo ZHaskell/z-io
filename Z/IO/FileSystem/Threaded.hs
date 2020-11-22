@@ -7,7 +7,7 @@ Maintainer  : winterland1989@gmail.com
 Stability   : experimental
 Portability : non-portable
 
-This module provides filesystem API exactly same with `Z.IO.FileSystem`, operations are implemented using libuv's threadpool to achieve non-block behavior (non-block here meaning won't block other haskell threads), which would be prefered when the operations' estimated time is long(>1ms) or running with a non-threaded haskell runtime, such as accessing network filesystem or scan a very large directory. Otherwise you may block RTS's capability thus all the other haskell threads live on it.
+This module provides filesystem API exactly same with `Z.IO.FileSystem`, operations(except 'seek') are implemented using libuv's threadpool to achieve non-block behavior (non-block here meaning won't block other haskell threads), which would be prefered when the operations' estimated time is long(>1ms) or running with a non-threaded haskell runtime, such as accessing network filesystem or scan a very large directory. Otherwise you may block RTS's capability thus all the other haskell threads live on it.
 
 The threadpool version operations have overheads similar to safe FFI, but provide same adventages:
 
@@ -21,10 +21,10 @@ Most of the time you don't need this module though, since modern hardware(SSD) a
 
 module Z.IO.FileSystem.Threaded
   ( -- * regular file devices
-    File, initFile, readFile, writeFile, getFileFD
+    File, initFile, readFile, writeFile, getFileFD, seek
   , quickReadFile, quickReadTextFile, quickWriteFile, quickWriteTextFile
     -- * file offset bundle
-  , FilePtrT, newFilePtrT, getFileOffset, setFileOffset
+  , FilePtrT, newFilePtrT, getFilePtrOffset, setFilePtrOffset
   -- * filesystem operations
   , mkdir, mkdirp
   , unlink
@@ -125,7 +125,7 @@ import qualified Z.IO.FileSystem.FilePath       as P
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
 import           Z.IO.UV.Manager
-import           Prelude hiding (writeFile, readFile)
+import           Prelude hiding                 (writeFile, readFile)
 
 --------------------------------------------------------------------------------
 -- File
@@ -159,6 +159,12 @@ checkFileClosed (File fd closedRef) f = do
     closed <- readIORef closedRef
     if closed then throwECLOSED else f fd
 
+-- | Set file's system offset.
+--
+-- Equivalent to <https://linux.die.net/man/3/lseek64 lseek64(3)>.
+seek :: HasCallStack => File -> Int64 -> Whence -> IO Int64
+seek uvf off w = checkFileClosed uvf $ \ fd -> throwUVIfMinus $ hs_seek fd off w
+
 instance Input File where
     readInput f buf bufSiz = readFile f buf bufSiz (-1)
 
@@ -182,6 +188,15 @@ instance Output File where
 -- | Write buffer to file
 --
 -- This function will loop until all bytes are written.
+--
+-- Note on linux files opened with 'O_APPEND' behave differently since this function use @pwrite@:
+--
+-- @
+-- POSIX requires that opening a file with the O_APPEND flag should have no effect
+-- on the location at which pwrite() writes data. However, on Linux,
+-- if a file is opened with O_APPEND, pwrite() appends data to the end of the file,
+-- regardless of the value of offset.
+-- @
 writeFile :: HasCallStack
            => File
            -> Ptr Word8 -- ^ buffer
@@ -215,6 +230,7 @@ writeFile uvf buf0 bufSiz0 off0 =
 -- Reading or writing using 'Input' \/ 'Output' instance will automatically increase offset.
 -- 'FilePtrT' and its operations are NOT thread safe, use 'MVar' 'FilePtrT' in multiple threads.
 --
+-- The notes on linux 'writeFile' applied to 'FilePtr' too.
 data FilePtrT = FilePtrT {-# UNPACK #-} !File
                          {-# UNPACK #-} !(PrimIORef Int64)
 
@@ -226,12 +242,12 @@ newFilePtrT :: File      -- ^ the file we're reading
 newFilePtrT uvf off = FilePtrT uvf <$> newPrimIORef off
 
 -- | Get current offset.
-getFileOffset :: FilePtrT -> IO Int64
-getFileOffset (FilePtrT _ offsetRef) = readPrimIORef offsetRef
+getFilePtrOffset :: FilePtrT -> IO Int64
+getFilePtrOffset (FilePtrT _ offsetRef) = readPrimIORef offsetRef
 
 -- | Change current offset.
-setFileOffset :: FilePtrT -> Int64 -> IO ()
-setFileOffset (FilePtrT _ offsetRef) = writePrimIORef offsetRef
+setFilePtrOffset :: FilePtrT -> Int64 -> IO ()
+setFilePtrOffset (FilePtrT _ offsetRef) = writePrimIORef offsetRef
 
 instance Input FilePtrT where
     readInput (FilePtrT file offsetRef) buf bufSiz =
