@@ -154,6 +154,7 @@ instance ToValue SocketAddr where
         , ("flow", toValue flow)
         , ("scope", toValue scope)
         ]
+
 instance FromValue SocketAddr where 
     fromValue = JSON.withFlatMapR "Z.IO.Network.SocketAddr" $ \ fm -> do
         (addrV :: V.PrimVector Word) <- fm .: "addr"

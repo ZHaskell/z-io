@@ -46,7 +46,7 @@ in withResource (initTCPClient defaultTCPClientConfig{ tcpRemoteAddr = addr}) $ 
 > -- Start a TCP echo server, use @nc -v localhost 8080@ to test
 > :{
 startTCPServer defaultTCPServerConfig{ 
-    tcpListenAddr = SocketAddrIPv4 inetLoopback 8080} $ \ tcp -> do
+    tcpListenAddr = SocketAddrIPv4 ipv4Loopback 8080} $ \ tcp -> do
         i <- newBufferedInput tcp 
         o <- newBufferedOutput tcp
         forever $ readBuffer i >>= writeBuffer o >> flushBuffer o
