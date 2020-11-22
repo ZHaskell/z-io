@@ -12,8 +12,8 @@ This module provides an API for creating UDP sender and receiver.
 * Socket FD is created lazily if no local address is provided, that means various functions
   that need FD will throw bad FD exception if you 'initUDP' with no local address e.g. 'setTTL'.
 
-* If you want to create socket FD but don't care about which port or interface you're using,
-  use 'SocketAddrInet' 'portAny' 'inetAny' when 'initUDP'.
+* If you want to create a socket FD but don't care about which port or interface you're using,
+  use 'SocketAddrIPv4' 'portAny' 'ipv4Any' when 'initUDP'.
 
 * Prefer 'recvUDPLoop' because it can reuse receive buffer.
 

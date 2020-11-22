@@ -22,7 +22,7 @@ spec = describe "TCP operations" $ do
     it "roundtrip test" $ do
         let testMsg = V.cycleN 256 "abc"
             longMsg = V.cycleN 2048 "abcdefg"
-            addr = SocketAddrInet inetLoopback 12345
+            addr = SocketAddrIPv4 ipv4Loopback 12345
 
         serverThread <- forkIO $ startTCPServer defaultTCPServerConfig{ tcpListenAddr = addr } echo
 

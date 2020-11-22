@@ -6,6 +6,8 @@
 * `readExactly` now throw exception when not reading enough bytes before EOF.
 * Add `Show/ShowT` instance to `UVStream`, `StdStream`, `UDP`, `UVManager`.
 * Add JSON instance to various types: `SocketAddr` and all configure types.
+* Rename `InetAddr` to `IPv4`, `Inet6Addr` to `IPv6`, change `SocketAddr` 's constructor name, and payload order.
+* Add `seek` to `Z.IO.FileSystem`.
 
 ## 0.1.8.1  -- 2020-10-24
 
