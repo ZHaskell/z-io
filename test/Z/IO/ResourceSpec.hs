@@ -85,7 +85,7 @@ spec = describe "resource tests" $ do
             r <- readPrimIORef resCounter
             assertEqual "pool should reap unused resources" 0 r
 
-            threadDelay 500000  -- another 5s
+            threadDelay 5000000 -- another 5s
 
             s <- poolStat pool
             assertEqual "pool should stop scanning returned resources" PoolEmpty s
