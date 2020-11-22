@@ -20,16 +20,17 @@ module Z.IO.UV.UVStream
   , helloWorld, echo
   ) where
 
-import          Control.Concurrent
-import          Control.Monad
-import          Z.IO.UV.Errno
-import          Z.IO.UV.FFI
-import          Z.IO.UV.Manager
-import          Z.IO.Buffered
-import          Z.IO.Exception
-import          Z.IO.Resource
-import          Data.IORef
-import          GHC.Ptr
+import           Control.Concurrent
+import           Control.Monad
+import qualified Z.Data.Text.ShowT as T
+import           Z.IO.UV.Errno
+import           Z.IO.UV.FFI
+import           Z.IO.UV.Manager
+import           Z.IO.Buffered
+import           Z.IO.Exception
+import           Z.IO.Resource
+import           Data.IORef
+import           GHC.Ptr
 
 --------------------------------------------------------------------------------
 -- UVStream
@@ -46,11 +47,14 @@ data UVStream = UVStream
                                                     -- so no need to use atomic read&write
     }
 
-instance Show UVStream where
-    show (UVStream hdl slot uvm _) =
-        "UVStream{uvsHandle=" ++ show hdl ++
-                ",uvsSlot=" ++ show slot ++
-                ",uvsManager=" ++ show uvm ++ "}"
+instance Show UVStream where show = T.toString
+
+instance T.ShowT UVStream where
+    toUTF8BuilderP _ (UVStream hdl slot uvm _) = do
+        "UVStream{uvsHandle="  >> T.toUTF8Builder hdl
+        ",uvsSlot="            >> T.toUTF8Builder slot
+        ",uvsManager="         >> T.toUTF8Builder uvm
+        T.char7 '}'
 
 -- | Safely lock an uv manager and perform uv_handle initialization.
 --

@@ -57,6 +57,7 @@ import           Z.Data.Array       as A
 import           Z.Data.CBytes      as CBytes
 import           Z.Data.Vector.Base as V
 import           Z.Data.Text.ShowT  (ShowT)
+import           Z.Data.JSON        (EncodeJSON, ToValue, FromValue)
 import           Z.Foreign
 import           Z.IO.BIO
 import           Z.IO.Exception
@@ -110,7 +111,7 @@ data CompressConfig = CompressConfig
     , compressStrategy :: Strategy
     , compressBufferSize :: Int
     }   deriving (Show, Eq, Ord, Generic)
-        deriving anyclass ShowT
+        deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 defaultCompressConfig :: CompressConfig
 defaultCompressConfig =
@@ -204,7 +205,7 @@ data DecompressConfig = DecompressConfig
     , decompressDictionary :: V.Bytes
     , decompressBufferSize :: Int
     }   deriving (Show, Eq, Ord, Generic)
-        deriving anyclass ShowT
+        deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 defaultDecompressConfig :: DecompressConfig
 defaultDecompressConfig = DecompressConfig defaultWindowBits V.empty V.defaultChunkSize

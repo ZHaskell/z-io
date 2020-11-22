@@ -74,15 +74,19 @@ module Z.IO.Network.SocketAddr
   ) where
 
 import           Data.Bits
-import qualified Data.List                as List
-import           Data.Typeable
 import           Foreign
 import           Foreign.C
 import           GHC.Generics
-import           Numeric                    (showHex)
+import           Numeric                (showHex)
 import           System.IO.Unsafe
 import           Z.Data.CBytes
-import           Z.Data.Text.ShowT          (ShowT)
+import           Z.Data.Text.ShowT      (ShowT(..))
+import qualified Z.Data.Text.ShowT      as T
+import           Z.Data.JSON            (EncodeJSON(..), ToValue(..), FromValue(..), (.:))
+import qualified Z.Data.JSON            as JSON
+import qualified Z.Data.JSON.Builder    as B
+import qualified Z.Data.Vector          as V
+import qualified Z.Data.Vector.Extra    as V
 import           Z.IO.Exception
 import           Z.Foreign
 
@@ -106,22 +110,85 @@ type CSaFamily = (#type sa_family_t)
 
 -- | IPv4 or IPv6 socket address, i.e. the `sockaddr_in` or `sockaddr_in6` struct.
 -- 
+-- Example on JSON instance:
+--
+-- @
+-- > JSON.encodeText  $ ipv6 "3731:54:65fe:2::a8" 9090
+-- "{\"addr\":[14129,84,26110,2,0,0,0,168],\"port\":9090,\"flow\":0,\"scope\":0}"
+-- > JSON.encodeText  $ ipv4 "128.14.32.1" 9090
+-- "{\"addr\":[128,14,32,1],\"port\":9090}"
+-- @
 data SocketAddr 
     = SocketAddrInet
-        {-# UNPACK #-} !PortNumber  -- sin_port  (network byte order)
         {-# UNPACK #-} !InetAddr    -- sin_addr  (ditto)
+        {-# UNPACK #-} !PortNumber  -- sin_port  (network byte order)
     | SocketAddrInet6
+        {-# UNPACK #-} !Inet6Addr   -- sin6_addr (ditto)
         {-# UNPACK #-} !PortNumber  -- sin6_port (network byte order)
         {-# UNPACK #-} !FlowInfo    -- sin6_flowinfo (ditto)
-        {-# UNPACK #-} !Inet6Addr   -- sin6_addr (ditto)
         {-# UNPACK #-} !ScopeID     -- sin6_scope_id (ditto)
-  deriving (Eq, Ord, Typeable)
+    deriving (Eq, Ord, Generic)
 
-instance Show SocketAddr where
-    showsPrec _ (SocketAddrInet port ia)
-       = shows ia . showString ":" . shows port
-    showsPrec _ (SocketAddrInet6 port _ ia6 _)
-       = ('[':) . shows ia6 . showString "]:" . shows port
+instance EncodeJSON SocketAddr where 
+    encodeJSON (SocketAddrInet addr port) = T.curly $ do
+        "addr" `B.kv` encodeJSON addr
+        T.char7 ','
+        "port" `B.kv` encodeJSON port
+    encodeJSON (SocketAddrInet6 addr port flow scope) = T.curly $ do
+        "addr" `B.kv` encodeJSON addr
+        T.char7 ','
+        "port" `B.kv` encodeJSON port
+        T.char7 ','
+        "flow" `B.kv` encodeJSON flow
+        T.char7 ','
+        "scope" `B.kv` encodeJSON scope
+
+instance ToValue SocketAddr where 
+    toValue (SocketAddrInet addr port) = JSON.Object . V.pack $ 
+        [ ("addr", toValue addr)
+        , ("number", toValue port)
+        ]
+    toValue (SocketAddrInet6 addr port flow scope) = JSON.Object . V.pack $ 
+        [ ("addr", toValue addr)
+        , ("number", toValue port)
+        , ("flow", toValue flow)
+        , ("scope", toValue scope)
+        ]
+instance FromValue SocketAddr where 
+    fromValue = JSON.withFlatMapR "Z.IO.Network.SocketAddr" $ \ fm -> do
+        (addrV :: V.PrimVector Word) <- fm .: "addr"
+        case V.length addrV of
+            4 -> do port <- fm .: "port"
+                    let a = fromIntegral $ addrV `V.unsafeIndex` 0
+                        b = fromIntegral $ addrV `V.unsafeIndex` 1
+                        c = fromIntegral $ addrV `V.unsafeIndex` 2
+                        d = fromIntegral $ addrV `V.unsafeIndex` 3
+                        !addr = tupleToInetAddr (a,b,c,d)
+                    return (SocketAddrInet addr port)
+            8 -> do port <- fm .: "port"
+                    flow <- fm .: "flow"
+                    scope <- fm .: "scope"
+                    let a = fromIntegral $ addrV `V.unsafeIndex` 0
+                        b = fromIntegral $ addrV `V.unsafeIndex` 1
+                        c = fromIntegral $ addrV `V.unsafeIndex` 2
+                        d = fromIntegral $ addrV `V.unsafeIndex` 3
+                        e = fromIntegral $ addrV `V.unsafeIndex` 4
+                        f = fromIntegral $ addrV `V.unsafeIndex` 5
+                        g = fromIntegral $ addrV `V.unsafeIndex` 6
+                        h = fromIntegral $ addrV `V.unsafeIndex` 7
+                        !addr = tupleToInet6Addr (a,b,c,d,e,f,g,h)
+                    return (SocketAddrInet6 addr port flow scope)
+            _ -> JSON.fail' "wrong address length"
+
+instance Show SocketAddr where show = T.toString
+
+instance ShowT SocketAddr where
+    toUTF8BuilderP _ (SocketAddrInet addr port)
+       = T.toUTF8Builder addr >> T.char7 ':' >> T.toUTF8Builder port
+    toUTF8BuilderP _ (SocketAddrInet6 addr port _ _) = do
+        T.square (T.toUTF8Builder addr)
+        T.char7 ':' 
+        T.toUTF8Builder port
 
 sockAddrFamily :: SocketAddr -> SocketFamily
 sockAddrFamily (SocketAddrInet _ _) = AF_INET
@@ -150,11 +217,30 @@ ipv6 str (PortNumber port) = unsafeDupablePerformIO . withSocketAddrStorageUnsaf
 --
 -- For direct manipulation prefer 'inetAddrToTuple' and 'tupleToInetAddr'.
 --
-newtype InetAddr = InetAddr { getInetAddr :: Word32 } deriving (Eq, Ord, Typeable)
-instance Show InetAddr where
-    showsPrec _ ia = 
+newtype InetAddr = InetAddr { getInetAddr :: Word32 }
+    deriving (Eq, Ord, Generic)
+    
+instance EncodeJSON InetAddr where
+    {-# INLINE encodeJSON #-}
+    encodeJSON = encodeJSON . inetAddrToTuple
+instance ToValue InetAddr where
+    {-# INLINE toValue #-}
+    toValue = toValue . inetAddrToTuple
+instance FromValue InetAddr where
+    {-# INLINE fromValue #-}
+    fromValue v = tupleToInetAddr <$> fromValue v
+
+instance Show InetAddr where show = T.toString
+instance ShowT InetAddr where
+    toUTF8BuilderP _ ia = do
         let (a,b,c,d) = inetAddrToTuple ia
-        in shows a . ('.':) . shows b . ('.':) . shows c . ('.':) . shows d 
+        T.int a 
+        T.char7 '.' 
+        T.int b  
+        T.char7 '.' 
+        T.int c
+        T.char7 '.' 
+        T.int d  
 
 -- | @0.0.0.0@
 inetAny             :: InetAddr
@@ -219,29 +305,44 @@ tupleToInetAddr (b3, b2, b1, b0) =
 data Inet6Addr = Inet6Addr {-# UNPACK #-}!Word32
                            {-# UNPACK #-}!Word32
                            {-# UNPACK #-}!Word32
-                           {-# UNPACK #-}!Word32 deriving (Eq, Ord, Typeable)
+                           {-# UNPACK #-}!Word32 
+    deriving (Eq, Ord, Generic)
 
+instance EncodeJSON Inet6Addr where
+    {-# INLINE encodeJSON #-}
+    encodeJSON addr = encodeJSON [a,b,c,d,e,f,g,h]
+      where (a,b,c,d,e,f,g,h) = inet6AddrToTuple addr
+instance ToValue Inet6Addr where
+    {-# INLINE toValue #-}
+    toValue addr = toValue [a,b,c,d,e,f,g,h]
+      where (a,b,c,d,e,f,g,h) = inet6AddrToTuple addr
+instance FromValue Inet6Addr where
+    {-# INLINE fromValue #-}
+    fromValue v = do
+        [a,b,c,d,e,f,g,h] <- fromValue v
+        return $! tupleToInet6Addr (a,b,c,d,e,f,g,h)
 
-instance Show Inet6Addr where
-    showsPrec _ ia6@(Inet6Addr a1 a2 a3 a4)
+instance Show Inet6Addr where show = T.toString
+instance ShowT Inet6Addr where
+    toUTF8BuilderP _ ia6@(Inet6Addr a1 a2 a3 a4)
         -- IPv4-Mapped IPv6 Address
         | a1 == 0 && a2 == 0 && a3 == 0xffff =
-          showString "::ffff:" . shows (InetAddr a4)
+            "::ffff:" >> T.toUTF8Builder (InetAddr a4)
         -- IPv4-Compatible IPv6 Address (exclude IPRange ::/112)
         | a1 == 0 && a2 == 0 && a3 == 0 && a4 >= 0x10000 =
-            showString "::" . shows (InetAddr a4)
+            "::" >> T.toUTF8Builder (InetAddr a4)
         -- length of longest run > 1, replace it with "::"
         | end - begin > 1 =
-            showFields prefix . showString "::" . showFields suffix
+            showFields prefix >> "::" >> showFields suffix
         | otherwise =
             showFields fields
       where
         fields =
             let (u7, u6, u5, u4, u3, u2, u1, u0) = inet6AddrToTuple ia6 in
             [u7, u6, u5, u4, u3, u2, u1, u0]
-        showFields = foldr (.) id . List.intersperse (':':) . map showHex
-        prefix = take begin fields  -- fields before "::"
-        suffix = drop end fields    -- fields after "::"
+        showFields = T.intercalateList (T.char7 ':') (\ f -> T.string7 (showHex f []))
+        !prefix = take begin fields  -- fields before "::"
+        !suffix = drop end fields    -- fields after "::"
         begin = end + diff          -- the longest run of zeros
         (diff, end) = minimum $
             scanl (\c i -> if i == 0 then c - 1 else 0) 0 fields `zip` [0..]
@@ -343,20 +444,20 @@ peekSocketAddr p = do
         (#const AF_INET) -> do
             addr <- (#peek struct sockaddr_in, sin_addr) p
             port <- (#peek struct sockaddr_in, sin_port) p
-            return (SocketAddrInet port addr)
+            return (SocketAddrInet addr port)
         (#const AF_INET6) -> do
             port <- (#peek struct sockaddr_in6, sin6_port) p
             flow <- (#peek struct sockaddr_in6, sin6_flowinfo) p
             addr <- (#peek struct sockaddr_in6, sin6_addr) p
             scope <- (#peek struct sockaddr_in6, sin6_scope_id) p
-            return (SocketAddrInet6 port flow addr scope)
+            return (SocketAddrInet6 addr port flow scope)
         _ -> do let errno = UV_EAI_ADDRFAMILY
                 name <- uvErrName errno
                 desc <- uvStdError errno
                 throwUVError errno (IOEInfo name desc callStack)
 
 pokeSocketAddr :: Ptr SocketAddr -> SocketAddr -> IO ()
-pokeSocketAddr p (SocketAddrInet port addr) =  do
+pokeSocketAddr p (SocketAddrInet addr port) =  do
 #if defined(darwin_HOST_OS)
     clearPtr p (#size struct sockaddr_in)
 #endif
@@ -366,7 +467,7 @@ pokeSocketAddr p (SocketAddrInet port addr) =  do
     (#poke struct sockaddr_in, sin_family) p ((#const AF_INET) :: CSaFamily)
     (#poke struct sockaddr_in, sin_port) p port
     (#poke struct sockaddr_in, sin_addr) p addr
-pokeSocketAddr p (SocketAddrInet6 port flow addr scope) =  do
+pokeSocketAddr p (SocketAddrInet6 addr port flow scope) =  do
 #if defined(darwin_HOST_OS)
     clearPtr p (#size struct sockaddr_in6)
 #endif
@@ -437,20 +538,20 @@ peekSocketAddrMBA p = do
         (#const AF_INET) -> do
             addr <- peekMBA p (#offset struct sockaddr_in, sin_addr) 
             port <- peekMBA p (#offset struct sockaddr_in, sin_port) 
-            return (SocketAddrInet port addr)
+            return (SocketAddrInet addr port)
         (#const AF_INET6) -> do
             port <- peekMBA p (#offset struct sockaddr_in6, sin6_port) 
             flow <- peekMBA p (#offset struct sockaddr_in6, sin6_flowinfo) 
             addr <- peekMBA p (#offset struct sockaddr_in6, sin6_addr) 
             scope <- peekMBA p (#offset struct sockaddr_in6, sin6_scope_id) 
-            return (SocketAddrInet6 port flow addr scope)
+            return (SocketAddrInet6 addr port flow scope)
         _ -> do let errno = UV_EAI_ADDRFAMILY
                 name <- uvErrName errno
                 desc <- uvStdError errno
                 throwUVError errno (IOEInfo name desc callStack)
 
 pokeSocketAddrMBA :: MBA## SocketAddr -> SocketAddr -> IO ()
-pokeSocketAddrMBA p (SocketAddrInet port addr) =  do
+pokeSocketAddrMBA p (SocketAddrInet addr port) =  do
 #if defined(darwin_HOST_OS)
     clearMBA p (#size struct sockaddr_in)
 #endif
@@ -460,7 +561,7 @@ pokeSocketAddrMBA p (SocketAddrInet port addr) =  do
     pokeMBA p (#offset struct sockaddr_in, sin_family) ((#const AF_INET) :: CSaFamily)
     pokeMBA p (#offset struct sockaddr_in, sin_port) port
     pokeMBA p (#offset struct sockaddr_in, sin_addr) addr
-pokeSocketAddrMBA p (SocketAddrInet6 port flow addr scope) =  do
+pokeSocketAddrMBA p (SocketAddrInet6 addr port flow scope) =  do
 #if defined(darwin_HOST_OS)
     clearMBA p (#size struct sockaddr_in6)
 #endif
@@ -477,8 +578,8 @@ pokeSocketAddrMBA p (SocketAddrInet6 port flow addr scope) =  do
 -- Port Numbers
 
 -- | Port number.
---   Use the @Num@ instance (i.e. use a literal) to create a
---   @PortNumber@ value.
+-- 
+-- Use the @Num@ instance (i.e. use a literal) to create a --   @PortNumber@ value.
 --
 -- >>> 1 :: PortNumber
 -- 1
@@ -492,9 +593,9 @@ pokeSocketAddrMBA p (SocketAddrInet6 port flow addr scope) =  do
 -- True
 -- >>> 50000 + (10000 :: PortNumber)
 -- 60000
-newtype PortNumber = PortNumber Word16 deriving (Eq, Ord, Enum, Generic)
-                                        deriving newtype (Show, Read, Num, Bounded, Real, Integral)
-                                        deriving anyclass ShowT
+newtype PortNumber = PortNumber Word16 
+    deriving (Eq, Ord, Enum, Generic)
+    deriving newtype (Show, ShowT, Read, Num, Bounded, Real, Integral, EncodeJSON, ToValue, FromValue)
 
 -- | @:0@
 portAny :: PortNumber

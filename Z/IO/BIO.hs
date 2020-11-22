@@ -648,13 +648,14 @@ newMagicSplitter magic = do
   where
     push_ trailingRef bs = do
         trailing <- readIORef trailingRef
-        let chunk =  trailing `V.append` bs
-        case V.elemIndex magic chunk of
+        case V.elemIndex magic bs of
             Just i -> do
-                let (line, rest) = V.splitAt (i+1) chunk
+                let (!line, !rest) = V.splitAt (i+1) bs
+                    !line' = trailing `V.append` line
                 writeIORef trailingRef rest
-                return (Just line)
+                return (Just line')
             Nothing -> do
+                let !chunk =  trailing `V.append` bs
                 writeIORef trailingRef chunk
                 return Nothing
 

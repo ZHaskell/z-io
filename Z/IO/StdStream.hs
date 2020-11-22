@@ -65,7 +65,7 @@ import Foreign.Ptr
 import System.IO.Unsafe
 import Z.Data.Builder as B
 import Z.Data.Vector as V
-import Z.Data.Text.ShowT (ShowT, toUTF8Builder)
+import qualified Z.Data.Text.ShowT as T
 import Z.IO.UV.FFI
 import Z.IO.UV.Manager
 import Z.IO.UV.Errno
@@ -85,6 +85,20 @@ import Z.Foreign
 data StdStream
     = StdTTY {-# UNPACK #-}!(Ptr UVHandle) {-# UNPACK #-}!UVSlot UVManager -- similar to UVStream
     | StdFile {-# UNPACK #-}!FD                                          -- similar to UVFile
+
+instance Show StdStream where show = T.toString
+
+instance T.ShowT StdStream where
+    toUTF8BuilderP p (StdTTY ptr slot uvm) = T.parenWhen (p > 10) $ do
+        "StdTTY "
+        T.toUTF8Builder ptr
+        T.char7 ' '
+        T.toUTF8Builder slot
+        T.char7 ' '
+        T.toUTF8BuilderP 11 uvm
+    toUTF8BuilderP p (StdFile fd) = T.parenWhen (p > 10) $ do
+        "StdFile "
+        T.toUTF8Builder fd
 
 isStdStreamTTY :: StdStream -> Bool
 isStdStreamTTY (StdTTY _ _ _) = True
@@ -217,8 +231,8 @@ getStdoutWinSize = case stdout of
 --------------------------------------------------------------------------------
 
 -- | Print a 'ShowT' and flush to stdout.
-printStd :: (HasCallStack, ShowT a) => a -> IO ()
-printStd s = putStd (toUTF8Builder s)
+printStd :: (HasCallStack, T.ShowT a) => a -> IO ()
+printStd s = putStd (T.toUTF8Builder s)
 
 -- | Print a 'Builder' and flush to stdout.
 putStd :: HasCallStack => Builder a -> IO ()
@@ -227,8 +241,8 @@ putStd b = withMVar stdoutBuf $ \ o -> do
     flushBuffer o
 
 -- | Print a 'ShowT' and flush to stdout, with a linefeed.
-printLineStd :: (HasCallStack, ShowT a) => a -> IO ()
-printLineStd s = putLineStd (toUTF8Builder s)
+printLineStd :: (HasCallStack, T.ShowT a) => a -> IO ()
+printLineStd s = putLineStd (T.toUTF8Builder s)
 
 -- | Print a 'Builder' and flush to stdout, with a linefeed.
 putLineStd :: HasCallStack => Builder a -> IO ()

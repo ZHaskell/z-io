@@ -59,7 +59,7 @@ module Z.IO.Network.UDP (
 
 import Control.Concurrent
 import Control.Monad
-import Data.Primitive.PrimArray as A
+import Data.Primitive.PrimArray         as A
 import Data.IORef
 import Data.Word
 import Data.Int
@@ -67,10 +67,14 @@ import Data.Bits ((.&.))
 import Foreign.Storable (peek, poke)
 import Foreign.Ptr (plusPtr)
 import Foreign.C
-import Z.Data.Array           as A
-import Z.Data.Vector.Base     as V
-import Z.Data.Vector.Extra    as V
-import Z.Data.CBytes          as CBytes
+import GHC.Generics
+import Z.Data.Array                     as A
+import Z.Data.Vector.Base               as V
+import Z.Data.Vector.Extra              as V
+import Z.Data.CBytes                    as CBytes
+import qualified Z.Data.Text.ShowT      as T
+import Z.Data.Text.ShowT                (ShowT(..))
+import Z.Data.JSON                      (EncodeJSON, ToValue, FromValue)
 import Z.IO.Network.SocketAddr
 import Z.Foreign
 import Z.IO.UV.FFI
@@ -92,11 +96,13 @@ data UDP = UDP
     , udpClosed  :: {-# UNPACK #-} !(IORef Bool)
     }
 
-instance Show UDP where
-    show (UDP hdl slot uvm _ _) =
-        "UDP{udpHandle=" ++ show hdl ++
-                ",udpSlot=" ++ show slot ++
-                ",udpManager=" ++ show uvm ++ "}"
+instance Show UDP where show = T.toString
+instance ShowT UDP where
+    toUTF8BuilderP _ (UDP hdl slot uvm _ _) = do
+        "UDP{udpHandle="    >> T.toUTF8Builder hdl
+        ",udpSlot="         >> T.toUTF8Builder slot
+        ",udpManager="      >> T.toUTF8Builder uvm
+        T.char7 '}'
 
 -- | UDP options.
 --
@@ -107,7 +113,8 @@ data UDPConfig = UDPConfig
     { udpSendMsgSize :: {-# UNPACK #-} !Int         -- ^ maximum size of sending buffer
     , udpLocalAddr :: Maybe (SocketAddr, UDPFlag)   -- ^ do we want bind a local address before receiving & sending?
                                                     --   set to Nothing to let OS pick a random one.
-    } deriving (Show, Eq, Ord)
+    } deriving (Eq, Ord, Show, Generic)
+      deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 -- | @UDPConfig 512 Nothing@
 defaultUDPConfig :: UDPConfig
@@ -305,7 +312,8 @@ data UDPRecvConfig = UDPRecvConfig
                                                 --   inside each uv_run, we do batch receiving,
                                                 --   increase this number can improve receiving performance,
                                                 --   at the cost of memory and potential GHC thread starving.
-    }
+    } deriving (Eq, Ord, Show, Read, Generic)
+      deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 -- | @UDPRecvConfig 512 6@
 defaultUDPRecvConfig :: UDPRecvConfig

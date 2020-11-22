@@ -37,7 +37,10 @@ import           Control.Monad
 import           Control.Monad.IO.Class
 import           Data.Primitive.PrimArray
 import           Foreign.Ptr
+import           GHC.Generics
 import           Z.Data.CBytes
+import           Z.Data.Text.ShowT   (ShowT(..))
+import           Z.Data.JSON         (EncodeJSON, ToValue, FromValue)
 import           Z.IO.Exception
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
@@ -53,7 +56,8 @@ data IPCClientConfig = IPCClientConfig
     { ipcClientName :: Maybe CBytes -- ^ bind to a local file path (Unix) or name (Windows),
                                     -- won't bind if set to 'Nothing'.
     , ipcTargetName :: CBytes       -- ^ target path (Unix) or a name (Windows).
-    }
+    } deriving (Eq, Ord, Show, Read, Generic)
+      deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 -- | Default config, connect to ".\/ipc".
 --
@@ -83,7 +87,8 @@ initIPCClient (IPCClientConfig cname tname) = do
 data IPCServerConfig = IPCServerConfig
     { ipcListenName       :: CBytes      -- ^ listening path (Unix) or a name (Windows).
     , ipcListenBacklog    :: Int           -- ^ listening pipe's backlog size, should be large enough(>128)
-    }
+    } deriving (Eq, Ord, Show, Read, Generic)
+      deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 -- | A default hello world server on @.\/ipc@
 --
