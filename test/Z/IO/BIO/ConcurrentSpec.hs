@@ -41,7 +41,7 @@ spec = describe "BIO.Concurrent" $ do
         forkIO $ producter
         forkIO $ producter
 
-        threadDelay 5000000
+        threadDelay 10000000
 
         s <- readIORef sumRef
         s @?= (sum content * 2)
@@ -68,7 +68,7 @@ spec = describe "BIO.Concurrent" $ do
         forkIO $ producter
         forkIO $ producter
 
-        threadDelay 5000000
+        threadDelay 10000000
 
         s <- readIORef sumRef
         s @?= (sum content * 2)
@@ -96,7 +96,7 @@ spec = describe "BIO.Concurrent" $ do
         forkIO $ producter
         forkIO $ producter
 
-        threadDelay 5000000
+        threadDelay 10000000
 
         s <- readIORef sumRef
         s @?= (sum content * 2 * 3)

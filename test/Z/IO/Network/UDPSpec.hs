@@ -22,7 +22,7 @@ spec = describe "UDP operations" $ do
     it "roundtrip test" $ do
         let testMsg = V.replicate 256 48
             longMsg = V.replicate 2048 48
-            addr = SocketAddrInet 12345 inetLoopback
+            addr = SocketAddrIPv4 ipv4Loopback 12345
         withResource (initUDP defaultUDPConfig{udpSendMsgSize = 2048}) $ \ c ->
             withResource (initUDP defaultUDPConfig{udpLocalAddr = Just (addr,UDP_DEFAULT)}) $ \ s -> do
                 forkIO $ sendUDP c addr testMsg
@@ -38,8 +38,8 @@ spec = describe "UDP operations" $ do
 
     it "UDP sending addr test" $ do
         let testMsg = V.replicate 256 48
-            addr = SocketAddrInet 12346 inetLoopback
-            addr' = SocketAddrInet 12347 inetLoopback
+            addr = SocketAddrIPv4 ipv4Loopback 12346
+            addr' = SocketAddrIPv4 ipv4Loopback 12347
         withResource (initUDP defaultUDPConfig{udpLocalAddr = Just (addr,UDP_DEFAULT)}) $ \ c ->
             withResource (initUDP defaultUDPConfig{udpLocalAddr = Just (addr',UDP_DEFAULT)}) $ \ s -> do
                 forkIO $ sendUDP c addr' testMsg
@@ -48,14 +48,14 @@ spec = describe "UDP operations" $ do
 
     it "overlong message exception" $ do
         let testMsg = V.replicate 4096 48
-            addr = SocketAddrInet 12348 inetLoopback
+            addr = SocketAddrIPv4 ipv4Loopback 12348
         withResource (initUDP defaultUDPConfig) $ \ c ->
             withResource (initUDP defaultUDPConfig) $ \ s -> do
                 sendUDP c addr testMsg `shouldThrow` anyException
 
     it "batch receiving(multiple messages)" $ do
         let testMsg = V.replicate 256 48
-            addr = SocketAddrInet 12346 inetLoopback
+            addr = SocketAddrIPv4 ipv4Loopback 12346
         msgList <- newIORef []
         forkIO $ withResource (initUDP defaultUDPConfig{udpLocalAddr = Just (addr,UDP_DEFAULT)}) $ \ s -> do
             recvUDPLoop defaultUDPRecvConfig s $ \ msgs ->

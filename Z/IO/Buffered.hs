@@ -22,9 +22,9 @@ module Z.IO.Buffered
   , readBuffer, readBufferText
   , unReadBuffer
   , readParser
-  , readExactly,  readExactly'
-  , readToMagic, readToMagic'
-  , readLine, readLine'
+  , readExactly
+  , readToMagic
+  , readLine
   , readAll, readAll'
     -- * Buffered Output
   , BufferedOutput, bufOutput
@@ -166,7 +166,8 @@ readBuffer BufferedInput{..} = do
 
 -- | Request UTF8 'T.Text' chunk from 'BufferedInput'.
 --
--- The buffer size must be larger than 4 bytes to guarantee decoding progress.
+-- The buffer size must be larger than 4 bytes to guarantee decoding progress. If there're
+-- trailing bytes before EOF, 'IncompleteInput' are thrown.
 readBufferText :: HasCallStack => BufferedInput -> IO T.Text
 readBufferText BufferedInput{..} = do
     pb <- readIORef bufPushBack
@@ -224,8 +225,7 @@ readBufferText BufferedInput{..} = do
 
 -- | Read N bytes(may be smaller than N if EOF reached).
 --
--- If EOF reached before N bytes read, trailing bytes will be returned.
---
+-- If EOF reached before N bytes read, a 'IncompleteInput' will be thrown
 readExactly :: HasCallStack => Int -> BufferedInput -> IO V.Bytes
 readExactly n0 h0 = V.concat `fmap` (go h0 n0)
   where
@@ -234,27 +234,16 @@ readExactly n0 h0 = V.concat `fmap` (go h0 n0)
         let l = V.length chunk
         if l > n
         then do
-            let (lastChunk, rest) = V.splitAt n chunk
+            let (chunk', rest) = V.splitAt n chunk
             unReadBuffer rest h
-            return [lastChunk]
+            return [chunk']
         else if l == n
             then return [chunk]
             else if l == 0
-                then return [chunk]
+                then throwIO (IncompleteInput callStack)
                 else do
                     chunks <- go h (n - l)
                     return (chunk : chunks)
-
--- | Read exactly N bytes
---
--- If EOF reached before N bytes read, a 'IncompleteInput' will be thrown
---
-readExactly' :: HasCallStack => Int -> BufferedInput -> IO V.Bytes
-readExactly' n h = do
-    v <- readExactly n h
-    if (V.length v /= n)
-    then throwIO (IncompleteInput callStack)
-    else return v
 
 -- | Read all chunks from a 'BufferedInput'.
 --
@@ -303,11 +292,19 @@ readParser p i = do
     unReadBuffer rest i
     return r
 
--- | Read until reach a magic bytes, return bytes(including the magic bytes)
---
--- If EOF is reached before meet a magic byte, partial bytes are returned.
+{-| Read until reach a magic bytes, return bytes(including the magic bytes).
+
+Empty bytes indicate EOF. if EOF is reached before meet a magic byte, partial bytes are returned.
+
+@
+ \/----- readToMagic ----- \\ \/----- readToMagic -----\\ ...
++------------------+-------+-----------------+-------+
+|       ...        | magic |       ...       | magic | ...
++------------------+-------+-----------------+-------+
+@
+-}
 readToMagic :: HasCallStack => Word8 -> BufferedInput -> IO V.Bytes
-readToMagic magic0 h0 = V.concat `fmap` (go h0 magic0)
+readToMagic magic0 h0 = V.concat <$> go h0 magic0
   where
     go h magic = do
         chunk <- readBuffer h
@@ -315,59 +312,35 @@ readToMagic magic0 h0 = V.concat `fmap` (go h0 magic0)
         then return []
         else case V.elemIndex magic chunk of
             Just i -> do
-                let (lastChunk, rest) = V.splitAt (i+1) chunk
+                let (chunk', rest) = V.splitAt (i+1) chunk
                 unReadBuffer rest h
-                return [lastChunk]
+                return [chunk']
             Nothing -> do
                 chunks <- go h magic
                 return (chunk : chunks)
 
--- | Read until reach a magic bytes, return bytes(including the magic bytes)
---
--- If EOF is reached before meet a magic byte, a 'IncompleteInput' will be thrown.
-readToMagic' :: HasCallStack => Word8 -> BufferedInput -> IO V.Bytes
-readToMagic' magic0 h0 = V.concat `fmap` (go h0 magic0)
-  where
-    go h magic = do
-        chunk <- readBuffer h
-        if V.null chunk
-        then throwIO (IncompleteInput callStack)
-        else case V.elemIndex magic chunk of
-            Just i -> do
-                let (lastChunk, rest) = V.splitAt (i+1) chunk
-                unReadBuffer rest h
-                return [lastChunk]
-            Nothing -> do
-                chunks <- go h magic
-                return (chunk : chunks)
+{-| Read to a linefeed ('\n' or '\r\n'), return 'Bytes' before it.
 
--- | Read to a linefeed ('\n' or '\r\n'), return 'Bytes' before it.
---
--- Return bytes don't include linefeed, empty bytes indicate empty line, 'Nothing' indicate EOF.
--- If EOF is reached before meet a line feed, partial line is returned.
+Return bytes don't include linefeed, empty bytes indicate empty line, 'Nothing' indicate EOF.
+If EOF is reached before meet a line feed, partial line is returned.
+
+@
+ \/--- readLine ---\\ discarded \/--- readLine ---\\ discarded \/ ...
++------------------+---------+------------------+---------+
+|      ...         | \\r\\n\/\\n |       ...        | \\r\\n\/\\n | ...
++------------------+---------+------------------+---------+
+@
+-}
 readLine :: HasCallStack => BufferedInput -> IO (Maybe V.Bytes)
 readLine i = do
     bs@(V.PrimVector arr s l) <- readToMagic 10 i
     if l == 0
     then return Nothing
     else return $ case bs `V.indexMaybe` (l-2) of
-        Nothing -> Just (V.PrimVector arr s (l-1))
         Just r | r == 13   -> Just (V.PrimVector arr s (l-2))
                | otherwise -> Just (V.PrimVector arr s (l-1))
-
--- | Read to a linefeed ('\n' or '\r\n'), return 'Bytes' before it.
---
--- Return bytes don't include linefeed, empty bytes indicate empty line, 'Nothing' indicate EOF.
--- If EOF reached before meet a line feed, a 'IncompleteInput' will be thrown.
-readLine' :: HasCallStack => BufferedInput -> IO (Maybe V.Bytes)
-readLine' i = do
-    bs@(V.PrimVector arr s l) <- readToMagic' 10 i
-    if l == 0
-    then return Nothing
-    else return $ case bs `V.indexMaybe` (l-2) of
-        Nothing -> Just (V.PrimVector arr s (l-1))
-        Just r | r == 13   -> Just (V.PrimVector arr s (l-2))
-               | otherwise -> Just (V.PrimVector arr s (l-1))
+        _ | V.head bs == 10 -> Just (V.PrimVector arr s (l-1))
+          | otherwise -> Just (V.PrimVector arr s l)
 
 --------------------------------------------------------------------------------
 

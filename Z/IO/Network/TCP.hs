@@ -37,6 +37,9 @@ import           Control.Monad
 import           Control.Monad.IO.Class
 import           Data.Primitive.PrimArray
 import           Foreign.Ptr
+import           GHC.Generics
+import           Z.Data.Text.ShowT   (ShowT(..))
+import           Z.Data.JSON         (EncodeJSON, ToValue, FromValue)
 import           Z.IO.Exception
 import           Z.IO.Network.SocketAddr
 import           Z.IO.Resource
@@ -55,12 +58,13 @@ data TCPClientConfig = TCPClientConfig
     , tcpRemoteAddr :: SocketAddr       -- ^ remote target address
     , tcpClientNoDelay :: Bool          -- ^ if we want to use @TCP_NODELAY@
     , tcpClientKeepAlive :: CUInt       -- ^ set keepalive delay for client socket, see 'setTCPKeepAlive'
-    }
+    } deriving (Eq, Ord, Show, Generic)
+      deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 -- | Default config, connect to @localhost:8888@.
 --
 defaultTCPClientConfig :: TCPClientConfig
-defaultTCPClientConfig = TCPClientConfig Nothing (SocketAddrInet 8888 inetLoopback) True 30
+defaultTCPClientConfig = TCPClientConfig Nothing (SocketAddrIPv4 ipv4Loopback 8888) True 30
 
 -- | init a TCP client 'Resource', which open a new connect when used.
 --
@@ -91,7 +95,8 @@ data TCPServerConfig = TCPServerConfig
     , tcpListenBacklog    :: Int           -- ^ listening socket's backlog size, should be large enough(>128)
     , tcpServerWorkerNoDelay :: Bool       -- ^ if we want to use @TCP_NODELAY@
     , tcpServerWorkerKeepAlive :: CUInt    -- ^ set keepalive delay for worker socket, see 'setTCPKeepAlive'
-    }
+    } deriving (Eq, Ord, Show, Generic)
+      deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 -- | A default hello world server on localhost:8888
 --
@@ -100,7 +105,7 @@ data TCPServerConfig = TCPServerConfig
 --
 defaultTCPServerConfig :: TCPServerConfig
 defaultTCPServerConfig = TCPServerConfig
-    (SocketAddrInet 8888 inetAny)
+    (SocketAddrIPv4 ipv4Any 8888)
     128
     True
     30

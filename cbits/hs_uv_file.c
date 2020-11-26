@@ -821,3 +821,16 @@ HsInt hs_uv_fs_lchown_threaded(const char* path, uv_uid_t uid, uv_gid_t gid, uv_
         return (HsInt)r;
     } else return slot;
 }
+
+int64_t hs_seek(int file, int64_t off, int origin){
+#if defined(_WIN32)
+    int64_t r = (int64_t)_lseeki64(file, off, origin);
+#else
+    int64_t r = (int64_t)lseek(file, off, origin);
+#endif
+    if (r < 0) {
+        return uv_translate_sys_error(errno);
+    } else { 
+        return r;
+    }
+}

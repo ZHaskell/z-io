@@ -23,13 +23,16 @@ module Z.IO.Network.DNS (
   ) where
 
 import           Data.Bits
-import           Data.List as List
+import           Data.List                  as List
 import           Data.Word
 import           Foreign.C.Types
 import           Foreign.Marshal.Utils
 import           Foreign.Ptr
 import           Foreign.Storable 
-import           Z.Data.CBytes  as CBytes
+import           GHC.Generics
+import           Z.Data.CBytes              as CBytes
+import           Z.Data.Text.ShowT          (ShowT(..))
+import           Z.Data.JSON                (EncodeJSON, ToValue, FromValue)
 import           Z.Foreign
 import           Z.IO.Exception
 import           Z.IO.Network.SocketAddr
@@ -82,7 +85,8 @@ data AddrInfoFlag =
     --   addresses are found, IPv6-mapped IPv4 addresses will be
     --   returned. (Only some platforms support this.)
     | AI_V4MAPPED
-    deriving (Eq, Read, Show)
+    deriving (Eq, Ord, Read, Show, Generic)
+    deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 addrInfoFlagMapping :: [(AddrInfoFlag, CInt)]
 addrInfoFlagMapping =
@@ -124,7 +128,8 @@ data AddrInfo = AddrInfo {
   , addrProtocol :: ProtocolNumber
   , addrAddress :: SocketAddr
   , addrCanonName :: CBytes
-  } deriving (Eq, Show)
+  } deriving (Eq, Ord, Show, Generic)
+    deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
 
 instance Storable AddrInfo where
@@ -209,7 +214,7 @@ defaultHints = AddrInfo {
   , addrFamily     = AF_UNSPEC
   , addrSocketType = SOCK_ANY
   , addrProtocol   = IPPROTO_DEFAULT
-  , addrAddress    = SocketAddrInet portAny inetAny
+  , addrAddress    = SocketAddrIPv4 ipv4Any portAny
   , addrCanonName  = empty
   }
 
