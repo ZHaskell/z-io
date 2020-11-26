@@ -7,7 +7,7 @@ Maintainer  : winterland1989@gmail.com
 Stability   : experimental
 Portability : non-portable
 
-This module provide IO manager which bridge libuv's async interface with ghc's light weight thread.
+This is an internal module provides IO manager which bridge libuv's async interface with ghc's lightweight thread.
 
 The main procedures for doing event IO is:
 
@@ -15,7 +15,9 @@ The main procedures for doing event IO is:
   * Prepare you IO buffer with 'pokeBufferTable'(read or write).
   * Call C side IO functions with predefined callbacks.
   * Block your thread with the 'MVar' from 'getBlockMVar'.
-  * Read the result by 'takeMVar' on that 'MVar', it will be the value pushed on C side.
+  * In predefined callbacks, push slot number to uv_loop's queue.
+  * IO polling finishes, IO manager thread will unblock blocking IO threads by filling the 'MVar' with
+    current value from buffer size table.
   * Slot is freed on C side, either via callbacks, or when handle is closed.
 
 Usually slots are cache in the IO device so that you don't have to allocate new one before each IO operation.
@@ -24,7 +26,7 @@ Check "Z.IO.Network.TCP" as an example.
 -}
 
 module Z.IO.UV.Manager
-  ( UVManager
+  ( UVManager(..)
   , getUVManager
   , getBlockMVar
   , peekBufferSizeTable
@@ -54,6 +56,7 @@ import           GHC.Conc.Sync            (labelThread)
 import           System.IO.Unsafe
 import           Z.Data.Array
 import           Z.Data.PrimRef.PrimIORef
+import qualified Z.Data.Text.ShowT as T
 import           Z.IO.Exception
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
@@ -61,27 +64,26 @@ import           Z.IO.UV.FFI
 --------------------------------------------------------------------------------
 
 data UVManager = UVManager
-    { uvmBlockTable :: {-# UNPACK #-} !(IORef (UnliftedArray (MVar Int))) -- a array to store threads blocked on async IO.
-
-    , uvmLoop       :: {-# UNPACK #-} !(Ptr UVLoop)        -- the uv loop refrerence
-
-    , uvmLoopData   :: {-# UNPACK #-} !(Ptr UVLoopData)    -- cached pointer to uv_loop_t's data field
-
-    , uvmRunning    :: {-# UNPACK #-} !(MVar Bool)     -- only uv manager thread will modify this value.
-                                                        -- 'True' druing uv_run and 'False' otherwise.
-                                                        --
-                                                        -- unlike epoll/ONESHOT, uv loop are NOT thread safe,
-                                                        -- we have to wake up the loop before mutating uv_loop's
-                                                        -- state.
-    , uvmCap        ::  {-# UNPACK #-} !Int                -- the capability uv manager run on.
+    { uvmBlockTable :: {-# UNPACK #-} !(IORef (UnliftedArray (MVar Int)))
+    -- ^ A array to store threads blocked on async IO.
+    , uvmLoop       :: {-# UNPACK #-} !(Ptr UVLoop)
+    -- ^ The uv loop refrerence
+    , uvmLoopData   :: {-# UNPACK #-} !(Ptr UVLoopData)
+    -- ^ Cached pointer to uv_loop_t's data field
+    , uvmRunning    :: {-# UNPACK #-} !(MVar Bool)
+    -- ^ Only uv manager thread will modify this value,
+    -- 'True' druing uv_run and 'False' otherwise.
+    -- Unlike epoll/ONESHOT, uv loop are NOT thread safe,
+    -- one have to wake up the loop before mutating uv_loop's state.
+    , uvmCap        ::  {-# UNPACK #-} !Int
+    -- ^ The capability number which uv manager runs on.
     }
 
-instance Show UVManager where
-    show uvm = "UVManager on capability " ++ show (uvmCap uvm)
+instance Show UVManager where show = T.toString
 
-instance Eq UVManager where
-    uvm == uvm' =
-        uvmCap uvm == uvmCap uvm'
+instance T.ShowT UVManager where
+    toUTF8BuilderP p uvm = T.parenWhen (p > 10) $
+        "UVManager on capability " >> T.int (uvmCap uvm)
 
 uvManagerArray :: IORef (Array UVManager)
 {-# NOINLINE uvManagerArray #-}

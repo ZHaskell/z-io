@@ -33,8 +33,7 @@ AddrInfo {addrFlags = [AI_ADDRCONFIG,AI_V4MAPPED], addrFamily = SocketFamily 2, 
 > import qualified Z.Data.Text as T
 > -- send a simple HTTP request
 > :{
-let addr = SocketAddrInet 80 (tupleToInetAddr (13,107,21,200))
--- addr = ipv4 "13.107.21.200" 80
+let addr = ipv4 "13.107.21.200" 80
 in withResource (initTCPClient defaultTCPClientConfig{ tcpRemoteAddr = addr}) $ \ tcp -> do
     i <- newBufferedInput tcp 
     o <- newBufferedOutput tcp
@@ -47,7 +46,7 @@ in withResource (initTCPClient defaultTCPClientConfig{ tcpRemoteAddr = addr}) $ 
 > -- Start a TCP echo server, use @nc -v localhost 8080@ to test
 > :{
 startTCPServer defaultTCPServerConfig{ 
-    tcpListenAddr = SocketAddrInet 8080 inetLoopback} $ \ tcp -> do
+    tcpListenAddr = SocketAddrIPv4 ipv4Loopback 8080} $ \ tcp -> do
         i <- newBufferedInput tcp 
         o <- newBufferedOutput tcp
         forever $ readBuffer i >>= writeBuffer o >> flushBuffer o

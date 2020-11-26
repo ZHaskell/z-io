@@ -22,7 +22,7 @@ spec = describe "TCP operations" $ do
     it "roundtrip test" $ do
         let testMsg = V.cycleN 256 "abc"
             longMsg = V.cycleN 2048 "abcdefg"
-            addr = SocketAddrInet 12345 inetLoopback
+            addr = SocketAddrIPv4 ipv4Loopback 12345
 
         serverThread <- forkIO $ startTCPServer defaultTCPServerConfig{ tcpListenAddr = addr } echo
 
@@ -34,11 +34,11 @@ spec = describe "TCP operations" $ do
                 o <- newBufferedOutput tcp
 
                 writeBuffer o testMsg >> flushBuffer o
-                testMsg' <- readExactly' (V.length testMsg) i
+                testMsg' <- readExactly (V.length testMsg) i
                 testMsg' @=? testMsg
 
                 writeBuffer o longMsg >> flushBuffer o
-                longMsg' <- readExactly' (V.length longMsg) i
+                longMsg' <- readExactly (V.length longMsg) i
                 longMsg' @=? longMsg
 
         threadDelay 5000000  -- 5s

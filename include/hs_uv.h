@@ -37,6 +37,8 @@
 
 #if !defined(_WIN32)
 
+#include <unistd.h> 
+
 #if defined(__sun)
 # include <sys/port.h>
 # include <port.h>
@@ -592,6 +594,8 @@ void hs_uv_fs_readlink_cleanup(char* path);
 
 ////////////////////////////////////////////////////////////////////////////////
 // fs, none thread pool version
+int64_t hs_seek(int file, int64_t off, int origin);
+
 int32_t hs_uv_fs_open(const char* path, int flags, int mode);
 HsInt hs_uv_fs_close(int32_t file);
 HsInt hs_uv_fs_read(int32_t file, char* buffer, HsInt buffer_size, int64_t offset);
