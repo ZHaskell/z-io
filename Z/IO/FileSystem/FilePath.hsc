@@ -36,8 +36,9 @@ module Z.IO.FileSystem.FilePath
   , getSearchPath
  ) where
 
-
+import           Control.Monad      hiding (join)
 import           Data.Word
+import           Data.Bits
 import qualified Data.List as List
 import           GHC.Generics
 import           Z.Data.CBytes (CBytes(CB), allocCBytesUnsafe, withCBytesUnsafe, withCBytesListUnsafe)
@@ -48,6 +49,7 @@ import qualified Z.Data.Vector.Base as V
 import qualified Z.Data.Vector      as V
 import           Z.Foreign
 import           Z.IO.Environment   (getEnv')
+import           Z.IO.Exception
 import Prelude hiding (concat)
 
 #include "hs_cwalk.h"
@@ -496,6 +498,9 @@ absolute p p2 = do
 --
 -- This function generates a relative path based on a base path and another path.
 -- It determines how to get to the submitted path, starting from the base directory.
+-- 
+-- Note the two arguments must be both absolute or both relative, otherwise an 'InvalidArgument' 
+-- will be thrown.
 --
 -- +---------+--------------------------+--------------------------+-----------------+
 -- | Style   | Base                     | Path                     | Result          |
@@ -523,15 +528,18 @@ absolute p p2 = do
 -- | WINDOWS | C:\/path\/same           | D:\/path\/same           | ""              |
 -- +---------+--------------------------+--------------------------+-----------------+
 --
-relative :: CBytes  -- ^ The base path from which the relative path will start.
+relative :: HasCallStack
+         => CBytes  -- ^ The base path from which the relative path will start.
          -> CBytes  -- ^ The target path where the relative path will point to.
          -> IO CBytes
 relative p p2 = do
-    let l = CB.length p + CB.length p2 + (#const BUF_EXT_SIZ)
-    (p', _) <- withCBytesUnsafe p $ \ pp ->
+    let l = (CB.length p `unsafeShiftL` 1) + CB.length p2 + (#const BUF_EXT_SIZ)
+    (p', r) <- withCBytesUnsafe p $ \ pp ->
         withCBytesUnsafe p2 $ \ pp2 ->
             allocCBytesUnsafe l $ \ pbuf ->
                 cwk_path_get_relative pp pp2 pbuf (fromIntegral l)
+    when (r == 0) $
+        throwIO (InvalidArgument (IOEInfo "EINVAL" "file path types are different" callStack))
     return p'
 
 -- | Split the extension of a file path.
