@@ -274,11 +274,11 @@ startLowResTimerManager lrtm@(LowResTimerManager _ _ regCounter runningLock)  = 
                     !deltaT' = if deltaT < 0 then 0 else deltaT
                 case () of
                     _
-    #ifndef mingw32_HOST_OS
+#ifndef mingw32_HOST_OS
                         | rtsSupportsBoundThreads -> do
                             htm <- getSystemTimerManager
                             void $ registerTimeout htm deltaT' (loop currentT')
-    #endif
+#endif
                         | otherwise -> void . forkIO $ do   -- we have to fork another thread since we're holding runningLock,
                             threadDelay deltaT'             -- this may affect accuracy, but on windows there're no other choices.
                             loop currentT'
