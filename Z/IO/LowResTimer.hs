@@ -54,6 +54,7 @@ import           GHC.Conc
 import           System.IO.Unsafe
 import           Z.Data.PrimRef.PrimIORef
 import           Z.IO.Exception
+import           Z.IO.UV.FFI                  (uv_hrtime)
 
 --
 queueSize :: Int
@@ -64,11 +65,14 @@ queueSize = 128
 data TimerList = TimerItem {-# UNPACK #-} !Counter (IO ()) TimerList | TimerNil
 
 data LowResTimerManager = LowResTimerManager
-    { lrTimerQueue :: Array (IORef TimerList)
-    , lrIndexLock :: MVar Int
-    , lrRegisterCount :: Counter
-    , lrRunningLock :: MVar Bool
-    }
+    (Array (IORef TimerList))
+    -- timer queue
+    (MVar Int)
+    -- current time wheel's index
+    Counter
+    -- registered counter, stop timer thread if go downs to zero
+    (MVar Bool)
+    -- running lock 
 
 newLowResTimerManager :: IO LowResTimerManager
 newLowResTimerManager = do
@@ -253,27 +257,36 @@ ensureLowResTimerManager lrtm@(LowResTimerManager _ _ _ runningLock) = do
 --
 startLowResTimerManager :: LowResTimerManager ->IO ()
 startLowResTimerManager lrtm@(LowResTimerManager _ _ regCounter runningLock)  = do
-    modifyMVar_ runningLock $ \ _ -> do     -- we shouldn't receive async exception here
-        c <- readPrimIORef regCounter          -- unless something terribly wrong happened, e.g., stackoverflow
-        if c > 0
-        then do
-            _ <- forkIO (fireLowResTimerQueue lrtm)  -- we offload the scanning to another thread to minimize
-                                                -- the time we holding runningLock
-            case () of
-                _
-#ifndef mingw32_HOST_OS
-                    | rtsSupportsBoundThreads -> do
-                        htm <- getSystemTimerManager
-                        void $ registerTimeout htm 100000 (startLowResTimerManager lrtm)
-#endif
-                    | otherwise -> void . forkIO $ do   -- we have to fork another thread since we're holding runningLock,
-                        threadDelay 100000              -- this may affect accuracy, but on windows there're no other choices.
-                        startLowResTimerManager lrtm
-            return True
-        else do
-            return False -- if we haven't got any registered timeout, we stop the time manager
-                         -- doing this can stop us from getting the way of idle GC
-                         -- since we're still inside runningLock, we won't miss new registration.
+    lastT <- uv_hrtime
+    loop (fromIntegral (lastT - 100000000))
+  where      
+    loop :: Int -> IO ()
+    loop !lastT = do
+        modifyMVar_ runningLock $ \ _ -> do     -- we shouldn't receive async exception here
+            c <- readPrimIORef regCounter          -- unless something terribly wrong happened, e.g., stackoverflow
+            if c > 0
+            then do
+                _ <- forkIO (fireLowResTimerQueue lrtm)  -- we offload the scanning to another thread to minimize
+                                                    -- the time we holding runningLock
+                currentT <- uv_hrtime
+                let !currentT' = fromIntegral currentT
+                    !deltaT = 200000 - (currentT' - lastT) `quot` 1000
+                    !deltaT' = if deltaT < 0 then 0 else deltaT
+                case () of
+                    _
+    #ifndef mingw32_HOST_OS
+                        | rtsSupportsBoundThreads -> do
+                            htm <- getSystemTimerManager
+                            void $ registerTimeout htm deltaT' (loop currentT')
+    #endif
+                        | otherwise -> void . forkIO $ do   -- we have to fork another thread since we're holding runningLock,
+                            threadDelay deltaT'             -- this may affect accuracy, but on windows there're no other choices.
+                            loop currentT'
+                return True
+            else do
+                return False -- if we haven't got any registered timeout, we stop the time manager
+                            -- doing this can stop us from getting the way of idle GC
+                            -- since we're still inside runningLock, we won't miss new registration.
 
 -- | Scan the timeout queue in current tick index, and move tick index forward by one.
 --
