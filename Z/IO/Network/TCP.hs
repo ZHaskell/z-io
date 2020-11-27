@@ -98,7 +98,7 @@ data TCPServerConfig = TCPServerConfig
     } deriving (Eq, Ord, Show, Generic)
       deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
 
--- | A default hello world server on localhost:8888
+-- | A default hello world server on 0.0.0.0:8888
 --
 -- Test it with @main = startTCPServer defaultTCPServerConfig helloWorldWorker@ or
 -- @main = startTCPServer defaultTCPServerConfig echoWorker@, now try @nc -v 127.0.0.1 8888@

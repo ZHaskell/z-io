@@ -21,7 +21,7 @@ import Z.IO.Process
 
 module Z.IO.Process (
     initProcess
-  , readProcess 
+  , readProcess
   , readProcessText
   , ProcessOptions(..)
   , defaultProcessOptions
@@ -32,7 +32,7 @@ module Z.IO.Process (
   , getProcessPID
   , killPID
   , getPriority, setPriority
-  -- * internal 
+  -- * internal
   , spawn
   -- * Constant
   -- ** ProcessFlag
@@ -45,10 +45,10 @@ module Z.IO.Process (
   , pattern PROCESS_WINDOWS_HIDE_GUI
   -- ** Signal
   , Signal
-  , pattern SIGTERM 
-  , pattern SIGINT 
+  , pattern SIGTERM
+  , pattern SIGINT
   , pattern SIGKILL
-  , pattern SIGHUP 
+  , pattern SIGHUP
   -- ** Priority
   , Priority
   , pattern PRIORITY_LOW
@@ -94,7 +94,7 @@ defaultProcessOptions = ProcessOptions
     , processCWD = "."
     , processFlags = 0
     , processUID = UID 0
-    , processGID = GID 0 
+    , processGID = GID 0
     , processStdStreams = (ProcessIgnore, ProcessIgnore, ProcessIgnore)
     }
 
@@ -132,16 +132,16 @@ pattern SIGHUP  = #const SIGHUP
 
 -- | Resource spawn processes.
 --
--- Return a resource spawn processes, when initiated return the @(stdin, stdout, stderr, pstate)@ tuple, 
+-- Return a resource spawn processes, when initiated return the @(stdin, stdout, stderr, pstate)@ tuple,
 -- std streams are created when pass 'ProcessCreate' option, otherwise will be 'Nothing',
 -- @pstate@ will be updated to `ProcessExited` automatically when the process exits.
--- 
--- A cleanup thread will be started when you finish using the process resource, to close any std stream 
+--
+-- A cleanup thread will be started when you finish using the process resource, to close any std stream
 -- created during spawn.
 --
 -- @
 -- initProcess defaultProcessOptions{
---       processFile="your program" 
+--       processFile="your program"
 --   ,   processStdStreams = (ProcessCreate, ProcessCreate, ProcessCreate)
 --   } $ (stdin, stdout, stderr, pstate) -> do
 --   ... -- read or write from child process's std stream, will clean up automatically
@@ -157,15 +157,15 @@ initProcess opt = initResource (spawn opt) $ \ (s0,s1,s2, pstate) -> void . fork
 -- | Spawn a processe with given input.
 --
 -- Child process's stdout and stderr output are collected, return with exit code.
-readProcess :: HasCallStack 
+readProcess :: HasCallStack
             => ProcessOptions                   -- ^ processStdStreams options are ignored
             -> V.Bytes                          -- ^ stdin
             -> IO (V.Bytes, V.Bytes, ExitCode)  -- ^ stdout, stderr, exit code
 readProcess opts inp = do
-    withResource (initProcess opts{processStdStreams=(ProcessCreate, ProcessCreate, ProcessCreate)}) 
+    withResource (initProcess opts{processStdStreams=(ProcessCreate, ProcessCreate, ProcessCreate)})
         $ \ (Just s0, Just s1, Just s2, pstate) -> do
-            r1 <- newEmptyMVar 
-            r2 <- newEmptyMVar 
+            r1 <- newEmptyMVar
+            r2 <- newEmptyMVar
             _ <- forkIO $ do
                 withPrimVectorSafe inp (writeOutput s0)
                 closeUVStream s0
@@ -174,13 +174,13 @@ readProcess opts inp = do
                 readAll' b1 >>= putMVar r1
             _ <- forkIO $ do
                 b2 <- newBufferedInput s2
-                readAll' b2 >>= putMVar r2 
+                readAll' b2 >>= putMVar r2
             (,,) <$> takeMVar r1 <*> takeMVar r2 <*> waitProcessExit pstate
 
 -- | Spawn a processe with given UTF8 textual input.
 --
 -- Child process's stdout and stderr output are collected as UTF8 bytes, return with exit code.
-readProcessText :: HasCallStack 
+readProcessText :: HasCallStack
                 => ProcessOptions                   -- ^ processStdStreams options are ignored
                 -> T.Text                           -- ^ stdin
                 -> IO (T.Text, T.Text, ExitCode)    -- ^ stdout, stderr, exit code
@@ -201,7 +201,7 @@ spawn ProcessOptions{..} = do
     pokeMBA popts## (#offset uv_process_options_t, uid) processUID
     pokeMBA popts## (#offset uv_process_options_t, gid) processGID
 
-    uvm <- getUVManager 
+    uvm <- getUVManager
 
     let (s0, s1, s2) = processStdStreams
 
@@ -215,7 +215,7 @@ spawn ProcessOptions{..} = do
             pokeMBA pstdio## (#offset uv_stdio_container_t, data) (uvsHandle uvs0)
             return (Just uvs0)
         _ -> return Nothing
-        
+
     pokeMBA pstdio## ((#offset uv_stdio_container_t, flags)+(#size uv_stdio_container_t))
                 (processStdStreamFlag s1)
     uvs1' <- case s1 of
@@ -244,7 +244,7 @@ spawn ProcessOptions{..} = do
 
     let mkEnv (k, v) = CBytes.concat [k, "=", v]
         allEnv = case processEnv of
-            Just e -> List.map mkEnv e  
+            Just e -> List.map mkEnv e
             _ -> []
         envLen = case processEnv of
             Just e -> List.length e
@@ -264,9 +264,9 @@ spawn ProcessOptions{..} = do
     ps <- newTVarIO (ProcessRunning (PID (fromIntegral pid)))
 
     _ <- forkFinally (takeMVar exitLock) $ \ r -> do
-        case r of 
+        case r of
             Left _ -> atomically (writeTVar ps (ProcessExited (ExitFailure (-1))))
-            Right e -> 
+            Right e ->
                 let e' = if e == 0 then ExitSuccess else ExitFailure e
                 in atomically (writeTVar ps (ProcessExited e'))
 
