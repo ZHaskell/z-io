@@ -1,6 +1,10 @@
 # Revision history for Z-IO
 
-## 0.1.9.0  -- 2020-10-24
+## 0.1.9.1  -- TBD
+
+* Fix `readLine` and `newLineSplitter`.
+
+## 0.1.9.0  -- 2020-11-23
 
 * Clean up API in `Z.IO.Buffered`, remove `readToMagic'`, `readLine'`, `readExactly'`.
 * `readExactly` now throw exception when not reading enough bytes before EOF.
@@ -9,11 +13,11 @@
 * Rename `InetAddr` to `IPv4`, `Inet6Addr` to `IPv6`, change `SocketAddr` 's constructor name, and payload order.
 * Add `seek` to `Z.IO.FileSystem`.
 
-## 0.1.8.1  -- 2020-10-24
+## 0.1.8.1  -- 2020-11-21
 
 * Export `ZStream` type from `Z.IO.BIO.Zlib`
 
-## 0.1.8.0  -- 2020-10-24
+## 0.1.8.0  -- 2020-11-20
 
 * Remove type index from `BufferedInput`, `BufferedOutput`.
 * Add `Z.IO.BIO` module to facilitate streaming process, and `Z.IO.BIO.Concurrent` to facilitate producer-consumer model.

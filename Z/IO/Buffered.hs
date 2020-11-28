@@ -223,7 +223,7 @@ readBufferText BufferedInput{..} = do
                     return (T.validate (V.fromArr arr s i))
                 else return (T.validate bs)
 
--- | Read N bytes(may be smaller than N if EOF reached).
+-- | Read exactly N bytes.
 --
 -- If EOF reached before N bytes read, a 'IncompleteInput' will be thrown
 readExactly :: HasCallStack => Int -> BufferedInput -> IO V.Bytes
@@ -245,7 +245,7 @@ readExactly n0 h0 = V.concat `fmap` (go h0 n0)
                     chunks <- go h (n - l)
                     return (chunk : chunks)
 
--- | Read all chunks from a 'BufferedInput'.
+-- | Read all chunks from a 'BufferedInput' until EOF.
 --
 -- This function will loop read until meet EOF('Input' device return 'V.empty'),
 -- Useful for reading small file into memory.

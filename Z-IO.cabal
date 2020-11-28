@@ -1,6 +1,6 @@
 cabal-version:              2.4
 name:                       Z-IO
-version:                    0.1.9.0
+version:                    0.1.9.1
 synopsis:                   Simple and high performance IO toolkit for Haskell
 description:                Simple and high performance IO toolkit for Haskell, including
                             file system, network, ipc and more!

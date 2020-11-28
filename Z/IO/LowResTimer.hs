@@ -72,7 +72,7 @@ data LowResTimerManager = LowResTimerManager
     Counter
     -- registered counter, stop timer thread if go downs to zero
     (MVar Bool)
-    -- running lock 
+    -- running lock
 
 newLowResTimerManager :: IO LowResTimerManager
 newLowResTimerManager = do
@@ -259,7 +259,7 @@ startLowResTimerManager :: LowResTimerManager ->IO ()
 startLowResTimerManager lrtm@(LowResTimerManager _ _ regCounter runningLock)  = do
     lastT <- uv_hrtime
     loop (fromIntegral (lastT - 100000000))
-  where      
+  where
     loop :: Int -> IO ()
     loop !lastT = do
         modifyMVar_ runningLock $ \ _ -> do     -- we shouldn't receive async exception here
@@ -277,11 +277,11 @@ startLowResTimerManager lrtm@(LowResTimerManager _ _ regCounter runningLock)  = 
 #ifndef mingw32_HOST_OS
                         | rtsSupportsBoundThreads -> do
                             htm <- getSystemTimerManager
-                            void $ registerTimeout htm deltaT' (loop currentT')
+                            void $ registerTimeout htm deltaT' (loop (lastT + 100000000))
 #endif
                         | otherwise -> void . forkIO $ do   -- we have to fork another thread since we're holding runningLock,
                             threadDelay deltaT'             -- this may affect accuracy, but on windows there're no other choices.
-                            loop currentT'
+                            loop (lastT + 100000000)
                 return True
             else do
                 return False -- if we haven't got any registered timeout, we stop the time manager
