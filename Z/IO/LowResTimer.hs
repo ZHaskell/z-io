@@ -49,6 +49,7 @@ import           GHC.Conc
 import           System.IO.Unsafe
 import           Z.Data.PrimRef.PrimIORef
 import           Z.IO.Exception
+import           Z.IO.UV.FFI    (uv_hrtime)
 
 --
 queueSize :: Int
@@ -249,6 +250,7 @@ startLowResTimerManager :: LowResTimerManager ->IO ()
 startLowResTimerManager lrtm@(LowResTimerManager _ _ regCounter runningLock)  = do
     modifyMVar_ runningLock $ \ _ -> do     -- we shouldn't receive async exception here
         c <- readPrimIORef regCounter          -- unless something terribly wrong happened, e.g., stackoverflow
+        uv_hrtime >>= print
         if c > 0
         then do
             _ <- forkIO (fireLowResTimerQueue lrtm)  -- we offload the scanning to another thread to minimize
