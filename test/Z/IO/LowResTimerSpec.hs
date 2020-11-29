@@ -34,19 +34,19 @@ spec = describe "low resolution timers" $ do
     it "throttle" $ do
         c <- newCounter 0
         throttledAdd <- throttle 10 (atomicAddCounter_ c 1)
-        forkIO . replicateM_ 100 $ do
+        forkIO . replicateM_ 50 $ do
             throttledAdd
-            threadDelay 50000
+            threadDelay 100000
         threadDelay 10000000  -- wait 10s here
         c' <- readPrimIORef c
-        assertBool ("throttled add " ++ show c') (5  <= c' && c' <= 7)    -- on osx CI time drift too much
+        assertBool ("throttled add " ++ show c') (5  <= c' && c' <= 7)    -- on osx CI threadDelay drift too much
 
     it "throttleTrailing" $ do
         c <- newCounter 0
         throttledAdd <- throttleTrailing_ 10 (atomicAddCounter_ c 1)
-        forkIO . replicateM_ 100 $ do
+        forkIO . replicateM_ 50 $ do
             throttledAdd
-            threadDelay 50000
+            threadDelay 100000
         threadDelay 10000000  -- wait 10s here
         c' <- readPrimIORef c
-        assertBool ("throttled add " ++ show c') (5  <= c' && c' <= 6)
+        assertBool ("throttled add " ++ show c') (5  <= c' && c' <= 7)    -- on osx CI threadDelay drift too muc
