@@ -46,7 +46,7 @@ jobs:
       - if: "matrix.cabal < '3'"
         run: cabal v2-test
       - if: "matrix.cabal >= '3'"
-        run: cabal v2-test --test-show-details=direct --test-options="--match=BIO" 
+        run: cabal v2-test --test-show-details=direct --test-options="--match=LowRes" 
 
       - run: cabal check
       - run: cabal v2-haddock
