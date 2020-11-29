@@ -1,21 +1,17 @@
 {-|
 Module      : Z.IO.LowResTimer
-Description : Low resolution (decisecond) timing wheel
+Description : Low resolution (0.1s) timing wheel
 Copyright   : (c) Dong Han, 2017-2018
 License     : BSD
 Maintainer  : winterland1989@gmail.com
 Stability   : experimental
 Portability : non-portable
-
-This module provide low resolution (decisecond, i.e. 0.1s) timers using a timing wheel of size 128 per capability,
+This module provide low resolution (0.1s) timers using a timing wheel of size 128 per capability,
 each timer thread will automatically started or stopped based on demannd. register or cancel a timeout is O(1),
-and each step only need scan n\/128 items given timers are registered in an even fashion.
-
+and each step only need scan n/128 items given timers are registered in an even fashion.
 This timer is particularly suitable for high concurrent approximated IO timeout scheduling.
 You should not rely on it to provide timing information since it's very inaccurate.
-
 Reference:
-
     * <https://github.com/netty/netty/blob/4.1/common/src/main/java/io/netty/util/HashedWheelTimer.java>
     * <http://www.cse.wustl.edu/~cdgill/courses/cs6874/TimingWheels.ppt>
 -}
@@ -35,7 +31,6 @@ module Z.IO.LowResTimer
   , throttle
   , throttle_
   , throttleTrailing_
-  , TimeOutException(..)
     -- * low resolution timer manager
   , LowResTimerManager
   , getLowResTimerManager
@@ -54,8 +49,7 @@ import           GHC.Conc
 import           System.IO.Unsafe
 import           Z.Data.PrimRef.PrimIORef
 import           Z.IO.Exception
-import           Z.IO.UV.FFI                  (uv_hrtime)
-import           Data.Time.Clock.System
+
 --
 queueSize :: Int
 queueSize = 128
@@ -65,14 +59,11 @@ queueSize = 128
 data TimerList = TimerItem {-# UNPACK #-} !Counter (IO ()) TimerList | TimerNil
 
 data LowResTimerManager = LowResTimerManager
-    (Array (IORef TimerList))
-    -- timer queue
-    (MVar Int)
-    -- current time wheel's index
-    Counter
-    -- registered counter, stop timer thread if go downs to zero
-    (MVar Bool)
-    -- running lock
+    { lrTimerQueue :: Array (IORef TimerList)
+    , lrIndexLock :: MVar Int
+    , lrRegisterCount :: Counter
+    , lrRunningLock :: MVar Bool
+    }
 
 newLowResTimerManager :: IO LowResTimerManager
 newLowResTimerManager = do
@@ -145,7 +136,7 @@ isLowResTimerManagerRunning (LowResTimerManager _ _ _ runningLock) = readMVar ru
 --   registerLowResTimer 100 (forkIO $ killThread tid)
 -- @
 --
-registerLowResTimer :: Int          -- ^ timeout in unit of decisecond(0.1s)
+registerLowResTimer :: Int          -- ^ timeout in unit of 0.1s
                     -> IO ()        -- ^ the action you want to perform, it should not block
                     -> IO LowResTimer
 registerLowResTimer t action = do
@@ -153,7 +144,7 @@ registerLowResTimer t action = do
     registerLowResTimerOn lrtm t action
 
 -- | 'void' ('registerLowResTimer' t action)
-registerLowResTimer_ :: Int          -- ^ timeout in unit of decisecond(0.1s)
+registerLowResTimer_ :: Int          -- ^ timeout in unit of 0.1s
                      -> IO ()        -- ^ the action you want to perform, it should not block
                      -> IO ()
 registerLowResTimer_ t action = void (registerLowResTimer t action)
@@ -161,7 +152,7 @@ registerLowResTimer_ t action = void (registerLowResTimer t action)
 -- | Same as 'registerLowResTimer', but allow you choose timer manager.
 --
 registerLowResTimerOn :: LowResTimerManager   -- ^ a low resolution timer manager
-                      -> Int          -- ^ timeout in unit of decisecond(0.1s)
+                      -> Int          -- ^ timeout in unit of 0.1s
                       -> IO ()        -- ^ the action you want to perform, it should not block
                       -> IO LowResTimer
 registerLowResTimerOn lrtm@(LowResTimerManager queue indexLock regCounter _) t action = do
@@ -209,38 +200,37 @@ cancelLowResTimer_ = void . cancelLowResTimer
 -- Note timeoutLowRes is also implemented with 'Exception' underhood, which can have some surprising
 -- effects on some devices, e.g. use 'timeoutLowRes' with reading or writing on 'UVStream's may close
 -- the 'UVStream' once a reading or writing is not able to be done in time.
-timeoutLowRes :: Int    -- ^ timeout in unit of decisecond(0.1s)
+timeoutLowRes :: Int    -- ^ timeout in unit of 0.1s
               -> IO a
               -> IO (Maybe a)
 timeoutLowRes timeo io = do
     mid <- myThreadId
-    bracket
-        (registerLowResTimer timeo (timeoutAThread mid))
-        (void . cancelLowResTimer)
-        (\ _ -> catch (Just <$> io) (\ (_ :: TimeOutException) -> return Nothing))
+    catch
+        (do timer <- registerLowResTimer timeo (timeoutAThread mid)
+            r <- io
+            _ <- cancelLowResTimer timer
+            return (Just r))
+        ( \ (_ :: TimeOutException) -> return Nothing )
   where
     timeoutAThread tid = void . forkIO $ throwTo tid (TimeOutException tid undefined)
 
 -- | Similar to 'timeoutLowRes', but raise a 'TimeOutException' to current thread
 -- instead of return 'Nothing' if timeout.
 timeoutLowResEx :: HasCallStack
-                => Int    -- ^ timeout in unit of decisecond(0.1s)
+                => Int    -- ^ timeout in unit of 0.1s
                 -> IO a
                 -> IO a
 timeoutLowResEx timeo io = do
     mid <- myThreadId
-    bracket
-        (registerLowResTimer timeo (timeoutAThread mid))
-        (void . cancelLowResTimer)
-        (\ _ -> io)
+    timer <- registerLowResTimer timeo (timeoutAThread mid)
+    r <- io
+    _ <- cancelLowResTimer timer
+    return r
   where
     timeoutAThread tid = void . forkIO $ throwTo tid (TimeOutException tid callStack)
 
--- | Exception used to stop a haskell thread when time out, a sub exception type to 'SomeIOException'.
 data TimeOutException = TimeOutException ThreadId CallStack deriving Show
-instance Exception TimeOutException where
-    toException = ioExceptionToException
-    fromException = ioExceptionFromException
+instance Exception TimeOutException
 
 --------------------------------------------------------------------------------
 -- | Check if low resolution timer manager loop is running, start loop if not.
@@ -257,39 +247,27 @@ ensureLowResTimerManager lrtm@(LowResTimerManager _ _ _ runningLock) = do
 --
 startLowResTimerManager :: LowResTimerManager ->IO ()
 startLowResTimerManager lrtm@(LowResTimerManager _ _ regCounter runningLock)  = do
-    (MkSystemTime s ns) <- getSystemTime
-    let lastT = s * 1000000000 + (fromIntegral ns)
-    loop (fromIntegral (lastT - 100000000))
-  where
-    loop :: Int -> IO ()
-    loop !lastT = do
-        modifyMVar_ runningLock $ \ _ -> do     -- we shouldn't receive async exception here
-            c <- readPrimIORef regCounter          -- unless something terribly wrong happened, e.g., stackoverflow
-            if c > 0
-            then do
-                _ <- forkIO (fireLowResTimerQueue lrtm)  -- we offload the scanning to another thread to minimize
-                                                    -- the time we holding runningLock
-                (MkSystemTime s ns) <- getSystemTime
-                let !currentT = s * 1000000000 + (fromIntegral ns)
-                    !currentT' = fromIntegral currentT
-                    !deltaT = 200000 - (currentT' - lastT) `quot` 1000
-                    !deltaT' = if deltaT < 0 then 0 else deltaT
-                print deltaT'
-                case () of
-                    _
+    modifyMVar_ runningLock $ \ _ -> do     -- we shouldn't receive async exception here
+        c <- readPrimIORef regCounter          -- unless something terribly wrong happened, e.g., stackoverflow
+        if c > 0
+        then do
+            _ <- forkIO (fireLowResTimerQueue lrtm)  -- we offload the scanning to another thread to minimize
+                                                -- the time we holding runningLock
+            case () of
+                _
 #ifndef mingw32_HOST_OS
-                        | rtsSupportsBoundThreads -> do
-                            htm <- getSystemTimerManager
-                            void $ registerTimeout htm deltaT' (loop (lastT + 100000000))
+                    | rtsSupportsBoundThreads -> do
+                        htm <- getSystemTimerManager
+                        void $ registerTimeout htm 100000 (startLowResTimerManager lrtm)
 #endif
-                        | otherwise -> void . forkIO $ do   -- we have to fork another thread since we're holding runningLock,
-                            threadDelay deltaT'             -- this may affect accuracy, but on windows there're no other choices.
-                            loop (lastT + 100000000)
-                return True
-            else do
-                return False -- if we haven't got any registered timeout, we stop the time manager
-                            -- doing this can stop us from getting the way of idle GC
-                            -- since we're still inside runningLock, we won't miss new registration.
+                    | otherwise -> void . forkIO $ do   -- we have to fork another thread since we're holding runningLock,
+                        threadDelay 100000              -- this may affect accuracy, but on windows there're no other choices.
+                        startLowResTimerManager lrtm
+            return True
+        else do
+            return False -- if we haven't got any registered timeout, we stop the time manager
+                         -- doing this can stop us from getting the way of idle GC
+                         -- since we're still inside runningLock, we won't miss new registration.
 
 -- | Scan the timeout queue in current tick index, and move tick index forward by one.
 --
@@ -328,7 +306,7 @@ fireLowResTimerQueue (LowResTimerManager queue indexLock regCounter _) = do
 -- One common way to get a shared periodical updated value is to start a seperate thread and do calculation
 -- periodically, but doing that will stop system from being idle, which stop idle GC from running,
 -- and in turn disable deadlock detection, which is too bad. This function solves that.
-throttle :: Int         -- ^ cache time in unit of decisecond(0.1s)
+throttle :: Int         -- ^ cache time in unit of 0.1s
          -> IO a        -- ^ the original IO action
          -> IO (IO a)   -- ^ throttled IO action
 throttle t action = do
@@ -350,7 +328,7 @@ throttle t action = do
 -- no-ops.
 --
 -- Note the action will run in the calling thread.
-throttle_ :: Int            -- ^ cache time in unit of decisecond(0.1s)
+throttle_ :: Int            -- ^ cache time in unit of 0.1s
           -> IO ()          -- ^ the original IO action
           -> IO (IO ())     -- ^ throttled IO action
 throttle_ t action = do
