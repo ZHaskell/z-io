@@ -39,9 +39,6 @@ spec = describe "resource tests" $ do
             -- we used to use replicateConcurrently_ from async, but it's
             -- not really neccessary
 
-            w <- readPrimIORef workerCounter
-            assertEqual "worker should be able to get resource" 1000 w
-
             r <- readPrimIORef resCounter
             assertEqual "pool should keep returned resources alive" 100 r
 
@@ -49,6 +46,9 @@ spec = describe "resource tests" $ do
             assertEqual "pool should be scanning returned resources" PoolScanning s
 
             threadDelay 5000000  -- after 5s, 1000 thread should release all resources
+
+            w <- readPrimIORef workerCounter
+            assertEqual "worker should be able to get resource" 1000 w
 
             r <- readPrimIORef resCounter
             assertEqual "pool should reap unused resources" 0 r
@@ -69,9 +69,6 @@ spec = describe "resource tests" $ do
 
             threadDelay 1000000
 
-            w <- readPrimIORef workerCounter
-            assertEqual "worker should be able to get resource" 1000 w
-
             r <- readPrimIORef resCounter
             assertEqual "pool should keep returned resources alive" 100 r
 
@@ -79,6 +76,9 @@ spec = describe "resource tests" $ do
             assertEqual "pool should be scanning returned resources" PoolScanning s
 
             threadDelay 5000000
+
+            w <- readPrimIORef workerCounter
+            assertEqual "worker should be able to get resource" 1000 w
 
             r <- readPrimIORef resCounter
             assertEqual "pool should reap unused resources" 0 r
