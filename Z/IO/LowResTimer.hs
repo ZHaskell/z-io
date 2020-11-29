@@ -55,7 +55,7 @@ import           System.IO.Unsafe
 import           Z.Data.PrimRef.PrimIORef
 import           Z.IO.Exception
 import           Z.IO.UV.FFI                  (uv_hrtime)
-
+import           Data.Time.Clock.System
 --
 queueSize :: Int
 queueSize = 128
@@ -257,7 +257,8 @@ ensureLowResTimerManager lrtm@(LowResTimerManager _ _ _ runningLock) = do
 --
 startLowResTimerManager :: LowResTimerManager ->IO ()
 startLowResTimerManager lrtm@(LowResTimerManager _ _ regCounter runningLock)  = do
-    lastT <- uv_hrtime
+    (MkSystemTime s ns) <- getSystemTime
+    let lastT = s * 1000000000 + (fromIntegral ns)
     loop (fromIntegral (lastT - 100000000))
   where
     loop :: Int -> IO ()
@@ -268,8 +269,9 @@ startLowResTimerManager lrtm@(LowResTimerManager _ _ regCounter runningLock)  = 
             then do
                 _ <- forkIO (fireLowResTimerQueue lrtm)  -- we offload the scanning to another thread to minimize
                                                     -- the time we holding runningLock
-                currentT <- uv_hrtime
-                let !currentT' = fromIntegral currentT
+                (MkSystemTime s ns) <- getSystemTime
+                let !currentT = s * 1000000000 + (fromIntegral ns)
+                    !currentT' = fromIntegral currentT
                     !deltaT = 200000 - (currentT' - lastT) `quot` 1000
                     !deltaT' = if deltaT < 0 then 0 else deltaT
                 print deltaT'
