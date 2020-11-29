@@ -23,16 +23,16 @@ spec = describe "resource tests" $ do
         workerCounter <- newCounter 0
         let res = initResource (atomicAddCounter_ resCounter 1)
                                (\ _ -> atomicSubCounter_ resCounter 1)
-            resPool = initPool res 100 5
+            resPool = initPool res 100 1
         R.withResource resPool $ \ pool -> do
             let res = initInPool pool
             forM_ [1..1000] $ \ k -> forkIO. R.withResource res $ \ i -> do
                 atomicAddCounter_ workerCounter 1
                 r <- readPrimIORef resCounter
-                threadDelay 1000000
+                threadDelay 100000
                 assertEqual "pool should limit max usage" True (r <= 100)
 
-            threadDelay 13000000
+            threadDelay 1000000
             -- first 100 worker quickly get resources
             -- then hold for 1s, rest 100 worker have to wait, and so on
             -- so here we wait for 5s to make sure every worker got a resource
@@ -53,8 +53,6 @@ spec = describe "resource tests" $ do
             r <- readPrimIORef resCounter
             assertEqual "pool should reap unused resources" 0 r
 
-            threadDelay 5000000  -- another 5s
-
             s <- poolStat pool
             assertEqual "pool should stop scanning returned resources" PoolEmpty s
 
@@ -65,11 +63,11 @@ spec = describe "resource tests" $ do
             forM_ [1..1000] $ \ k -> forkIO. R.withResource res $ \ i -> do
                 atomicAddCounter_ workerCounter 1
                 r <- readPrimIORef resCounter
-                threadDelay 1000000
+                threadDelay 100000
                 assertEqual "pool should limit max usage" True (r <= 100)
 
 
-            threadDelay 12000000
+            threadDelay 1000000
 
             w <- readPrimIORef workerCounter
             assertEqual "worker should be able to get resource" 1000 w
@@ -80,7 +78,7 @@ spec = describe "resource tests" $ do
             s <- poolStat pool
             assertEqual "pool should be scanning returned resources" PoolScanning s
 
-            threadDelay 10000000
+            threadDelay 5000000
 
             r <- readPrimIORef resCounter
             assertEqual "pool should reap unused resources" 0 r
@@ -92,17 +90,17 @@ spec = describe "resource tests" $ do
         resCounter <- newCounter 0
         let res = initResource (atomicAddCounter' resCounter 1)
                                (\ _ -> atomicSubCounter_ resCounter 1)
-            resPool = initPool res 100 5
+            resPool = initPool res 100 1
         R.withResource resPool $ \ pool -> do
             let res = initInPool pool
 
             forM_ [1..1000] $ \ k -> forkIO. R.withResource res $ \ i -> do
                 r <- readPrimIORef resCounter
-                threadDelay 1000000
+                threadDelay 100000
                 when (even i) (throwIO WorkerException)
                 assertEqual "pool should limit max usage" True (r <= 100)
 
-            threadDelay 12000000
+            threadDelay 1000000
 
             r <- readPrimIORef resCounter
             assertEqual "pool should keep returned resources alive" 100 r
@@ -110,7 +108,7 @@ spec = describe "resource tests" $ do
             s <- poolStat pool
             assertEqual "pool should be scanning returned resources" PoolScanning s
 
-            threadDelay 10000000
+            threadDelay 5000000
 
             r <- readPrimIORef resCounter
             assertEqual "pool should reap unused resources" 0 r
