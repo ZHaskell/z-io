@@ -61,11 +61,14 @@ queueSize = 128
 data TimerList = TimerItem {-# UNPACK #-} !Counter (IO ()) TimerList | TimerNil
 
 data LowResTimerManager = LowResTimerManager
-    { lrTimerQueue :: Array (IORef TimerList)
-    , lrIndexLock :: MVar Int
-    , lrRegisterCount :: Counter
-    , lrRunningLock :: MVar Bool
-    }
+    (Array (IORef TimerList))
+    -- timer queue
+    (MVar Int)
+    -- current time wheel's index
+    Counter
+    -- registered counter, stop timer thread if go downs to zero
+    (MVar Bool)
+    -- running lock
 
 newLowResTimerManager :: IO LowResTimerManager
 newLowResTimerManager = do
@@ -242,7 +245,7 @@ ensureLowResTimerManager lrtm@(LowResTimerManager _ _ _ runningLock) = do
     modifyMVar_ runningLock $ \ running -> do
         unless running $ do
             t <- uv_hrtime
-            tid <- forkIO (startLowResTimerManager lrtm (fromIntegral t))
+            tid <- forkIO (startLowResTimerManager lrtm t)
             labelThread tid "Z-IO: low resolution time manager"    -- make sure we can see it in GHC event log
         return True
 
