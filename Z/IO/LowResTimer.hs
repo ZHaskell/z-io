@@ -39,6 +39,7 @@ module Z.IO.LowResTimer
   ) where
 
 import           Z.Data.Array
+import           Data.Word
 #ifndef mingw32_HOST_OS
 import           GHC.Event
 #endif
@@ -240,19 +241,24 @@ ensureLowResTimerManager :: LowResTimerManager -> IO ()
 ensureLowResTimerManager lrtm@(LowResTimerManager _ _ _ runningLock) = do
     modifyMVar_ runningLock $ \ running -> do
         unless running $ do
-            tid <- forkIO (startLowResTimerManager lrtm)
+            t <- uv_hrtime
+            tid <- forkIO (startLowResTimerManager lrtm (fromIntegral t))
             labelThread tid "Z-IO: low resolution time manager"    -- make sure we can see it in GHC event log
         return True
 
 -- | Start low resolution timer loop, the loop is automatically stopped if there's no more new registrations.
 --
-startLowResTimerManager :: LowResTimerManager ->IO ()
-startLowResTimerManager lrtm@(LowResTimerManager _ _ regCounter runningLock)  = do
+startLowResTimerManager :: LowResTimerManager -> Word64 -> IO ()
+startLowResTimerManager lrtm@(LowResTimerManager _ _ regCounter runningLock) !stdT = do
     modifyMVar_ runningLock $ \ _ -> do     -- we shouldn't receive async exception here
         c <- readPrimIORef regCounter          -- unless something terribly wrong happened, e.g., stackoverflow
-        uv_hrtime >>= print
         if c > 0
         then do
+            t <- uv_hrtime 
+            -- we can't use 100000 as maximum, because that will produce a 0us thread delay
+            -- and GHC's registerTimeout will run next startLowResTimerManager directly(on current thread)
+            -- but we're still holding runningLock, which cause an deadlock.
+            let !deltaT = min (fromIntegral ((t - stdT) `quot` 1000)) 99999
             _ <- forkIO (fireLowResTimerQueue lrtm)  -- we offload the scanning to another thread to minimize
                                                 -- the time we holding runningLock
             case () of
@@ -260,11 +266,11 @@ startLowResTimerManager lrtm@(LowResTimerManager _ _ regCounter runningLock)  = 
 #ifndef mingw32_HOST_OS
                     | rtsSupportsBoundThreads -> do
                         htm <- getSystemTimerManager
-                        void $ registerTimeout htm 100000 (startLowResTimerManager lrtm)
+                        void $ registerTimeout htm (100000 - deltaT)  (startLowResTimerManager lrtm (stdT + 100000000))
 #endif
                     | otherwise -> void . forkIO $ do   -- we have to fork another thread since we're holding runningLock,
-                        threadDelay 100000              -- this may affect accuracy, but on windows there're no other choices.
-                        startLowResTimerManager lrtm
+                        threadDelay (100000 - deltaT)   -- this may affect accuracy, but on windows there're no other choices.
+                        startLowResTimerManager lrtm (stdT + 100000000)
             return True
         else do
             return False -- if we haven't got any registered timeout, we stop the time manager
