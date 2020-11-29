@@ -272,6 +272,7 @@ startLowResTimerManager lrtm@(LowResTimerManager _ _ regCounter runningLock)  = 
                 let !currentT' = fromIntegral currentT
                     !deltaT = 200000 - (currentT' - lastT) `quot` 1000
                     !deltaT' = if deltaT < 0 then 0 else deltaT
+                print deltaT'
                 case () of
                     _
 #ifndef mingw32_HOST_OS
