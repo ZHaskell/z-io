@@ -28,7 +28,7 @@ spec = describe "TCP operations" $ do
 
         threadDelay 2000000  -- 2s
 
-        replicateM_  512 . forkIO $
+        replicateM_  10 . forkIO $
             withResource (initTCPClient defaultTCPClientConfig{tcpRemoteAddr = addr}) $ \ tcp -> do
                 i <- newBufferedInput tcp
                 o <- newBufferedOutput tcp
