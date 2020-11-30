@@ -42,6 +42,9 @@ jobs:
           echo "~/.cabal/bin" >> $GITHUB_PATH
           echo "~/.local/bin" >> $GITHUB_PATH
 
+      # FIXME: cached contents may cause tests fail.
+      - run: rm -rf ~/.cabal
+
       - run: cabal v2-update
       - run: cabal v2-freeze $CONFIG && cat cabal.project.freeze
 

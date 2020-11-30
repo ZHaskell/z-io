@@ -25,7 +25,9 @@ jobs:
 
       - run: |
           mkdir -p ~/cache/cabal
-          docker run -td --name builder -v ~/cache/cabal:/root/.cabal -v $(pwd):/srv -w /srv haskell:${{ matrix.image_tag }} bash
+          # FIXME: cached contents may cause tests fail.
+          #docker run -td --name builder -v ~/cache/cabal:/root/.cabal -v $(pwd):/srv -w /srv haskell:${{ matrix.image_tag }} bash
+          docker run -td --name builder -v $(pwd):/srv -w /srv haskell:${{ matrix.image_tag }} bash
 
       - run: docker exec builder bash -c "cabal v2-update && cabal v2-build --enable-tests --enable-benchmarks"
 
