@@ -50,7 +50,7 @@ spec = describe "UDP operations" $ do
         let testMsg = V.replicate 4096 48
             addr = SocketAddrIPv4 ipv4Loopback 12348
         withResource (initUDP defaultUDPConfig) $ \ c ->
-            withResource (initUDP defaultUDPConfig) $ \ s -> do
+            withResource (initUDP defaultUDPConfig) $ \_s -> do
                 sendUDP c addr testMsg `shouldThrow` anyException
 
     it "batch receiving(multiple messages)" $ do
@@ -60,7 +60,7 @@ spec = describe "UDP operations" $ do
         forkIO $ withResource (initUDP defaultUDPConfig{udpLocalAddr = Just (addr,UDP_DEFAULT)}) $ \ s -> do
             recvUDPLoop defaultUDPRecvConfig s $ \ msgs ->
                 modifyIORef msgList (msgs:)
-        withResource (initUDP defaultUDPConfig) $ \ c -> replicateM_ 100 $ sendUDP c addr testMsg
+        withResource (initUDP defaultUDPConfig) $ \c -> replicateM_ 100 $ sendUDP c addr testMsg
         msgs <- readIORef msgList
-        True @=? (List.length msgs > 90)    -- ^ udp packet may get lost
+        True @=? (List.length msgs > 50)    -- udp packet may get lost
         forM_ msgs $ \ (_,_,msg) -> testMsg @=? msg
