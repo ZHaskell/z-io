@@ -25,3 +25,4 @@ cabal.project.local~
 example/**
 !examples/wordcount.hs
 !examples/examples.cabal
+/_local/

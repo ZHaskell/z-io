@@ -1,0 +1,39 @@
+name: docker-ci
+on: [push, pull_request]
+
+jobs:
+  build:
+    name: Build on haskell:${{ matrix.image_tag }}
+    runs-on: ubuntu-18.04
+    strategy:
+      matrix:
+        image_tag: ['8.6.5', '8.8.4', '8.10.2']
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: 'recursive'
+
+      - name: Cache docker builds
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/cache/cabal/packages
+            ~/cache/cabal/store
+          key: docker-${{ runner.os }}-${{ matrix.image_tag }}
+          restore-keys: |
+            docker-${{ runner.os }}-
+
+      - run: |
+          mkdir -p ~/cache/cabal
+          # FIXME: cached contents may cause tests fail.
+          #docker run -td --name builder -v ~/cache/cabal:/root/.cabal -v $(pwd):/srv -w /srv haskell:${{ matrix.image_tag }} bash
+          docker run -td --name builder -v $(pwd):/srv -w /srv haskell:${{ matrix.image_tag }} bash
+
+      - run: docker exec builder bash -c "cabal v2-update && cabal v2-build --enable-tests --enable-benchmarks"
+
+      - if: "matrix.image_tag == '8.6.5'"
+        run: docker exec builder bash -c "cabal v2-test"
+      - if: "matrix.image_tag != '8.6.5'"
+        run: docker exec builder bash -c "cabal v2-test --test-show-details=direct"
+
+      - run: docker exec builder bash -c "cabal check && cabal v2-haddock && cabal v2-sdist"

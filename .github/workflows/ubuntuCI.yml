@@ -3,18 +3,18 @@ on: [push, pull_request]
 
 jobs:
   build:
-    name: Build on ubuntu-latest:ghc-${{ matrix.ghc }}:cabal-${{ matrix.cabal }}
-    runs-on: ubuntu-latest
+    name: Build on ubuntu-18.04:ghc-${{ matrix.ghc }}:cabal-${{ matrix.cabal }}
+    runs-on: ubuntu-18.04
     strategy:
       matrix:
         ghc: ['8.6.5', '8.8.4', '8.10.2']
-        cabal: ['2.4.1.0', '3.4.0.0']
+        cabal: ['2.4', '3.4']
         exclude:
           # GHC 8.8+ only works with cabal v3+
           - ghc: 8.8.4
-            cabal: 2.4.1.0
+            cabal: "2.4"
           - ghc: 8.10.2
-            cabal: 2.4.1.0
+            cabal: "2.4"
     env:
         CONFIG: "--enable-tests --enable-benchmarks"
     steps:
@@ -22,24 +22,31 @@ jobs:
         with:
           submodules: 'recursive'
 
-      - name: Setup Haskell
-        uses: actions/setup-haskell@v1
-        with:
-          ghc-version: ${{ matrix.ghc }}
-          cabal-version: ${{ matrix.cabal }}
-
-      - run: cabal v2-update
-      - run: cabal v2-freeze $CONFIG
-
       - uses: actions/cache@v2
         with:
           path: |
             ~/.cabal/packages
             ~/.cabal/store
-            dist-newstyle
-          key: ${{ runner.os }}-${{ matrix.ghc }}-${{ hashFiles('cabal.project.freeze') }}
+          key: ${{ runner.os }}-${{ matrix.ghc }}-${{ hashFiles('*.cabal') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.ghc }}-
+
+      - name: Setup Haskell
+        run: |
+          sudo add-apt-repository -y ppa:hvr/ghc
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+              cabal-install-${{ matrix.cabal }} curl g++ ghc-${{ matrix.ghc }} \
+              libsqlite3-dev libtinfo-dev make netbase xz-utils zlib1g-dev
+          echo "/opt/cabal/${{ matrix.cabal }}/bin" >> $GITHUB_PATH
+          echo "/opt/ghc/${{ matrix.ghc }}/bin" >> $GITHUB_PATH
+          echo "~/.cabal/bin" >> $GITHUB_PATH
+          echo "~/.local/bin" >> $GITHUB_PATH
+
+      # FIXME: cached contents may cause tests fail.
+      - run: rm -rf ~/.cabal
+
+      - run: cabal v2-update
+      - run: cabal v2-freeze $CONFIG && cat cabal.project.freeze
 
       - run: "cabal update && cabal v2-build $CONFIG"
 
