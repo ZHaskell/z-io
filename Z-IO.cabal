@@ -377,7 +377,7 @@ test-suite Z-IO-Test
                             Z.IO.FileSystemSpec
                             Z.IO.Network.UDPSpec
                             Z.IO.Network.TCPSpec
-                            -- Z.IO.Network.IPCSpec
+                            Z.IO.Network.IPCSpec
                             Z.IO.LowResTimerSpec
                             Z.IO.ProcessSpec
                             Z.IO.ResourceSpec

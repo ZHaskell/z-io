@@ -5,42 +5,43 @@ module Z.IO.Network.IPCSpec where
 import           Control.Concurrent
 import           Control.Monad
 import           Data.Bits
-import           Z.Data.Vector         as V
-import           Z.Data.Vector.Base    as V
-import           Data.List               as List
+import           Data.List             as List
 import           Foreign.Marshal.Array
 import           Foreign.Ptr
-import           Z.IO.Exception
-import           Z.IO.Resource
-import           Z.IO.Buffered
-import           Z.IO.Network
-import           Test.Hspec
 import           Test.HUnit
+import           Test.Hspec
+import           Z.Data.Vector         as V
+import           Z.Data.Vector.Base    as V
+import           Z.IO.Buffered
+import           Z.IO.Exception
+import           Z.IO.FileSystem       (mkdtemp)
+import           Z.IO.Network
+import           Z.IO.Resource
 
 spec :: Spec
 spec = describe "IPC operations" $ do
     it "roundtrip test" $ do
         let testMsg = V.cycleN 256 "abc"
             longMsg = V.cycleN 2048 "abcdefg"
-            addr = "/tmp/test_ipc"
+        tmpDir <- mkdtemp "z-io-test"
+        let addr = tmpDir <> "socket-file"
 
         serverThread <- forkIO $ startIPCServer defaultIPCServerConfig{ ipcListenName = addr } echo
 
-        threadDelay 100000
+        threadDelay 1000000     -- 1s
 
-        replicateM_ 1000 . forkIO $
+        replicateM_ 10 . forkIO $
             withResource (initIPCClient defaultIPCClientConfig{ipcTargetName = addr}) $ \ ipc -> do
                 i <- newBufferedInput ipc
                 o <- newBufferedOutput ipc
 
-                replicateM_ 1000 . forkIO $ do
-                    writeBuffer o testMsg >> flushBuffer o
-                    testMsg' <- readAll' i
-                    testMsg' @=? testMsg
+                writeBuffer o testMsg >> flushBuffer o
+                testMsg' <- readAll' i
+                testMsg' @=? testMsg
 
-                replicateM_ 1000 . forkIO $ do
-                    writeBuffer o longMsg >> flushBuffer o
-                    longMsg' <- readAll' i
-                    longMsg' @=? longMsg
+                writeBuffer o longMsg >> flushBuffer o
+                longMsg' <- readAll' i
+                longMsg' @=? longMsg
 
+        threadDelay 5000000     -- 5s
         killThread serverThread
