@@ -91,7 +91,7 @@ import           Data.IORef
 import qualified Data.List              as List
 import           Data.Sequence          (Seq (..))
 import qualified Data.Sequence          as Seq
-import           Data.Typeable          (Typeable, cast)
+import           Data.Typeable          (cast)
 import           Data.Void
 import           Data.Word
 import           System.IO.Unsafe       (unsafePerformIO)
@@ -179,7 +179,6 @@ instance Functor (BIO inp) where
 --
 -- Note this exception is a sub-type of 'SomeIOException'.
 data BIOException = forall e. Exception e => BIOException e
-    deriving Typeable
 
 instance Show BIOException where
     show (BIOException e) = show e
@@ -199,7 +198,7 @@ bioExceptionFromException x = do
 -- | Exception when BIO parse failed, this exception is one of a particular
 -- 'BIOException'.
 data ParseException = ParseException P.ParseError CallStack
-    deriving (Show, Typeable)
+    deriving Show
 
 instance Exception ParseException where
     toException   = bioExceptionToException
@@ -208,7 +207,7 @@ instance Exception ParseException where
 -- | Exception when BIO convert to json failed, this exception is one of a
 -- particular 'BIOException'.
 data JSONConvertException = JSONConvertException JSON.ConvertError CallStack
-    deriving (Show, Typeable)
+    deriving Show
 
 instance Exception JSONConvertException where
     toException   = bioExceptionToException

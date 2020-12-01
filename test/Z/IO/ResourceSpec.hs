@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Z.IO.ResourceSpec where
@@ -7,12 +6,11 @@ import           Control.Concurrent
 import           Control.Exception
 import           Control.Monad
 import           Z.Data.PrimRef.PrimIORef
-import           Data.Typeable
 import           Z.IO.Resource          as R
 import           Test.Hspec
 import           Test.HUnit
 
-data WorkerException = WorkerException deriving (Typeable, Show)
+data WorkerException = WorkerException deriving (Show)
 
 instance Exception WorkerException
 
