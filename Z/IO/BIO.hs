@@ -47,37 +47,38 @@ base64AndCompressFile origin target = do
 module Z.IO.BIO (
   -- * The BIO type
     BIO(..), Source, Sink
+  , BIOException(..), ParseException(..), JSONConvertException(..)
+  -- ** Basic combinators
   , (>|>), (>~>), (>!>), appendSource
   , concatSource, zipSource, zipBIO
   , joinSink, fuseSink
-  , pureBIO, ioBIO
-  , ParseException(..)
   -- * Run BIO chain
   , runBIO
   , runSource, runSource_
   , runBlock, runBlock_, unsafeRunBlock
   , runBlocks, runBlocks_, unsafeRunBlocks
   -- * Make new BIO
+  , pureBIO, ioBIO
+  -- ** Source
   , sourceFromList
+  , sourceFromFile
+  , sourceFromBuffered, sourceFromInput
+  , sourceTextFromBuffered, sourceTextFromInput
+  , sourceJSONFromBuffered, sourceJSONFromInput
+  , sourceParsedBufferInput, sourceParsedInput
+  -- ** Sink
   , sinkToList
-  , sourceFromBuffered
-  , sourceTextFromBuffered
   , sinkToBuffered
   , sinkBuilderToBuffered
-  -- * Input & Output BIO adapters
-  , sourceFromInput
-  , sourceFromFile
-  , sourceTextFromInput
-  , sourceParsedInput
   , sinkToOutput
   , sinkToFile
   , sinkBuilderToOutput
   , sinkToIO
-  -- * Bytes specific
+  -- ** Bytes specific
   , newParserNode, newReChunk, newUTF8Decoder, newMagicSplitter, newLineSplitter
   , newBase64Encoder, newBase64Decoder
   , hexEncoder, newHexDecoder
-  -- * Generic BIO
+  -- ** Generic BIO
   , newCounterNode
   , newSeqNumNode
   , newGroupingNode
@@ -85,28 +86,31 @@ module Z.IO.BIO (
 
 import           Control.Monad
 import           Control.Monad.IO.Class
+import           Data.Bits              ((.|.))
 import           Data.IORef
-import qualified Data.List             as List
+import qualified Data.List              as List
+import           Data.Sequence          (Seq (..))
+import qualified Data.Sequence          as Seq
+import           Data.Typeable          (cast)
 import           Data.Void
 import           Data.Word
-import           Data.Bits             ((.|.))
-import qualified Data.Sequence         as Seq
-import           Data.Sequence         (Seq(..))
-import           System.IO.Unsafe      (unsafePerformIO)
-import qualified Z.Data.Array          as A
-import qualified Z.Data.Builder        as B
-import qualified Z.Data.Parser         as P
-import           Z.Data.CBytes         (CBytes)
+import           System.IO.Unsafe       (unsafePerformIO)
+import qualified Z.Data.Array           as A
+import qualified Z.Data.Builder         as B
+import           Z.Data.CBytes          (CBytes)
+import qualified Z.Data.JSON            as JSON
+import qualified Z.Data.JSON.Value      as JSON
+import qualified Z.Data.Parser          as P
 import           Z.Data.PrimRef
-import qualified Z.Data.Text           as T
-import qualified Z.Data.Text.UTF8Codec as T
-import qualified Z.Data.Vector         as V
-import qualified Z.Data.Vector.Base    as V
+import qualified Z.Data.Text            as T
+import qualified Z.Data.Text.UTF8Codec  as T
+import qualified Z.Data.Vector          as V
+import qualified Z.Data.Vector.Base     as V
 import           Z.Data.Vector.Base64
 import           Z.Data.Vector.Hex
 import           Z.IO.Buffered
 import           Z.IO.Exception
-import qualified Z.IO.FileSystem       as FS
+import qualified Z.IO.FileSystem        as FS
 import           Z.IO.Resource
 
 -- | A 'BIO'(blocked IO) node.
@@ -144,13 +148,15 @@ data BIO inp out = BIO
       -- ^ Push a block of input, perform some effect, and return output,
       -- if input is not enough to produce any output yet, return 'Nothing'.
     , pull :: HasCallStack => IO (Maybe out)
-      -- ^ When input reaches EOF, there may be a finalize stage to output trailing output blocks.
-      -- return 'Nothing' to indicate current node reaches EOF too.
+      -- ^ When input reaches EOF, there may be a finalize stage to output
+      -- trailing output blocks. return 'Nothing' to indicate current node
+      -- reaches EOF too.
     }
 
 -- | Type alias for 'BIO' node which never takes input.
 --
--- 'push' is not available by type system, and 'pull' return 'Nothing' when reaches EOF.
+-- 'push' is not available by type system, and 'pull' return 'Nothing' when
+-- reaches EOF.
 type Source out = BIO Void out
 
 -- | Type alias for 'BIO' node which only takes input and perform effects.
@@ -168,6 +174,44 @@ instance Functor (BIO inp) where
         pull_ = do
             r <- pull
             return $! fmap f r
+
+-- | Exception when run BIO failed.
+--
+-- Note this exception is a sub-type of 'SomeIOException'.
+data BIOException = forall e. Exception e => BIOException e
+
+instance Show BIOException where
+    show (BIOException e) = show e
+
+instance Exception BIOException where
+    toException = ioExceptionToException
+    fromException = ioExceptionFromException
+
+bioExceptionToException :: Exception e => e -> SomeException
+bioExceptionToException = toException . BIOException
+
+bioExceptionFromException :: Exception e => SomeException -> Maybe e
+bioExceptionFromException x = do
+    BIOException a <- fromException x
+    cast a
+
+-- | Exception when BIO parse failed, this exception is one of a particular
+-- 'BIOException'.
+data ParseException = ParseException P.ParseError CallStack
+    deriving Show
+
+instance Exception ParseException where
+    toException   = bioExceptionToException
+    fromException = bioExceptionFromException
+
+-- | Exception when BIO convert to json failed, this exception is one of a
+-- particular 'BIOException'.
+data JSONConvertException = JSONConvertException JSON.ConvertError CallStack
+    deriving Show
+
+instance Exception JSONConvertException where
+    toException   = bioExceptionToException
+    fromException = bioExceptionFromException
 
 infixl 3 >|>
 infixl 3 >~>
@@ -187,7 +231,7 @@ BIO pushA pullA >|> BIO pushB pullB = BIO push_ pull_
             Just x' -> do
                 y <- pushB x'
                 case y of Nothing -> pull_  -- draw input from A until there's an output from B
-                          _ -> return y
+                          _       -> return y
             _       -> pullB
 
 -- | Flipped 'fmap' for easier chaining.
@@ -206,19 +250,6 @@ BIO pushA pullA >|> BIO pushB pullB = BIO push_ pull_
     pull_ = pull >>= \ r ->
         case r of Just r' -> Just <$!> f r'
                   _       -> return Nothing
-
--- | BIO node from a pure function.
---
--- BIO node made with this funtion are stateless, thus can be reused across chains.
-pureBIO :: (a -> b) -> BIO a b
-pureBIO f = BIO (\ x -> let !r = f x in return (Just r)) (return Nothing)
-
--- | BIO node from an IO function.
---
--- BIO node made with this funtion may not be stateless, it depends on if the IO function use
--- IO state.
-ioBIO :: (HasCallStack => a -> IO b) -> BIO a b
-ioBIO f = BIO (\ x -> Just <$!> f x) (return Nothing)
 
 -- | Connect two 'BIO' source, after first reach EOF, draw element from second.
 appendSource :: Source a -> Source a  -> IO (Source a)
@@ -254,9 +285,8 @@ concatSource ss0 = newIORef ss0 >>= \ ref -> return (BIO{ pull = loop ref})
             (s:rest) -> do
                 r <- pull s
                 case r of
-                    Just _  -> return r
-                    _       -> writeIORef ref rest >> loop ref
-
+                    Just _ -> return r
+                    _      -> writeIORef ref rest >> loop ref
 
 -- | Zip two 'BIO' source into one, reach EOF when either one reached EOF.
 zipSource :: Source a -> Source b -> IO (Source (a,b))
@@ -273,7 +303,7 @@ zipSource (BIO _ pullA) (BIO _ pullB) = do
             let r = (,) <$> mA <*> mB
             case r of
                 Just _ -> return r
-                _ -> writeIORef finRef True >> return Nothing
+                _      -> writeIORef finRef True >> return Nothing
             }
 
 -- | Zip two 'BIO' node into one, reach EOF when either one reached EOF.
@@ -311,15 +341,17 @@ zipBIO (BIO pushA pullA) (BIO pushB pullB) = do
             aSeq <- readIORef aSeqRef
             bSeq <- readIORef bSeqRef
             ma <- case aSeq of (_ :|> a) -> return (Just a)
-                               _ -> pullA
+                               _         -> pullA
             mb <- case bSeq of (_ :|> b) -> return (Just b)
-                               _ -> pullB
+                               _         -> pullB
             case ma of
                 Just a -> case mb of
                     Just b -> return (Just (a, b))
-                    _ -> writeIORef finRef True >> return Nothing
+                    _      -> writeIORef finRef True >> return Nothing
                 _ -> writeIORef finRef True >> return Nothing
 
+-------------------------------------------------------------------------------
+-- Run BIO
 
 -- | Run a 'BIO' loop (source >|> ... >|> sink).
 runBIO :: BIO Void Void -> IO ()
@@ -344,7 +376,7 @@ runSource_ BIO{..} = loop pull
     loop f = do
         r <- f
         case r of Just _ -> loop f
-                  _       -> return ()
+                  _      -> return ()
 
 -- | Supply a single block of input, then run BIO node until EOF.
 --
@@ -354,14 +386,13 @@ runBlock :: HasCallStack => BIO inp out -> inp -> IO [out]
 runBlock BIO{..} inp = do
     x <- push inp
     let acc = case x of Just x' -> [x']
-                        _ -> []
+                        _       -> []
     loop pull acc
   where
     loop f acc = do
         r <- f
         case r of Just r' -> loop f (r':acc)
                   _       -> return (List.reverse acc)
-
 
 -- | Supply a single block of input, then run BIO node until EOF with collecting result.
 --
@@ -396,13 +427,13 @@ runBlocks BIO{..} = loop []
         r <- push inp
         case r of
             Just r' -> loop (r':acc) inps
-            _ -> loop acc inps
+            _       -> loop acc inps
     loop acc [] = loop' acc
     loop' acc = do
         r <- pull
         case r of
             Just r' -> loop' (r':acc)
-            _ -> return (List.reverse acc)
+            _       -> return (List.reverse acc)
 
 -- | Supply blocks of input, then run BIO node until EOF with collecting result.
 --
@@ -416,7 +447,7 @@ runBlocks_ bio [] = loop
         r <- pull bio
         case r of
             Just _ -> loop
-            _ -> return ()
+            _      -> return ()
 
 -- | Wrap a stream computation into a pure interface.
 --
@@ -425,9 +456,96 @@ unsafeRunBlocks :: HasCallStack => IO (BIO inp out) -> [inp] -> [out]
 {-# INLINABLE unsafeRunBlocks #-}
 unsafeRunBlocks new inps = unsafePerformIO (new >>= \ bio -> runBlocks bio inps)
 
---------------------------------------------------------------------------------
--- | Turn a 'BufferedOutput' into a 'V.Bytes' sink.
+-------------------------------------------------------------------------------
+-- Source
+
+-- | Source a list from memory.
 --
+sourceFromList :: [a] -> IO (Source a)
+sourceFromList xs0 = do
+    xsRef <- newIORef xs0
+    return BIO{ pull = popper xsRef }
+  where
+    popper xsRef = do
+        xs <- readIORef xsRef
+        case xs of
+            (x:xs') -> do
+                writeIORef xsRef xs'
+                return (Just x)
+            _ -> return Nothing
+
+-- | Turn a 'BufferedInput' into 'BIO' source, map EOF to Nothing.
+--
+sourceFromBuffered :: BufferedInput -> Source V.Bytes
+{-# INLINABLE sourceFromBuffered #-}
+sourceFromBuffered i = BIO{ pull = do
+    readBuffer i >>= \ x -> if V.null x then return Nothing
+                                        else return (Just x)}
+
+-- | Turn a UTF8 encoded 'BufferedInput' into 'BIO' source, map EOF to Nothing.
+--
+sourceTextFromBuffered :: BufferedInput -> Source T.Text
+{-# INLINABLE sourceTextFromBuffered #-}
+sourceTextFromBuffered i = BIO{ pull = do
+    readBufferText i >>= \ x -> if T.null x then return Nothing
+                                            else return (Just x)}
+
+-- | Turn a 'JSON' encoded 'BufferedInput' into 'BIO' source, ignoring any
+-- whitespaces bewteen JSON objects. If EOF reached, then return Nothing.
+sourceJSONFromBuffered :: forall a. JSON.FromValue a => BufferedInput -> Source a
+sourceJSONFromBuffered i = sourceParsedBufferInput JSON.value i >!> convert
+    where
+        convert :: JSON.Value -> IO a
+        convert jval =
+            case JSON.convert' jval of
+              Left e  -> throwIO $ JSONConvertException e callStack
+              Right r -> return r
+{-# INLINABLE sourceJSONFromBuffered #-}
+
+-- | Turn buffered input device into a packet source.
+sourceParsedBufferInput :: P.Parser a -> BufferedInput -> Source a
+{-# INLINABLE sourceParsedBufferInput #-}
+sourceParsedBufferInput p bi = BIO{ pull = do
+    bs <- readBuffer bi
+    if V.null bs
+       then return Nothing
+       else do
+           (rest, r) <- P.parseChunks p (readBuffer bi) bs
+           unReadBuffer rest bi
+           case r of Right v -> return (Just v)
+                     Left e  -> throwIO (ParseException e callStack)}
+
+-- | Turn an input device into a 'V.Bytes' source.
+sourceFromInput :: Input i => i -> IO (Source V.Bytes)
+{-# INLINABLE sourceFromInput #-}
+sourceFromInput i = sourceFromBuffered <$> newBufferedInput i
+
+-- | Turn an input device into a 'T.Text' source.
+sourceTextFromInput :: Input i => i -> IO (Source T.Text)
+{-# INLINABLE sourceTextFromInput #-}
+sourceTextFromInput i = sourceTextFromBuffered <$> newBufferedInput i
+
+-- | Turn an input device into a 'JSON' source.
+sourceJSONFromInput :: (Input i, JSON.FromValue a) => i -> IO (Source a)
+sourceJSONFromInput i = sourceJSONFromBuffered <$> newBufferedInput i
+{-# INLINABLE sourceJSONFromInput #-}
+
+-- | Turn a file into a 'V.Bytes' source.
+sourceFromFile :: CBytes -> Resource (Source V.Bytes)
+{-# INLINABLE sourceFromFile #-}
+sourceFromFile p = do
+    f <- FS.initFile p FS.O_RDONLY FS.DEFAULT_MODE
+    liftIO (sourceFromInput f)
+
+-- | Turn input device into a packet source.
+sourceParsedInput :: Input i => P.Parser a -> i -> IO (Source a)
+{-# INLINABLE sourceParsedInput #-}
+sourceParsedInput p i = sourceParsedBufferInput p <$> newBufferedInput i
+
+--------------------------------------------------------------------------------
+-- Sink
+
+-- | Turn a 'BufferedOutput' into a 'V.Bytes' sink.
 sinkToBuffered :: BufferedOutput -> Sink V.Bytes
 {-# INLINABLE sinkToBuffered #-}
 sinkToBuffered bo = BIO push_ pull_
@@ -486,21 +604,6 @@ sinkToIO f = BIO push_ pull_
     push_ x = f x >> pure Nothing
     pull_ = pure Nothing
 
--- | Source a list from memory.
---
-sourceFromList :: [a] -> IO (Source a)
-sourceFromList xs0 = do
-    xsRef <- newIORef xs0
-    return BIO{ pull = popper xsRef }
-  where
-    popper xsRef = do
-        xs <- readIORef xsRef
-        case xs of
-            (x:xs') -> do
-                writeIORef xsRef xs'
-                return (Just x)
-            _ -> return Nothing
-
 -- | Sink to a list in memory.
 --
 -- The list's 'IORef' is not thread safe here,
@@ -513,58 +616,21 @@ sinkToList = do
     return (xsRef, BIO (\ x -> modifyIORef xsRef (x:) >> return Nothing)
                        (modifyIORef xsRef reverse >> return Nothing))
 
--- | Turn a 'BufferedInput' into 'BIO' source, map EOF to Nothing.
---
-sourceFromBuffered :: BufferedInput -> Source V.Bytes
-{-# INLINABLE sourceFromBuffered #-}
-sourceFromBuffered i = BIO{ pull = do
-    readBuffer i >>= \ x -> if V.null x then return Nothing
-                                        else return (Just x)}
-
--- | Turn a UTF8 encoded 'BufferedInput' into 'BIO' source, map EOF to Nothing.
---
-sourceTextFromBuffered :: BufferedInput -> Source T.Text
-{-# INLINABLE sourceTextFromBuffered #-}
-sourceTextFromBuffered i = BIO{ pull = do
-    readBufferText i >>= \ x -> if T.null x then return Nothing
-                                            else return (Just x)}
-
--- | Turn an input device into a 'V.Bytes' source.
-sourceFromInput :: Input i => i -> IO (Source V.Bytes)
-{-# INLINABLE sourceFromInput #-}
-sourceFromInput i =
-    newBufferedInput i >>= return . sourceFromBuffered
-
--- | Turn a file into a 'V.Bytes' source.
-sourceFromFile :: CBytes -> Resource (Source V.Bytes)
-{-# INLINABLE sourceFromFile #-}
-sourceFromFile p = do
-    f <- FS.initFile p FS.O_RDONLY FS.DEFAULT_MODE
-    liftIO (sourceFromInput f)
-
--- | Turn an input device into a 'T.Text' source.
-sourceTextFromInput :: Input i => i -> IO (Source T.Text)
-{-# INLINABLE sourceTextFromInput #-}
-sourceTextFromInput i =
-    newBufferedInput i >>= return . sourceTextFromBuffered
-
--- | Turn input device into a packet source, see 'sourceParsedInput''.
-sourceParsedInput :: Input i => i -> P.Parser a -> IO (Source a)
-{-# INLINABLE sourceParsedInput #-}
-sourceParsedInput i p =
-    newBufferedInput i >>= return . loopParse
-  where
-    loopParse bi = BIO{ pull = do
-        bs <- readBuffer bi
-        if V.null bs
-        then return Nothing
-        else do
-            (rest, r) <- P.parseChunks p (readBuffer bi) bs
-            unReadBuffer rest bi
-            case r of Right v -> return (Just v)
-                      Left e  -> throwIO (ParseException e callStack)}
-
 --------------------------------------------------------------------------------
+-- Nodes
+
+-- | BIO node from a pure function.
+--
+-- BIO node made with this funtion are stateless, thus can be reused across chains.
+pureBIO :: (a -> b) -> BIO a b
+pureBIO f = BIO (\ x -> let !r = f x in return (Just r)) (return Nothing)
+
+-- | BIO node from an IO function.
+--
+-- BIO node made with this funtion may not be stateless, it depends on if the IO function use
+-- IO state.
+ioBIO :: (HasCallStack => a -> IO b) -> BIO a b
+ioBIO f = BIO (\ x -> Just <$!> f x) (return Nothing)
 
 -- | Make a chunk size divider.
 --
@@ -598,21 +664,13 @@ newReChunk n = do
             writeIORef trailingRef V.empty
             return (Just trailing)
 
-
--- | Exception when parsing failed in streams.
---
--- Note this exception is a sub-type of 'SomeIOException'.
-data ParseException = ParseException P.ParseError CallStack deriving Show
-instance Exception ParseException where
-    toException = ioExceptionToException
-    fromException = ioExceptionFromException
-
 -- | Read buffer and parse with 'Parser'.
 --
--- This function will continuously draw data from input before parsing finish. Unconsumed
--- bytes will be returned to buffer.
+-- This function will continuously draw data from input before parsing finish.
+-- Unconsumed bytes will be returned to buffer.
 --
--- Return 'Nothing' if reach EOF before parsing, throw 'ParseException' if parsing fail.
+-- Return 'Nothing' if reach EOF before parsing, throw 'ParseException' if
+-- parsing fail.
 newParserNode :: P.Parser a -> IO (BIO V.Bytes a)
 {-# INLINABLE newParserNode #-}
 newParserNode p = do
@@ -624,7 +682,7 @@ newParserNode p = do
         lastResult <- readIORef resultRef
         let (chunk, f) = case lastResult of
                 Left trailing -> (trailing `V.append` bs, P.parseChunk p)
-                Right x -> (bs, x)
+                Right x       -> (bs, x)
         case f chunk of
             P.Success a trailing' -> do
                 writeIORef resultRef (Left trailing')
@@ -833,4 +891,3 @@ newGroupingNode n
             return . Just =<< A.unsafeFreezeArr marr'
 #endif
         else return Nothing
-
