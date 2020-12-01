@@ -21,7 +21,7 @@ New defined IO exceptions are encouraged to include a 'IOEInfo', since it helps 
 Example for library author defining new io exception:
 
 @
-  data MyNetworkException = MyNetworkException IOEInfo ... deriving (Show, Typeable)
+  data MyNetworkException = MyNetworkException IOEInfo ... deriving Show
   instance Exception MyNetworkException where
         toException = ioExceptionToException
         fromException = ioExceptionFromException
@@ -72,22 +72,21 @@ module Z.IO.Exception
   , module Z.IO.UV.Errno
   ) where
 
-import Control.Exception hiding (IOException)
-import Control.Monad
-import Control.Concurrent.STM
-import Data.Typeable
-import Foreign.Ptr
-import Foreign.C.Types
-import GHC.Stack
-import Z.IO.UV.Errno
-import qualified Z.Data.Text       as T
-import qualified Z.Data.Text.ShowT as T
+import           Control.Concurrent.STM
+import           Control.Exception      hiding (IOException)
+import           Control.Monad
+import           Data.Typeable          (cast)
+import           Foreign.C.Types
+import           Foreign.Ptr
+import           GHC.Stack
+import qualified Z.Data.Text            as T
+import qualified Z.Data.Text.ShowT      as T
+import           Z.IO.UV.Errno
 
 
 -- | The root type of all io exceptions, you can catch all io exception by catching this root type.
 --
 data SomeIOException = forall e . Exception e => SomeIOException e
-    deriving Typeable
 
 instance Show SomeIOException where
     show (SomeIOException e) = show e
@@ -102,7 +101,7 @@ ioExceptionFromException x = do
     SomeIOException a <- fromException x
     cast a
 
-#define IOE(e) data e = e IOEInfo deriving (Show, Typeable);  \
+#define IOE(e) data e = e IOEInfo deriving (Show);  \
                instance Exception e where                     \
                    { toException = ioExceptionToException     \
                    ; fromException = ioExceptionFromException \

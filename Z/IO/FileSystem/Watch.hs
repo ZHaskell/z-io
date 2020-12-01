@@ -12,7 +12,7 @@ support recursive watch(Linux's inotify).
 
 @
 -- start watching threads, use returned close function to cleanup watching threads.
-(close, srcf) <- watchDir "fold_to_be_watch"
+(close, srcf) <- watchDirs ["fold_to_be_watch"]
 -- dup a file event source
 src <- srcf
 -- print event to stdout

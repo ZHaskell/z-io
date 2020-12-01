@@ -47,17 +47,17 @@ module Z.IO.BIO.Zlib(
 
 import           Control.Monad
 import           Data.IORef
-import           Data.Typeable
-import           Data.Word
 import qualified Data.List          as List
+import           Data.Typeable      (cast)
+import           Data.Word
 import           Foreign            hiding (void)
 import           Foreign.C
 import           GHC.Generics
 import           Z.Data.Array       as A
 import           Z.Data.CBytes      as CBytes
-import           Z.Data.Vector.Base as V
+import           Z.Data.JSON        (EncodeJSON, FromValue, ToValue)
 import           Z.Data.Text.ShowT  (ShowT)
-import           Z.Data.JSON        (EncodeJSON, ToValue, FromValue)
+import           Z.Data.Vector.Base as V
 import           Z.Foreign
 import           Z.IO.BIO
 import           Z.IO.Exception
@@ -164,7 +164,7 @@ newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
 
     zflush finRef zs bufRef acc = do
         fin <- readIORef finRef
-        if fin 
+        if fin
         then return Nothing
         else do
             buf <- readIORef bufRef
@@ -182,7 +182,7 @@ newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
             else do
                 oarr <- A.unsafeFreezeArr buf
                 let trailing = V.concat . List.reverse $ V.PrimVector oarr 0 osiz : acc
-                -- stream ends 
+                -- stream ends
                 writeIORef finRef True
                 if V.null trailing then return Nothing else return (Just trailing)
 
@@ -312,7 +312,7 @@ toZErrorMsg (#const Z_VERSION_ERROR) =  "Z_VERSION_ERROR"
 toZErrorMsg _                        =  "Z_UNEXPECTED"
 
 -- | Zlib exceptions, a sub exception type to 'SomeIOException'.
-data ZlibException = ZlibException CBytes CallStack deriving (Show, Typeable)
+data ZlibException = ZlibException CBytes CallStack deriving Show
 instance Exception ZlibException where
     toException = ioExceptionToException
     fromException = ioExceptionFromException
