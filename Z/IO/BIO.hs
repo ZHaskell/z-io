@@ -493,6 +493,7 @@ sourceTextFromBuffered i = BIO{ pull = do
 -- | Turn a 'JSON' encoded 'BufferedInput' into 'BIO' source, ignoring any
 -- whitespaces bewteen JSON objects. If EOF reached, then return Nothing.
 sourceJSONFromBuffered :: forall a. JSON.FromValue a => BufferedInput -> Source a
+{-# INLINABLE sourceJSONFromBuffered #-}
 sourceJSONFromBuffered i = sourceParsedBufferInput JSON.value i >!> convert
     where
         convert :: JSON.Value -> IO a
@@ -500,7 +501,6 @@ sourceJSONFromBuffered i = sourceParsedBufferInput JSON.value i >!> convert
             case JSON.convert' jval of
               Left e  -> throwIO $ JSONConvertException e callStack
               Right r -> return r
-{-# INLINABLE sourceJSONFromBuffered #-}
 
 -- | Turn buffered input device into a packet source.
 sourceParsedBufferInput :: P.Parser a -> BufferedInput -> Source a

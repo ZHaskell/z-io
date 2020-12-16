@@ -1,8 +1,12 @@
 # Revision history for Z-IO
 
-## 0.1.9.1  -- TBD
 
+## 0.2.0.0  -- 2020-12-16
+
+* Add `sourceParsedBufferInput` and JSON sources to `Z.IO.BIO`.
 * Fix `readLine` and `newLineSplitter`.
+* Improve low resolution timer precision.
+* Fix a bug in `Z.IO.FileSystem.FilePath.relative`, see [#17](https://github.com/likle/cwalk/issues/17).
 
 ## 0.1.9.0  -- 2020-11-23
 
