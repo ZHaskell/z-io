@@ -184,7 +184,7 @@ pushLogIORef :: IORef [V.Bytes]     -- ^ logs stored in a list, new log will be 
              -> B.Builder ()        -- ^ formatted log
              -> IO ()
 pushLogIORef logsRef loggerLineBufSize b = do
-    let !bs = B.buildBytesWith loggerLineBufSize b
+    let !bs = B.buildWith loggerLineBufSize b
     unless (V.null bs) $ atomicModifyIORef' logsRef (\ bss -> (bs:bss, ()))
 
 flushLogIORef :: HasCallStack => MVar BufferedOutput -> IORef [V.Bytes] -> IO ()

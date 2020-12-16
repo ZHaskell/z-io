@@ -48,7 +48,6 @@ module Z.IO.BIO.Zlib(
 import           Control.Monad
 import           Data.IORef
 import qualified Data.List          as List
-import           Data.Typeable      (cast)
 import           Data.Word
 import           Foreign            hiding (void)
 import           Foreign.C
