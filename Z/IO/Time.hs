@@ -14,7 +14,7 @@ For advanced time editing, use @time@ library.
 -}
 module Z.IO.Time
   ( -- * SystemTime
-    SystemTime(..), getSystemTime
+    SystemTime(..), getSystemTime'
     -- * Parsing
   , parseSystemTime, parseSystemTimeGMT
     -- * Formatting
@@ -29,7 +29,16 @@ import Data.Int
 import Foreign.C.Types
 import Z.Foreign
 import Z.Data.CBytes
+import Z.IO.UV.FFI
+import Z.IO.Exception
 import System.IO.Unsafe (unsafePerformIO)
+
+
+-- | A alternative version of 'getSystemTime'' based on libuv's @uv_gettimeofday@, which also doesn't use pinned allocation.
+getSystemTime' :: HasCallStack => IO SystemTime
+getSystemTime' = do
+    (TimeVal64 s us) <- getTimeOfDay
+    return (MkSystemTime s (fromIntegral us * 1000))
 
 -- | <https://man7.org/linux/man-pages/man3/strftime.3.html strftime> time format.
 type TimeFormat = CBytes

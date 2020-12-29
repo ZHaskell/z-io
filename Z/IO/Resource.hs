@@ -29,6 +29,8 @@ module Z.IO.Resource (
   , initInPool
   , withResourceInPool
   , poolStat, poolInUse
+  -- * Re-export
+  , liftIO
 ) where
 
 import           Control.Concurrent.STM

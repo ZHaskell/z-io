@@ -39,7 +39,7 @@ import           Data.Primitive.PrimArray
 import           Foreign.Ptr
 import           GHC.Generics
 import           Z.Data.CBytes
-import           Z.Data.Text.ShowT   (ShowT(..))
+import           Z.Data.Text.Print   (Print)
 import           Z.Data.JSON         (EncodeJSON, ToValue, FromValue)
 import           Z.IO.Exception
 import           Z.IO.Resource
@@ -57,7 +57,7 @@ data IPCClientConfig = IPCClientConfig
                                     -- won't bind if set to 'Nothing'.
     , ipcTargetName :: CBytes       -- ^ target path (Unix) or a name (Windows).
     } deriving (Eq, Ord, Show, Read, Generic)
-      deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
+      deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
 
 -- | Default config, connect to ".\/ipc".
 --
@@ -88,7 +88,7 @@ data IPCServerConfig = IPCServerConfig
     { ipcListenName       :: CBytes      -- ^ listening path (Unix) or a name (Windows).
     , ipcListenBacklog    :: Int           -- ^ listening pipe's backlog size, should be large enough(>128)
     } deriving (Eq, Ord, Show, Read, Generic)
-      deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
+      deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
 
 -- | A default hello world server on @.\/ipc@
 --

@@ -80,8 +80,8 @@ import           GHC.Generics
 import           Numeric                (showHex)
 import           System.IO.Unsafe
 import           Z.Data.CBytes
-import           Z.Data.Text.ShowT      (ShowT(..))
-import qualified Z.Data.Text.ShowT      as T
+import           Z.Data.Text.Print      (Print(..))
+import qualified Z.Data.Text.Print      as T
 import           Z.Data.JSON            (EncodeJSON(..), ToValue(..), FromValue(..), (.:))
 import qualified Z.Data.JSON            as JSON
 import qualified Z.Data.JSON.Builder    as B
@@ -183,7 +183,7 @@ instance FromValue SocketAddr where
 
 instance Show SocketAddr where show = T.toString
 
-instance ShowT SocketAddr where
+instance Print SocketAddr where
     toUTF8BuilderP _ (SocketAddrIPv4 addr port)
        = T.toUTF8Builder addr >> T.char7 ':' >> T.toUTF8Builder port
     toUTF8BuilderP _ (SocketAddrIPv6 addr port _ _) = do
@@ -233,7 +233,7 @@ instance FromValue IPv4 where
     fromValue v = tupleToIPv4Addr <$> fromValue v
 
 instance Show IPv4 where show = T.toString
-instance ShowT IPv4 where
+instance Print IPv4 where
     toUTF8BuilderP _ ia = do
         let (a,b,c,d) = ipv4AddrToTuple ia
         T.int a 
@@ -279,7 +279,7 @@ instance Storable IPv4 where
     poke p (IPv4 ia) = pokeByteOff p 0 (htonl ia)
 
 instance Unaligned IPv4 where
-    unalignedSize _ = 4
+    unalignedSize = 4
     pokeMBA p off x = pokeMBA p off (htonl (getIPv4Addr x))
     peekMBA p off = IPv4 . ntohl <$> peekMBA p off
     indexBA p off = IPv4 (ntohl (indexBA p off))
@@ -326,7 +326,7 @@ instance FromValue IPv6 where
         return $! tupleToIPv6Addr (a,b,c,d,e,f,g,h)
 
 instance Show IPv6 where show = T.toString
-instance ShowT IPv6 where
+instance Print IPv6 where
     toUTF8BuilderP _ ia6@(IPv6 a1 a2 a3 a4)
         -- IPv4-Mapped IPv6 Address
         | a1 == 0 && a2 == 0 && a3 == 0xffff =
@@ -416,7 +416,7 @@ poke32 p i0 a = do
     pokeByte 3 (a `sr`  0)
 
 instance Unaligned IPv6 where
-    unalignedSize _ = (#size struct in6_addr)
+    unalignedSize = (#size struct in6_addr)
 
     indexBA p off = 
         let a = indexBA p (off + s6_addr_offset + 0)
@@ -598,7 +598,7 @@ pokeSocketAddrMBA p (SocketAddrIPv6 addr port flow scope) =  do
 -- 60000
 newtype PortNumber = PortNumber Word16 
     deriving (Eq, Ord, Enum, Generic)
-    deriving newtype (Show, ShowT, Read, Num, Bounded, Real, Integral, EncodeJSON, ToValue, FromValue)
+    deriving newtype (Show, Print, Read, Num, Bounded, Real, Integral, EncodeJSON, ToValue, FromValue)
 
 -- | @:0@
 portAny :: PortNumber
@@ -611,7 +611,7 @@ instance Storable PortNumber where
    peek p = PortNumber . ntohs <$> peek (castPtr p)
 
 instance Unaligned PortNumber where
-   unalignedSize _ = 2
+   unalignedSize = 2
    indexBA p off = PortNumber . ntohs $ indexBA p off
    pokeMBA p off (PortNumber po) = pokeMBA p off (htons po)
    peekMBA p off = PortNumber . ntohs <$> peekMBA p off

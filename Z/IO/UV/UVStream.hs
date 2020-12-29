@@ -17,12 +17,13 @@ module Z.IO.UV.UVStream
   , UVStream(..)
   , getUVStreamFD
   , closeUVStream
+  , shutdownUVStream
   , helloWorld, echo
   ) where
 
 import           Control.Concurrent
 import           Control.Monad
-import qualified Z.Data.Text.ShowT as T
+import qualified Z.Data.Text.Print          as T
 import           Z.IO.UV.Errno
 import           Z.IO.UV.FFI
 import           Z.IO.UV.Manager
@@ -49,7 +50,7 @@ data UVStream = UVStream
 
 instance Show UVStream where show = T.toString
 
-instance T.ShowT UVStream where
+instance T.Print UVStream where
     toUTF8BuilderP _ (UVStream hdl slot uvm _) = do
         "UVStream{uvsHandle="  >> T.toUTF8Builder hdl
         ",uvsSlot="            >> T.toUTF8Builder slot
@@ -88,6 +89,20 @@ closeUVStream (UVStream hdl _ uvm closed) = withUVManager' uvm $ do
     c <- readIORef closed
     -- hs_uv_handle_close won't return error
     unless c $ writeIORef closed True >> hs_uv_handle_close hdl
+
+-- | Shutdown the outgoing (write) side of a duplex stream. It waits for pending write requests to complete.
+--
+-- Futher writing will throw 'ResourceVanished'(EPIPE).
+shutdownUVStream :: HasCallStack => UVStream -> IO ()
+shutdownUVStream (UVStream hdl _ uvm closed) = do
+    c <- readIORef closed
+    when c throwECLOSED
+    m <- withUVManager' uvm $ do
+        reqSlot <- getUVSlot uvm (hs_uv_shutdown hdl)
+        m <- getBlockMVar uvm reqSlot
+        _ <- tryTakeMVar m
+        return m
+    throwUVIfMinus_  (uninterruptibleMask_ $ takeMVar m)
 
 -- | Get stream fd
 getUVStreamFD :: HasCallStack => UVStream -> IO FD

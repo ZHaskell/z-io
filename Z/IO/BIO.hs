@@ -35,8 +35,8 @@ base64AndCompressFile origin target = do
     base64Enc <- newBase64Encoder
     (_, zlibCompressor) <- newCompress defaultCompressConfig{compressWindowBits = 31}
 
-    withResource (sourceFromFile origin) $ \ src ->
-        withResource (sinkToFile target) $ \ sink ->
+    withResource (initSourceFromFile origin) $ \ src ->
+        withResource (initSinkToFile target) $ \ sink ->
             runBIO $ src >|> base64Enc >|> zlibCompressor >|> sink
 
 > base64AndCompressFile "test" "test.gz"
@@ -47,7 +47,7 @@ base64AndCompressFile origin target = do
 module Z.IO.BIO (
   -- * The BIO type
     BIO(..), Source, Sink
-  , BIOException(..), ParseException(..), JSONConvertException(..)
+  , BIOException(..), BIOParseException(..), JSONConvertException(..)
   -- ** Basic combinators
   , (>|>), (>~>), (>!>), appendSource
   , concatSource, zipSource, zipBIO
@@ -61,7 +61,7 @@ module Z.IO.BIO (
   , pureBIO, ioBIO
   -- ** Source
   , sourceFromList
-  , sourceFromFile
+  , initSourceFromFile
   , sourceFromBuffered, sourceFromInput
   , sourceTextFromBuffered, sourceTextFromInput
   , sourceJSONFromBuffered, sourceJSONFromInput
@@ -71,7 +71,7 @@ module Z.IO.BIO (
   , sinkToBuffered
   , sinkBuilderToBuffered
   , sinkToOutput
-  , sinkToFile
+  , initSinkToFile
   , sinkBuilderToOutput
   , sinkToIO
   -- ** Bytes specific
@@ -197,10 +197,10 @@ bioExceptionFromException x = do
 
 -- | Exception when BIO parse failed, this exception is one of a particular
 -- 'BIOException'.
-data ParseException = ParseException P.ParseError CallStack
+data BIOParseException = BIOParseException P.ParseError CallStack
     deriving Show
 
-instance Exception ParseException where
+instance Exception BIOParseException where
     toException   = bioExceptionToException
     fromException = bioExceptionFromException
 
@@ -513,7 +513,7 @@ sourceParsedBufferInput p bi = BIO{ pull = do
            (rest, r) <- P.parseChunks p (readBuffer bi) bs
            unReadBuffer rest bi
            case r of Right v -> return (Just v)
-                     Left e  -> throwIO (ParseException e callStack)}
+                     Left e  -> throwIO (BIOParseException e callStack)}
 
 -- | Turn an input device into a 'V.Bytes' source.
 sourceFromInput :: Input i => i -> IO (Source V.Bytes)
@@ -531,9 +531,9 @@ sourceJSONFromInput i = sourceJSONFromBuffered <$> newBufferedInput i
 {-# INLINABLE sourceJSONFromInput #-}
 
 -- | Turn a file into a 'V.Bytes' source.
-sourceFromFile :: CBytes -> Resource (Source V.Bytes)
-{-# INLINABLE sourceFromFile #-}
-sourceFromFile p = do
+initSourceFromFile :: CBytes -> Resource (Source V.Bytes)
+{-# INLINABLE initSourceFromFile #-}
+initSourceFromFile p = do
     f <- FS.initFile p FS.O_RDONLY FS.DEFAULT_MODE
     liftIO (sourceFromInput f)
 
@@ -577,9 +577,9 @@ sinkToOutput o =
 --
 -- Note the file will be opened in @'FS.O_APPEND' .|. 'FS.O_CREAT' .|. 'FS.O_WRONLY'@ mode,
 -- bytes will be written after the end of the original file if there'are old bytes.
-sinkToFile :: HasCallStack => CBytes -> Resource (Sink V.Bytes)
-{-# INLINABLE sinkToFile #-}
-sinkToFile p = do
+initSinkToFile :: HasCallStack => CBytes -> Resource (Sink V.Bytes)
+{-# INLINABLE initSinkToFile #-}
+initSinkToFile p = do
     f <- FS.initFile p (FS.O_APPEND .|. FS.O_CREAT .|. FS.O_WRONLY) FS.DEFAULT_MODE
     liftIO (sinkToOutput f)
 
@@ -669,7 +669,7 @@ newReChunk n = do
 -- This function will continuously draw data from input before parsing finish.
 -- Unconsumed bytes will be returned to buffer.
 --
--- Return 'Nothing' if reach EOF before parsing, throw 'ParseException' if
+-- Return 'Nothing' if reach EOF before parsing, throw 'BIOParseException' if
 -- parsing fail.
 newParserNode :: P.Parser a -> IO (BIO V.Bytes a)
 {-# INLINABLE newParserNode #-}
@@ -688,7 +688,7 @@ newParserNode p = do
                 writeIORef resultRef (Left trailing')
                 return (Just a)
             P.Failure e _ ->
-                throwIO (ParseException e callStack)
+                throwIO (BIOParseException e callStack)
             P.Partial f' -> do
                 writeIORef resultRef (Right f')
                 return Nothing
@@ -708,9 +708,9 @@ newParserNode p = do
                 writeIORef resultRef (Left trailing')
                 return (Just a)
             P.Failure e _ ->
-                throwIO (ParseException e callStack)
+                throwIO (BIOParseException e callStack)
             P.Partial _ ->
-                throwIO (ParseException ["last chunk partial parse"] callStack)
+                throwIO (BIOParseException ["last chunk partial parse"] callStack)
 
 -- | Make a new UTF8 decoder, which decode bytes streams into text streams.
 --
