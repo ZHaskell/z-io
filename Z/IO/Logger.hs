@@ -138,7 +138,7 @@ defaultTSCache :: IO (B.Builder ())
 {-# NOINLINE defaultTSCache #-}
 defaultTSCache = unsafePerformIO $ do
     throttle 1 $ do
-        t <- getSystemTime
+        t <- getSystemTime'
         CB.toBuilder <$> formatSystemTime iso8061DateFormat t
 
 -- | Make a new simple logger.

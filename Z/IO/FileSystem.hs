@@ -113,7 +113,7 @@ import           Foreign.Marshal.Alloc          (allocaBytes)
 import           Z.Data.CBytes                  as CBytes
 import           Z.Data.PrimRef.PrimIORef
 import qualified Z.Data.Text                    as T
-import qualified Z.Data.Text.ShowT              as T
+import qualified Z.Data.Text.Print              as T
 import qualified Z.Data.Vector                  as V
 import           Z.Foreign
 import           Z.IO.Buffered
@@ -137,7 +137,7 @@ data File =  File  {-# UNPACK #-} !FD      -- ^ the file
 
 instance Show File where show = T.toString
 
-instance T.ShowT File where
+instance T.Print File where
     toUTF8BuilderP _ (File fd _) = "File " >> T.int fd
 
 -- | Return File fd.

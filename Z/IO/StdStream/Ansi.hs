@@ -48,7 +48,6 @@ module Z.IO.StdStream.Ansi
 
 import qualified Z.Data.Builder as B
 import qualified Z.Data.Text    as T
-import qualified Z.Data.Text.ShowT  as T
 import Data.Word
 import GHC.Generics
 
@@ -247,7 +246,7 @@ data AnsiColor = Black
                | Cyan
                | White
         deriving (Eq, Ord, Bounded, Enum, Show, Read, Generic)
-        deriving anyclass T.ShowT
+        deriving anyclass T.Print
 
 colorToCode :: AnsiColor -> Word8
 colorToCode c = case c of

@@ -93,6 +93,32 @@ HsInt hs_uv_write(uv_stream_t* handle, char* buf, HsInt buf_siz){
     } else return slot;
 }
 
+void hs_shutdown_cb(uv_shutdown_t* req, int status){
+    HsInt slot = (HsInt)req->data;
+    uv_loop_t* loop = req->handle->loop;
+    hs_loop_data* loop_data = loop->data;
+    loop_data->buffer_size_table[slot] = (HsInt)status;      // 0 in case of success, < 0 otherwise.
+    loop_data->event_queue[loop_data->event_counter] = slot;   // push the slot to event queue
+    loop_data->event_counter += 1;
+    free_slot(loop_data, slot);  // free the uv_req_t
+}
+
+HsInt hs_uv_shutdown(uv_stream_t* handle){
+    uv_loop_t* loop = handle->loop;
+    hs_loop_data* loop_data = loop->data;
+    HsInt slot = alloc_slot(loop_data);
+    if (slot < 0) return UV_ENOMEM;
+    uv_shutdown_t* req = 
+        (uv_shutdown_t*)fetch_uv_struct(loop_data, slot);
+    req->data = (void*)slot;
+
+    int r = uv_shutdown(req, handle, hs_shutdown_cb);
+    if (r < 0) {
+        free_slot(loop_data, slot);  // free the uv_req_t, the callback won't fired
+        return (HsInt)r;
+    } else return slot;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // tcp
@@ -107,7 +133,7 @@ HsInt hs_uv_write(uv_stream_t* handle, char* buf, HsInt buf_siz){
 #if defined(_WIN32)
 void hs_uv_connection_init(uv_stream_t* handle){
   handle->flags |= UV_HANDLE_CONNECTION;
-  handle->stream.conn.write_reqs_pending = 0;
+  handle->stream.conn.shutdown_reqs_pending = 0;
   (&handle->read_req)->type = UV_READ;                                                        \
   (&handle->read_req)->u.io.overlapped.Internal = 0;  /* SET_REQ_SUCCESS() */ 
   handle->read_req.event_handle = NULL;

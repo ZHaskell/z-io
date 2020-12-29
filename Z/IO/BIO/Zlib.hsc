@@ -55,7 +55,7 @@ import           GHC.Generics
 import           Z.Data.Array       as A
 import           Z.Data.CBytes      as CBytes
 import           Z.Data.JSON        (EncodeJSON, FromValue, ToValue)
-import           Z.Data.Text.ShowT  (ShowT)
+import           Z.Data.Text.Print  (Print)
 import           Z.Data.Vector.Base as V
 import           Z.Foreign
 import           Z.IO.BIO
@@ -110,7 +110,7 @@ data CompressConfig = CompressConfig
     , compressStrategy :: Strategy
     , compressBufferSize :: Int
     }   deriving (Show, Eq, Ord, Generic)
-        deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
+        deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
 
 defaultCompressConfig :: CompressConfig
 defaultCompressConfig =
@@ -127,7 +127,7 @@ newCompress :: HasCallStack
             => CompressConfig
             -> IO (ZStream, BIO V.Bytes V.Bytes)
 newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
-    zs <- newForeignPtr free_z_stream_deflate =<< create_z_stream
+    zs <- mask_ (newForeignPtr free_z_stream_deflate =<< create_z_stream)
     buf <- A.newPinnedPrimArray bufSiz
     set_avail_out zs buf bufSiz
     bufRef <- newIORef buf
@@ -204,7 +204,7 @@ data DecompressConfig = DecompressConfig
     , decompressDictionary :: V.Bytes
     , decompressBufferSize :: Int
     }   deriving (Show, Eq, Ord, Generic)
-        deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
+        deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
 
 defaultDecompressConfig :: DecompressConfig
 defaultDecompressConfig = DecompressConfig defaultWindowBits V.empty V.defaultChunkSize

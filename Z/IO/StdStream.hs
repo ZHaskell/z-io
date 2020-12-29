@@ -18,7 +18,7 @@ import qualified Z.Data.Vector as V
 import qualified Z.Data.Builder as B
 main = do
     -- read by '\n'
-    b1 <- readLineStd
+    b1 <- readStd
     -- read whatever user input in 3s, otherwise get Nothing
     b2 <- timeoutLowRes 30 $ withMVar stdinBuf readBuffer
     ...
@@ -45,11 +45,7 @@ module Z.IO.StdStream
   , stdin, stdout, stderr
   , stdinBuf, stdoutBuf, stderrBuf
     -- * utils
-  , readLineStd
-  , printStd
-  , printLineStd
-  , putStd
-  , putLineStd
+  , readStd, printStd, putStd
     -- * re-export
   , withMVar
   -- * Constant
@@ -63,9 +59,9 @@ import Control.Monad
 import Control.Concurrent.MVar
 import Foreign.Ptr
 import System.IO.Unsafe
-import Z.Data.Builder as B
-import Z.Data.Vector as V
-import qualified Z.Data.Text.ShowT as T
+import qualified Z.Data.Builder             as B
+import qualified Z.Data.Text.Print          as T
+import qualified Z.Data.Vector              as V
 import Z.IO.UV.FFI
 import Z.IO.UV.Manager
 import Z.IO.UV.Errno
@@ -88,7 +84,7 @@ data StdStream
 
 instance Show StdStream where show = T.toString
 
-instance T.ShowT StdStream where
+instance T.Print StdStream where
     toUTF8BuilderP p (StdTTY ptr slot uvm) = T.parenWhen (p > 10) $ do
         "StdTTY "
         T.toUTF8Builder ptr
@@ -230,23 +226,13 @@ getStdoutWinSize = case stdout of
 
 --------------------------------------------------------------------------------
 
--- | Print a 'ShowT' and flush to stdout.
-printStd :: (HasCallStack, T.ShowT a) => a -> IO ()
+-- | Print a 'Print' and flush to stdout, with a linefeed.
+printStd :: (HasCallStack, T.Print a) => a -> IO ()
 printStd s = putStd (T.toUTF8Builder s)
 
--- | Print a 'Builder' and flush to stdout.
-putStd :: HasCallStack => Builder a -> IO ()
-putStd b = withMVar stdoutBuf $ \ o -> do
-    writeBuilder o b
-    flushBuffer o
-
--- | Print a 'ShowT' and flush to stdout, with a linefeed.
-printLineStd :: (HasCallStack, T.ShowT a) => a -> IO ()
-printLineStd s = putLineStd (T.toUTF8Builder s)
-
 -- | Print a 'Builder' and flush to stdout, with a linefeed.
-putLineStd :: HasCallStack => Builder a -> IO ()
-putLineStd b = withMVar stdoutBuf $ \ o -> do
+putStd :: HasCallStack => B.Builder a -> IO ()
+putStd b = withMVar stdoutBuf $ \ o -> do
     writeBuilder o (b >> B.char8 '\n')
     flushBuffer o
 
@@ -254,8 +240,8 @@ putLineStd b = withMVar stdoutBuf $ \ o -> do
 --
 -- This function will throw 'ECLOSED' when meet EOF, which may cause trouble if stdin is connected
 -- to a file, use 'readLine' instead.
-readLineStd :: HasCallStack => IO V.Bytes
-readLineStd = withMVar stdinBuf $ \ s -> do
+readStd :: HasCallStack => IO V.Bytes
+readStd = withMVar stdinBuf $ \ s -> do
     line <- readLine s
     case line of Just line' -> return line'
                  Nothing    -> throwIO (ResourceVanished

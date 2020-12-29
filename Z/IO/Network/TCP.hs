@@ -38,7 +38,7 @@ import           Control.Monad.IO.Class
 import           Data.Primitive.PrimArray
 import           Foreign.Ptr
 import           GHC.Generics
-import           Z.Data.Text.ShowT   (ShowT(..))
+import           Z.Data.Text.Print   (Print)
 import           Z.Data.JSON         (EncodeJSON, ToValue, FromValue)
 import           Z.IO.Exception
 import           Z.IO.Network.SocketAddr
@@ -59,7 +59,7 @@ data TCPClientConfig = TCPClientConfig
     , tcpClientNoDelay :: Bool          -- ^ if we want to use @TCP_NODELAY@
     , tcpClientKeepAlive :: CUInt       -- ^ set keepalive delay for client socket, see 'setTCPKeepAlive'
     } deriving (Eq, Ord, Show, Generic)
-      deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
+      deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
 
 -- | Default config, connect to @localhost:8888@.
 --
@@ -96,7 +96,7 @@ data TCPServerConfig = TCPServerConfig
     , tcpServerWorkerNoDelay :: Bool       -- ^ if we want to use @TCP_NODELAY@
     , tcpServerWorkerKeepAlive :: CUInt    -- ^ set keepalive delay for worker socket, see 'setTCPKeepAlive'
     } deriving (Eq, Ord, Show, Generic)
-      deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
+      deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
 
 -- | A default hello world server on 0.0.0.0:8888
 --

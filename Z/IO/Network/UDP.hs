@@ -72,8 +72,7 @@ import Z.Data.Array                     as A
 import Z.Data.Vector.Base               as V
 import Z.Data.Vector.Extra              as V
 import Z.Data.CBytes                    as CBytes
-import qualified Z.Data.Text.ShowT      as T
-import Z.Data.Text.ShowT                (ShowT(..))
+import qualified Z.Data.Text.Print      as T
 import Z.Data.JSON                      (EncodeJSON, ToValue, FromValue)
 import Z.IO.Network.SocketAddr
 import Z.Foreign
@@ -97,7 +96,7 @@ data UDP = UDP
     }
 
 instance Show UDP where show = T.toString
-instance ShowT UDP where
+instance T.Print UDP where
     toUTF8BuilderP _ (UDP hdl slot uvm _ _) = do
         "UDP{udpHandle="    >> T.toUTF8Builder hdl
         ",udpSlot="         >> T.toUTF8Builder slot
@@ -114,7 +113,7 @@ data UDPConfig = UDPConfig
     , udpLocalAddr :: Maybe (SocketAddr, UDPFlag)   -- ^ do we want bind a local address before receiving & sending?
                                                     --   set to Nothing to let OS pick a random one.
     } deriving (Eq, Ord, Show, Generic)
-      deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
+      deriving anyclass (T.Print, EncodeJSON, ToValue, FromValue)
 
 -- | @UDPConfig 512 Nothing@
 defaultUDPConfig :: UDPConfig
@@ -313,7 +312,7 @@ data UDPRecvConfig = UDPRecvConfig
                                                 --   increase this number can improve receiving performance,
                                                 --   at the cost of memory and potential GHC thread starving.
     } deriving (Eq, Ord, Show, Read, Generic)
-      deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
+      deriving anyclass (T.Print, EncodeJSON, ToValue, FromValue)
 
 -- | @UDPRecvConfig 512 6@
 defaultUDPRecvConfig :: UDPRecvConfig

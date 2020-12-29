@@ -56,7 +56,7 @@ import           GHC.Conc.Sync            (labelThread)
 import           System.IO.Unsafe
 import           Z.Data.Array
 import           Z.Data.PrimRef.PrimIORef
-import qualified Z.Data.Text.ShowT as T
+import qualified Z.Data.Text.Print as T
 import           Z.IO.Exception
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
@@ -81,7 +81,7 @@ data UVManager = UVManager
 
 instance Show UVManager where show = T.toString
 
-instance T.ShowT UVManager where
+instance T.Print UVManager where
     toUTF8BuilderP p uvm = T.parenWhen (p > 10) $
         "UVManager on capability " >> T.int (uvmCap uvm)
 

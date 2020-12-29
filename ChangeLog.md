@@ -1,5 +1,11 @@
 # Revision history for Z-IO
 
+## 0.3.0.0  -- 2020-12-29
+
+* Add `getSystemTime'` to `Z.IO.Time`.
+* Add `shutdownUVStream` to `Z.IO.UV.UVStream`.
+* Change `sourceFrom/sinkToFile` to `initSourceFrom/initSinkToFile`.
+* Bump `Z-Data` version.
 
 ## 0.2.0.0  -- 2020-12-16
 

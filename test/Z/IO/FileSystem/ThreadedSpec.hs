@@ -5,6 +5,7 @@ module Z.IO.FileSystem.ThreadedSpec where
 import           Control.Concurrent.MVar (readMVar)
 import           Control.Monad
 import           Data.Bits
+import           Z.Data.ASCII
 import           Z.Data.Vector         as V
 import           Z.Data.Vector.Base    as V
 import           Data.List               as List
@@ -69,13 +70,13 @@ spec = describe "filesystem (threadpool version) operations" $ do
             withResource (initFile filename flags mode) $ \ file -> do
                 i <- newBufferedInput' 4096 file
                 Just firstLine <- readLine i
-                firstLine  @=? fst (V.break (== V.c2w '\n') content2)
+                firstLine  @=? fst (V.break (== c2w '\n') content2)
 
                 fr <- newFilePtrT file (fromIntegral $ size2 `div` 2)
                 i <- newBufferedInput' 4096 fr
                 replicateM_ 512 $ do
                     Just firstLine <- readLine i
-                    firstLine  @=? fst (V.break (== V.c2w '\n') content2)
+                    firstLine  @=? fst (V.break (== c2w '\n') content2)
 
             unlink filename
 

@@ -80,7 +80,7 @@ import           Foreign.C.Types
 import           Foreign.Ptr
 import           GHC.Stack
 import qualified Z.Data.Text            as T
-import qualified Z.Data.Text.ShowT      as T
+import qualified Z.Data.Text.Print      as T
 import           Z.IO.UV.Errno
 
 
@@ -191,7 +191,7 @@ data IOEInfo = IOEInfo
 
 instance Show IOEInfo where show = T.toString
 
-instance T.ShowT IOEInfo where
+instance T.Print IOEInfo where
     toUTF8BuilderP _ (IOEInfo errno desc cstack) = do
          "{name:"
          T.text errno

@@ -40,7 +40,7 @@ import           Z.Data.Array.Unaligned
 import           Z.Data.CBytes            (CBytes)
 import qualified Z.Data.CBytes            as CBytes
 import           Z.Data.JSON              (EncodeJSON, FromValue, ToValue)
-import           Z.Data.Text.ShowT        (ShowT)
+import           Z.Data.Text.Print        (Print)
 import           Z.Data.Vector            (defaultChunkSize)
 import           Z.Foreign
 import           Z.IO.BIO
@@ -55,7 +55,7 @@ import           Z.IO.LowResTimer
 -- | File event with path info.
 data FileEvent = FileAdd CBytes | FileRemove CBytes | FileModify CBytes
   deriving (Show, Read, Ord, Eq, Generic)
-  deriving anyclass (ShowT, FromValue, ToValue, EncodeJSON)
+  deriving anyclass (Print, FromValue, ToValue, EncodeJSON)
 
 
 -- | Start watching a list of given directories.
@@ -160,7 +160,7 @@ watch_ flag dirs = do
         | i >= siz = return acc
         | otherwise =
             let !event  = indexBA buf# i
-                !path   = indexBA buf# (i + 1)
+                !path   = CBytes.indexBACBytes buf# (i + 1)
             in loopReadFileEvent buf# (i + CBytes.length path + 2) ((event,path):acc)
       where siz = sizeofPrimArray (PrimArray buf# :: PrimArray Word8)
 

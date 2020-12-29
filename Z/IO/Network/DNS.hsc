@@ -31,7 +31,7 @@ import           Foreign.Ptr
 import           Foreign.Storable 
 import           GHC.Generics
 import           Z.Data.CBytes              as CBytes
-import           Z.Data.Text.ShowT          (ShowT(..))
+import           Z.Data.Text.Print          (Print(..))
 import           Z.Data.JSON                (EncodeJSON, ToValue, FromValue)
 import           Z.Foreign
 import           Z.IO.Exception
@@ -86,7 +86,7 @@ data AddrInfoFlag =
     --   returned. (Only some platforms support this.)
     | AI_V4MAPPED
     deriving (Eq, Ord, Read, Show, Generic)
-    deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
+    deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
 
 addrInfoFlagMapping :: [(AddrInfoFlag, CInt)]
 addrInfoFlagMapping =
@@ -129,7 +129,7 @@ data AddrInfo = AddrInfo {
   , addrAddress :: SocketAddr
   , addrCanonName :: CBytes
   } deriving (Eq, Ord, Show, Generic)
-    deriving anyclass (ShowT, EncodeJSON, ToValue, FromValue)
+    deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
 
 
 instance Storable AddrInfo where
