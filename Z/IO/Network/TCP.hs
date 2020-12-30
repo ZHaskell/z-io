@@ -196,7 +196,7 @@ startTCPServer TCPServerConfig{..} tcpServerWorker = do
                             uvm <- getUVManager
                             withResource (initUVStream (\ loop hdl -> do
                                 throwUVIfMinus_ (uv_tcp_init loop hdl)
-                                throwUVIfMinus_ (hs_uv_tcp_open hdl fd)) uvm) $ \ uvs -> do
+                                throwUVIfMinus_ (uv_tcp_open hdl fd)) uvm) $ \ uvs -> do
                                 -- safe without withUVManager
                                 when tcpServerWorkerNoDelay . throwUVIfMinus_ $
                                     uv_tcp_nodelay (uvsHandle uvs) 1
