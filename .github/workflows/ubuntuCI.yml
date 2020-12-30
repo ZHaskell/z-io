@@ -48,7 +48,7 @@ jobs:
       - run: cabal v2-update
       - run: cabal v2-freeze $CONFIG && cat cabal.project.freeze
 
-      - run: "cabal update && cabal v2-build $CONFIG"
+      - run: "cabal update && cabal v2-configure $CONFIG"
 
       - if: "matrix.cabal < '3'"
         run: cabal v2-test

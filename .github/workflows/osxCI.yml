@@ -41,7 +41,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.ghc }}-
 
-      - run: "cabal update && cabal v2-build $CONFIG"
+      - run: "cabal update && cabal v2-configure $CONFIG"
 
       - if: "matrix.cabal < '3'"
         run: cabal v2-test
