@@ -1,12 +1,12 @@
-on: [push, pull_request]
 name: win-ci
+on: [push, pull_request]
 jobs:
   build:
     runs-on: windows-latest
     strategy:
       matrix:
-        ghc: ['8.6.5', '8.8.4', '8.10.2']
-        cabal: ['3.2.0.0']
+        ghc: ['8.10']    
+        cabal: ['3.2']  
     name: Haskell GHC ${{ matrix.ghc }} sample
     env:
         CONFIG: "--enable-tests --enable-benchmarks"
@@ -16,13 +16,13 @@ jobs:
           submodules: 'recursive'
 
       - name: Setup Haskell
-        uses: actions/setup-haskell@v1
+        uses: haskell/actions/setup@v1
         with:
           ghc-version: ${{ matrix.ghc }}
           cabal-version: ${{ matrix.cabal }}
 
-      - run: cabal v2-update
-      - run: cabal v2-freeze $CONFIG
+      - run: cabal update
+      - run: cabal freeze $CONFIG
       - uses: actions/cache@v2
         with:
           path: |
@@ -32,11 +32,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.ghc }}-
 
-      # FIXME: waiting for next z-data released to fix ld error
-      #- run: cabal v2-build $CONFIG
-      #- if: matrix.cabal < '3'
-      #  run: cabal v2-test
-      #- if: matrix.cabal >= '3'
-      #  run: cabal v2-test --test-show-details=direct
-      #- run: cabal v2-haddock
-      #- run: cabal v2-sdist
+      - run: cabal configure $CONFIG
+      - run: cabal build 
+      - run: cabal test --test-show-details=direct
+      - run: cabal haddock
+      - run: cabal sdist
