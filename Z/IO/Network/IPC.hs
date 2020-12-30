@@ -183,7 +183,7 @@ startIPCServer IPCServerConfig{..} ipcServerWorker = do
                             uvm <- getUVManager
                             withResource (initUVStream (\ loop hdl -> do
                                 throwUVIfMinus_ (uv_pipe_init loop hdl 0)
-                                throwUVIfMinus_ (hs_uv_pipe_open hdl fd)) uvm) $ \ uvs -> do
+                                throwUVIfMinus_ (uv_pipe_open hdl fd)) uvm) $ \ uvs -> do
                                 ipcServerWorker uvs
 
 --------------------------------------------------------------------------------

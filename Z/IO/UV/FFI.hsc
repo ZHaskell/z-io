@@ -147,7 +147,7 @@ foreign import ccall unsafe hs_uv_accept_check_start :: Ptr UVHandle -> IO CInt
 
 --------------------------------------------------------------------------------
 -- tcp & pipe
-foreign import ccall unsafe hs_uv_tcp_open :: Ptr UVHandle -> FD -> IO CInt
+foreign import ccall unsafe uv_tcp_open :: Ptr UVHandle -> FD -> IO CInt
 foreign import ccall unsafe uv_tcp_init :: Ptr UVLoop -> Ptr UVHandle -> IO CInt
 foreign import ccall unsafe uv_tcp_init_ex :: Ptr UVLoop -> Ptr UVHandle -> CUInt -> IO CInt
 foreign import ccall unsafe uv_tcp_nodelay :: Ptr UVHandle -> CInt -> IO CInt
@@ -162,7 +162,7 @@ foreign import ccall unsafe uv_tcp_bind :: Ptr UVHandle -> MBA## SocketAddr -> C
 foreign import ccall unsafe hs_uv_tcp_connect :: Ptr UVHandle -> MBA## SocketAddr -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_set_socket_reuse :: Ptr UVHandle -> IO CInt
 
-foreign import ccall unsafe hs_uv_pipe_open :: Ptr UVHandle -> FD -> IO CInt
+foreign import ccall unsafe uv_pipe_open :: Ptr UVHandle -> FD -> IO CInt
 foreign import ccall unsafe uv_pipe_init :: Ptr UVLoop -> Ptr UVHandle -> CInt -> IO CInt
 foreign import ccall unsafe uv_pipe_bind :: Ptr UVHandle -> BA## Word8 -> IO CInt
 foreign import ccall unsafe hs_uv_pipe_connect :: Ptr UVHandle -> BA## Word8 -> IO UVSlotUnsafe
