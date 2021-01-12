@@ -32,7 +32,7 @@ jobs:
       - run: docker exec builder bash -c "cabal v2-update && cabal v2-build --enable-tests --enable-benchmarks"
 
       - if: "matrix.image_tag == '8.6.5'"
-        run: docker exec builder bash -c "cabal v2-test"
+        run: docker exec builder bash -c "cabal v2-configure --enable-tests && cabal v2-test"
       - if: "matrix.image_tag != '8.6.5'"
         run: docker exec builder bash -c "cabal v2-test --test-show-details=direct"
 

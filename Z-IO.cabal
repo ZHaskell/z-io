@@ -120,7 +120,7 @@ library
 
                             -- Z.Compression.Zlib
 
-    build-depends:          base                    == 4.*
+    build-depends:          base                    >= 4.12 && <5.0
                           , exceptions              == 0.10.*
                           , primitive               >= 0.7.1 && < 0.7.2
                           , stm                     == 2.5.*
