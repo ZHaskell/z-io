@@ -42,9 +42,10 @@ jobs:
             ${{ runner.os }}-${{ matrix.ghc }}-
 
       - run: "cabal update && cabal v2-build $CONFIG"
+      - run: cabal v2-configure --enable-tests 
 
       - if: "matrix.cabal < '3'"
-        run: cabal v2-configure --enable-tests && cabal v2-test
+        run: cabal v2-test
       - if: "matrix.cabal >= '3'"
         run: cabal v2-test --test-show-details=direct
 
