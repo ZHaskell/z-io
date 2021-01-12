@@ -39,7 +39,7 @@ import           Data.Primitive.PrimArray
 import           Foreign.Ptr
 import           GHC.Generics
 import           Z.Data.Text.Print   (Print)
-import           Z.Data.JSON         (EncodeJSON, ToValue, FromValue)
+import           Z.Data.JSON         (JSON)
 import           Z.IO.Exception
 import           Z.IO.Network.SocketAddr
 import           Z.IO.Resource
@@ -59,7 +59,7 @@ data TCPClientConfig = TCPClientConfig
     , tcpClientNoDelay :: Bool          -- ^ if we want to use @TCP_NODELAY@
     , tcpClientKeepAlive :: CUInt       -- ^ set keepalive delay for client socket, see 'setTCPKeepAlive'
     } deriving (Eq, Ord, Show, Generic)
-      deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
+      deriving anyclass (Print, JSON)
 
 -- | Default config, connect to @localhost:8888@.
 --
@@ -96,7 +96,7 @@ data TCPServerConfig = TCPServerConfig
     , tcpServerWorkerNoDelay :: Bool       -- ^ if we want to use @TCP_NODELAY@
     , tcpServerWorkerKeepAlive :: CUInt    -- ^ set keepalive delay for worker socket, see 'setTCPKeepAlive'
     } deriving (Eq, Ord, Show, Generic)
-      deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
+      deriving anyclass (Print, JSON)
 
 -- | A default hello world server on 0.0.0.0:8888
 --
@@ -196,7 +196,7 @@ startTCPServer TCPServerConfig{..} tcpServerWorker = do
                             uvm <- getUVManager
                             withResource (initUVStream (\ loop hdl -> do
                                 throwUVIfMinus_ (uv_tcp_init loop hdl)
-                                throwUVIfMinus_ (uv_tcp_open hdl fd)) uvm) $ \ uvs -> do
+                                throwUVIfMinus_ (hs_uv_tcp_open hdl fd)) uvm) $ \ uvs -> do
                                 -- safe without withUVManager
                                 when tcpServerWorkerNoDelay . throwUVIfMinus_ $
                                     uv_tcp_nodelay (uvsHandle uvs) 1

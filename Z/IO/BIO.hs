@@ -47,7 +47,6 @@ base64AndCompressFile origin target = do
 module Z.IO.BIO (
   -- * The BIO type
     BIO(..), Source, Sink
-  , BIOException(..), BIOParseException(..), JSONConvertException(..)
   -- ** Basic combinators
   , (>|>), (>~>), (>!>), appendSource
   , concatSource, zipSource, zipBIO
@@ -91,7 +90,6 @@ import           Data.IORef
 import qualified Data.List              as List
 import           Data.Sequence          (Seq (..))
 import qualified Data.Sequence          as Seq
-import           Data.Typeable          (cast)
 import           Data.Void
 import           Data.Word
 import           System.IO.Unsafe       (unsafePerformIO)
@@ -99,7 +97,6 @@ import qualified Z.Data.Array           as A
 import qualified Z.Data.Builder         as B
 import           Z.Data.CBytes          (CBytes)
 import qualified Z.Data.JSON            as JSON
-import qualified Z.Data.JSON.Value      as JSON
 import qualified Z.Data.Parser          as P
 import           Z.Data.PrimRef
 import qualified Z.Data.Text            as T
@@ -144,10 +141,10 @@ import           Z.IO.Resource
 -- in multiple threads, check "Z.IO.BIO.Concurrent" module.
 --
 data BIO inp out = BIO
-    { push :: HasCallStack => inp -> IO (Maybe out)
+    { push :: inp -> IO (Maybe out)
       -- ^ Push a block of input, perform some effect, and return output,
       -- if input is not enough to produce any output yet, return 'Nothing'.
-    , pull :: HasCallStack => IO (Maybe out)
+    , pull :: IO (Maybe out)
       -- ^ When input reaches EOF, there may be a finalize stage to output
       -- trailing output blocks. return 'Nothing' to indicate current node
       -- reaches EOF too.
@@ -174,44 +171,6 @@ instance Functor (BIO inp) where
         pull_ = do
             r <- pull
             return $! fmap f r
-
--- | Exception when run BIO failed.
---
--- Note this exception is a sub-type of 'SomeIOException'.
-data BIOException = forall e. Exception e => BIOException e
-
-instance Show BIOException where
-    show (BIOException e) = show e
-
-instance Exception BIOException where
-    toException = ioExceptionToException
-    fromException = ioExceptionFromException
-
-bioExceptionToException :: Exception e => e -> SomeException
-bioExceptionToException = toException . BIOException
-
-bioExceptionFromException :: Exception e => SomeException -> Maybe e
-bioExceptionFromException x = do
-    BIOException a <- fromException x
-    cast a
-
--- | Exception when BIO parse failed, this exception is one of a particular
--- 'BIOException'.
-data BIOParseException = BIOParseException P.ParseError CallStack
-    deriving Show
-
-instance Exception BIOParseException where
-    toException   = bioExceptionToException
-    fromException = bioExceptionFromException
-
--- | Exception when BIO convert to json failed, this exception is one of a
--- particular 'BIOException'.
-data JSONConvertException = JSONConvertException JSON.ConvertError CallStack
-    deriving Show
-
-instance Exception JSONConvertException where
-    toException   = bioExceptionToException
-    fromException = bioExceptionFromException
 
 infixl 3 >|>
 infixl 3 >~>
@@ -354,12 +313,12 @@ zipBIO (BIO pushA pullA) (BIO pushB pullB) = do
 -- Run BIO
 
 -- | Run a 'BIO' loop (source >|> ... >|> sink).
-runBIO :: BIO Void Void -> IO ()
+runBIO :: HasCallStack => BIO Void Void -> IO ()
 {-# INLINABLE runBIO #-}
 runBIO BIO{..} = pull >> return ()
 
 -- | Drain a 'BIO' source into a List in memory.
-runSource :: Source x -> IO [x]
+runSource :: HasCallStack => Source x -> IO [x]
 {-# INLINABLE runSource #-}
 runSource BIO{..} = loop pull []
   where
@@ -369,7 +328,7 @@ runSource BIO{..} = loop pull []
                   _       -> return (List.reverse acc)
 
 -- | Drain a source without collecting result.
-runSource_ :: Source x -> IO ()
+runSource_ :: HasCallStack => Source x -> IO ()
 {-# INLINABLE runSource_ #-}
 runSource_ BIO{..} = loop pull
   where
@@ -476,7 +435,7 @@ sourceFromList xs0 = do
 
 -- | Turn a 'BufferedInput' into 'BIO' source, map EOF to Nothing.
 --
-sourceFromBuffered :: BufferedInput -> Source V.Bytes
+sourceFromBuffered :: HasCallStack => BufferedInput -> Source V.Bytes
 {-# INLINABLE sourceFromBuffered #-}
 sourceFromBuffered i = BIO{ pull = do
     readBuffer i >>= \ x -> if V.null x then return Nothing
@@ -484,7 +443,7 @@ sourceFromBuffered i = BIO{ pull = do
 
 -- | Turn a UTF8 encoded 'BufferedInput' into 'BIO' source, map EOF to Nothing.
 --
-sourceTextFromBuffered :: BufferedInput -> Source T.Text
+sourceTextFromBuffered :: HasCallStack => BufferedInput -> Source T.Text
 {-# INLINABLE sourceTextFromBuffered #-}
 sourceTextFromBuffered i = BIO{ pull = do
     readBufferText i >>= \ x -> if T.null x then return Nothing
@@ -492,18 +451,21 @@ sourceTextFromBuffered i = BIO{ pull = do
 
 -- | Turn a 'JSON' encoded 'BufferedInput' into 'BIO' source, ignoring any
 -- whitespaces bewteen JSON objects. If EOF reached, then return Nothing.
-sourceJSONFromBuffered :: forall a. JSON.FromValue a => BufferedInput -> Source a
+-- Throw 'OtherError' with name "EJSON" if JSON value is not parsed or converted.
+sourceJSONFromBuffered :: forall a. (JSON.JSON a, HasCallStack) => BufferedInput -> Source a
 {-# INLINABLE sourceJSONFromBuffered #-}
-sourceJSONFromBuffered i = sourceParsedBufferInput JSON.value i >!> convert
-    where
-        convert :: JSON.Value -> IO a
-        convert jval =
-            case JSON.convert' jval of
-              Left e  -> throwIO $ JSONConvertException e callStack
-              Right r -> return r
+sourceJSONFromBuffered bi = BIO{ pull = do
+    bs <- readBuffer bi
+    if V.null bs
+       then return Nothing
+       else do
+           (rest, r) <- JSON.decodeChunks (readBuffer bi) bs
+           unReadBuffer rest bi
+           case r of Right v -> return (Just v)
+                     Left e  -> throwOtherError "EJSON" (T.toText e) }
 
--- | Turn buffered input device into a packet source.
-sourceParsedBufferInput :: P.Parser a -> BufferedInput -> Source a
+-- | Turn buffered input device into a packet source, throw 'OtherError' with name @EPARSE@ if parsing fail.
+sourceParsedBufferInput :: HasCallStack => P.Parser a -> BufferedInput -> Source a
 {-# INLINABLE sourceParsedBufferInput #-}
 sourceParsedBufferInput p bi = BIO{ pull = do
     bs <- readBuffer bi
@@ -513,32 +475,34 @@ sourceParsedBufferInput p bi = BIO{ pull = do
            (rest, r) <- P.parseChunks p (readBuffer bi) bs
            unReadBuffer rest bi
            case r of Right v -> return (Just v)
-                     Left e  -> throwIO (BIOParseException e callStack)}
+                     Left e  -> throwOtherError "EPARSE" (T.toText e) }
 
 -- | Turn an input device into a 'V.Bytes' source.
-sourceFromInput :: Input i => i -> IO (Source V.Bytes)
+sourceFromInput :: (HasCallStack, Input i) => i -> IO (Source V.Bytes)
 {-# INLINABLE sourceFromInput #-}
 sourceFromInput i = sourceFromBuffered <$> newBufferedInput i
 
 -- | Turn an input device into a 'T.Text' source.
-sourceTextFromInput :: Input i => i -> IO (Source T.Text)
+sourceTextFromInput :: (HasCallStack, Input i) => i -> IO (Source T.Text)
 {-# INLINABLE sourceTextFromInput #-}
 sourceTextFromInput i = sourceTextFromBuffered <$> newBufferedInput i
 
 -- | Turn an input device into a 'JSON' source.
-sourceJSONFromInput :: (Input i, JSON.FromValue a) => i -> IO (Source a)
+--
+-- Throw 'OtherError' with name "EJSON" if JSON value is not parsed or converted.
+sourceJSONFromInput :: (HasCallStack, Input i, JSON.JSON a) => i -> IO (Source a)
 sourceJSONFromInput i = sourceJSONFromBuffered <$> newBufferedInput i
 {-# INLINABLE sourceJSONFromInput #-}
 
 -- | Turn a file into a 'V.Bytes' source.
-initSourceFromFile :: CBytes -> Resource (Source V.Bytes)
+initSourceFromFile :: HasCallStack => CBytes -> Resource (Source V.Bytes)
 {-# INLINABLE initSourceFromFile #-}
 initSourceFromFile p = do
     f <- FS.initFile p FS.O_RDONLY FS.DEFAULT_MODE
     liftIO (sourceFromInput f)
 
 -- | Turn input device into a packet source.
-sourceParsedInput :: Input i => P.Parser a -> i -> IO (Source a)
+sourceParsedInput :: (Input i, HasCallStack) => P.Parser a -> i -> IO (Source a)
 {-# INLINABLE sourceParsedInput #-}
 sourceParsedInput p i = sourceParsedBufferInput p <$> newBufferedInput i
 
@@ -546,7 +510,7 @@ sourceParsedInput p i = sourceParsedBufferInput p <$> newBufferedInput i
 -- Sink
 
 -- | Turn a 'BufferedOutput' into a 'V.Bytes' sink.
-sinkToBuffered :: BufferedOutput -> Sink V.Bytes
+sinkToBuffered :: HasCallStack => BufferedOutput -> Sink V.Bytes
 {-# INLINABLE sinkToBuffered #-}
 sinkToBuffered bo = BIO push_ pull_
   where
@@ -555,7 +519,7 @@ sinkToBuffered bo = BIO push_ pull_
 
 -- | Turn a 'BufferedOutput' into a 'B.Builder' sink.
 --
-sinkBuilderToBuffered :: BufferedOutput -> Sink (B.Builder a)
+sinkBuilderToBuffered :: HasCallStack => BufferedOutput -> Sink (B.Builder a)
 {-# INLINABLE sinkBuilderToBuffered #-}
 sinkBuilderToBuffered bo = BIO push_ pull_
   where
@@ -586,7 +550,7 @@ initSinkToFile p = do
 -- | Turn an 'Output' into 'B.Builder' sink.
 --
 -- 'push' will write input to buffer, and 'pull'_ will flush buffer.
-sinkBuilderToOutput :: Output o => o -> IO (Sink (B.Builder ()))
+sinkBuilderToOutput :: (Output o, HasCallStack) => o -> IO (Sink (B.Builder ()))
 {-# INLINABLE sinkBuilderToOutput #-}
 sinkBuilderToOutput o =
     newBufferedOutput o >>= \ bo -> return (BIO (push_ bo) (pull_ bo))
@@ -597,7 +561,7 @@ sinkBuilderToOutput o =
 -- | Turn an 'Output' into 'BIO' sink.
 --
 -- 'push' will write input to buffer then perform flush, tend to degrade performance.
-sinkToIO :: (a -> IO ()) -> Sink a
+sinkToIO :: HasCallStack => (a -> IO ()) -> Sink a
 {-# INLINABLE sinkToIO #-}
 sinkToIO f = BIO push_ pull_
   where
@@ -669,9 +633,8 @@ newReChunk n = do
 -- This function will continuously draw data from input before parsing finish.
 -- Unconsumed bytes will be returned to buffer.
 --
--- Return 'Nothing' if reach EOF before parsing, throw 'BIOParseException' if
--- parsing fail.
-newParserNode :: P.Parser a -> IO (BIO V.Bytes a)
+-- Return 'Nothing' if reach EOF before parsing, throw 'OtherError' with name @EPARSE@ if parsing fail.
+newParserNode :: HasCallStack => P.Parser a -> IO (BIO V.Bytes a)
 {-# INLINABLE newParserNode #-}
 newParserNode p = do
     -- type LastParseState = Either V.Bytes (V.Bytes -> P.Result)
@@ -688,7 +651,7 @@ newParserNode p = do
                 writeIORef resultRef (Left trailing')
                 return (Just a)
             P.Failure e _ ->
-                throwIO (BIOParseException e callStack)
+                throwOtherError "EPARSE" (T.toText e)
             P.Partial f' -> do
                 writeIORef resultRef (Right f')
                 return Nothing
@@ -708,19 +671,21 @@ newParserNode p = do
                 writeIORef resultRef (Left trailing')
                 return (Just a)
             P.Failure e _ ->
-                throwIO (BIOParseException e callStack)
+                throwOtherError "EPARSE" (T.toText e)
             P.Partial _ ->
-                throwIO (BIOParseException ["last chunk partial parse"] callStack)
+                throwOtherError "EPARSE" "last chunk partial parse"
 
 -- | Make a new UTF8 decoder, which decode bytes streams into text streams.
 --
---  Note this node is supposed to be used with preprocess node such as compressor, decoder, etc. where bytes
---  boundary cannot be controlled, UTF8 decoder will concat trailing bytes from last block to next one.
---  Use this node directly with 'sourceFromBuffered' \/ 'sourceFromInput' will not be as efficient as directly use
---  'sourceTextFromBuffered' \/ 'sourceTextFromInput', because 'BufferedInput' provides push back capability,
---  trailing bytes can be pushde back to reading buffer and returned with next block input together.
+-- If there're invalid UTF8 bytes, an 'OtherError' with name 'EINVALIDUTF8' will be thrown.`
 --
-newUTF8Decoder :: IO (BIO V.Bytes T.Text)
+-- Note this node is supposed to be used with preprocess node such as compressor, decoder, etc. where bytes
+-- boundary cannot be controlled, UTF8 decoder will concat trailing bytes from last block to next one.
+-- Use this node directly with 'sourceFromBuffered' \/ 'sourceFromInput' will not be as efficient as directly use
+-- 'sourceTextFromBuffered' \/ 'sourceTextFromInput', because 'BufferedInput' provides push back capability,
+-- trailing bytes can be pushde back to reading buffer and returned with next block input together.
+--
+newUTF8Decoder :: HasCallStack => IO (BIO V.Bytes T.Text)
 {-# INLINABLE newUTF8Decoder #-}
 newUTF8Decoder = do
     trailingRef <- newIORef V.empty
@@ -734,7 +699,7 @@ newUTF8Decoder = do
         then do
             let (i, _) = V.findR (\ w -> w >= 0b11000000 || w <= 0b01111111) chunk
             if (i == -1)
-            then throwIO (T.InvalidUTF8Exception callStack)
+            then throwOtherError "EINVALIDUTF8" "invalid UTF8 bytes"
             else do
                 if T.decodeCharLen arr (s + i) > l - i
                 then do
@@ -751,7 +716,7 @@ newUTF8Decoder = do
         trailing <- readIORef trailingRef
         if V.null trailing
         then return Nothing
-        else throwIO (T.InvalidUTF8Exception callStack)
+        else throwOtherError "EINVALIDUTF8" "invalid UTF8 bytes"
 
 -- | Make a new stream splitter based on magic byte.
 --

@@ -54,7 +54,7 @@ import           Foreign.C
 import           GHC.Generics
 import           Z.Data.Array       as A
 import           Z.Data.CBytes      as CBytes
-import           Z.Data.JSON        (EncodeJSON, FromValue, ToValue)
+import           Z.Data.JSON        (JSON)
 import           Z.Data.Text.Print  (Print)
 import           Z.Data.Vector.Base as V
 import           Z.Foreign
@@ -110,7 +110,7 @@ data CompressConfig = CompressConfig
     , compressStrategy :: Strategy
     , compressBufferSize :: Int
     }   deriving (Show, Eq, Ord, Generic)
-        deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
+        deriving anyclass (Print, JSON)
 
 defaultCompressConfig :: CompressConfig
 defaultCompressConfig =
@@ -204,7 +204,7 @@ data DecompressConfig = DecompressConfig
     , decompressDictionary :: V.Bytes
     , decompressBufferSize :: Int
     }   deriving (Show, Eq, Ord, Generic)
-        deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
+        deriving anyclass (Print, JSON)
 
 defaultDecompressConfig :: DecompressConfig
 defaultDecompressConfig = DecompressConfig defaultWindowBits V.empty V.defaultChunkSize

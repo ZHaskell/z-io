@@ -29,7 +29,7 @@ jobs:
           #docker run -td --name builder -v ~/cache/cabal:/root/.cabal -v $(pwd):/srv -w /srv haskell:${{ matrix.image_tag }} bash
           docker run -td --name builder -v $(pwd):/srv -w /srv haskell:${{ matrix.image_tag }} bash
 
-      - run: docker exec builder bash -c "cabal v2-update && cabal v2-configure --enable-tests --enable-benchmarks"
+      - run: docker exec builder bash -c "cabal v2-update && cabal v2-build --enable-tests --enable-benchmarks"
 
       - if: "matrix.image_tag == '8.6.5'"
         run: docker exec builder bash -c "cabal v2-test"

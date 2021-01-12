@@ -234,6 +234,7 @@ timeoutLowResEx timeo io = do
   where
     timeoutAThread tid = void . forkIO $ throwTo tid (TimeOutException tid callStack)
 
+-- | see 'timeoutLowResEx' on 'TimeOutException', this exception is not a sub-exception type of 'SomeIOException'.
 data TimeOutException = TimeOutException ThreadId CallStack deriving Show
 instance Exception TimeOutException
 
@@ -257,7 +258,7 @@ startLowResTimerManager lrtm@(LowResTimerManager _ _ regCounter runningLock) !st
         c <- readPrimIORef regCounter          -- unless something terribly wrong happened, e.g., stackoverflow
         if c > 0
         then do
-            t <- uv_hrtime 
+            t <- uv_hrtime
             -- we can't use 100000 as maximum, because that will produce a 0us thread delay
             -- and GHC's registerTimeout will run next startLowResTimerManager directly(on current thread)
             -- but we're still holding runningLock, which cause an deadlock.

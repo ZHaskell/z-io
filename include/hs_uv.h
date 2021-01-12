@@ -273,11 +273,19 @@ HsInt hs_uv_shutdown(uv_stream_t* handle);
 
 ////////////////////////////////////////////////////////////////////////////////
 // tcp and pipe
-
+int hs_uv_tcp_open(uv_tcp_t* handle, int32_t sock);
 HsInt hs_uv_tcp_connect(uv_tcp_t* handle, const struct sockaddr* addr);
+
+int hs_uv_pipe_open(uv_pipe_t* handle, int32_t sock);
 HsInt hs_uv_pipe_connect(uv_pipe_t* handle, const char* name);
 
 #if defined(_WIN32)
+#define UV_HANDLE_READING                       0x00000100
+#define UV_HANDLE_BOUND                         0x00000200
+#define UV_HANDLE_LISTENING                     0x00000800
+#define UV_HANDLE_CONNECTION                    0x00001000
+#define UV_HANDLE_READABLE                      0x00008000
+#define UV_HANDLE_WRITABLE                      0x00010000
 enum {
   UV__SIGNAL_ONE_SHOT = 0x80000,  /* On signal reception remove sighandler */
   UV__HANDLE_INTERNAL = 0x8000,

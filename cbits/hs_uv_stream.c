@@ -123,6 +123,51 @@ HsInt hs_uv_shutdown(uv_stream_t* handle){
 //
 // tcp
 
+/* on windows uv_tcp_open doesn't work propery for sockets that are not
+ * connected or accepted by libuv because the lack of some state initialization,
+ * so we do it by manually set those flags
+ *
+ * referenes:   https://github.com/libuv/libuv/issues/397
+ *              https://github.com/libuv/libuv/pull/1150
+ */
+#if defined(_WIN32)
+void hs_uv_connection_init(uv_stream_t* handle){
+  handle->flags |= UV_HANDLE_CONNECTION;
+  handle->stream.conn.shutdown_reqs_pending = 0;
+  (&handle->read_req)->type = UV_READ;                                                        \
+  (&handle->read_req)->u.io.overlapped.Internal = 0;  /* SET_REQ_SUCCESS() */ 
+  handle->read_req.event_handle = NULL;
+  handle->read_req.wait_handle = INVALID_HANDLE_VALUE;
+  handle->read_req.data = handle;
+  handle->stream.conn.shutdown_req = NULL;
+}
+
+int hs_uv_tcp_open(uv_tcp_t* handle, int32_t sock) {
+  int r = uv_tcp_open(handle, (uv_os_sock_t)sock);
+  if (r == 0) {
+    hs_uv_connection_init((uv_stream_t*)handle);
+    handle->flags |= UV_HANDLE_BOUND | UV_HANDLE_READABLE | UV_HANDLE_WRITABLE;
+  }
+  return r;
+}
+
+int hs_uv_pipe_open(uv_pipe_t* handle, int32_t file) {
+  int r = uv_pipe_open(handle, (uv_file)file);
+  if (r == 0) {
+    hs_uv_connection_init((uv_stream_t*)handle);
+    handle->flags |= UV_HANDLE_BOUND | UV_HANDLE_READABLE | UV_HANDLE_WRITABLE;
+  }
+  return r;
+}
+#else
+int hs_uv_tcp_open(uv_tcp_t* handle, int32_t sock) {
+  return uv_tcp_open(handle, (uv_os_sock_t)sock);
+}
+int hs_uv_pipe_open(uv_pipe_t* handle, int32_t sock) {
+  return uv_pipe_open(handle, (uv_os_sock_t)sock);
+}
+#endif
+
 void hs_connect_cb(uv_connect_t* req, int status){
     HsInt slot = (HsInt)req->data;
     uv_loop_t* loop = req->handle->loop;

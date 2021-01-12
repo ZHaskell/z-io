@@ -7,14 +7,14 @@ jobs:
     runs-on: macos-10.15
     strategy:
       matrix:
-        ghc: ['8.6.5', '8.8.4', '8.10.2']
-        cabal: ['2.4.1.0', '3.4.0.0']
+        ghc: ['8.6', '8.8', '8.10']
+        cabal: ['2.4', '3.2']
         exclude:
           # GHC 8.8+ only works with cabal v3+
-          - ghc: 8.8.4
-            cabal: 2.4.1.0
-          - ghc: 8.10.2
-            cabal: 2.4.1.0
+          - ghc: 8.8
+            cabal: 2.4
+          - ghc: 8.10
+            cabal: 2.4
     env:
         CONFIG: "--enable-tests --enable-benchmarks"
     steps:
@@ -23,7 +23,7 @@ jobs:
           submodules: 'recursive'
 
       - name: Setup Haskell
-        uses: actions/setup-haskell@v1
+        uses: haskell/actions/setup@v1
         with:
           ghc-version: ${{ matrix.ghc }}
           cabal-version: ${{ matrix.cabal }}
@@ -41,7 +41,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.ghc }}-
 
-      - run: "cabal update && cabal v2-configure $CONFIG"
+      - run: "cabal update && cabal v2-build $CONFIG"
 
       - if: "matrix.cabal < '3'"
         run: cabal v2-test

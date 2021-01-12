@@ -43,7 +43,7 @@ import qualified Data.List as List
 import           GHC.Generics
 import qualified Z.Data.CBytes      as CB
 import           Z.Data.CBytes      (CBytes(CB), allocCBytesUnsafe, withCBytesUnsafe, withCBytesListUnsafe)
-import           Z.Data.JSON        (FromValue, ToValue, EncodeJSON)
+import           Z.Data.JSON        (JSON)
 import qualified Z.Data.Text        as T
 import qualified Z.Data.Vector.Base as V
 import qualified Z.Data.Vector      as V
@@ -71,7 +71,7 @@ import Prelude hiding (concat)
 data PathStyle = WindowsStyle   -- ^ Use backslashes as a separator and volume for the root.
                | UnixStyle      -- ^ Use slashes as a separator and a slash for the root.
     deriving (Show, Eq, Ord, Generic)
-    deriving anyclass (T.Print, FromValue, ToValue, EncodeJSON)
+    deriving anyclass (T.Print, JSON)
 
 enumToPathStyle_ :: CInt -> PathStyle
 enumToPathStyle_ (#const CWK_STYLE_WINDOWS) = WindowsStyle

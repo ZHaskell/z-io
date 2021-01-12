@@ -24,7 +24,7 @@ import           Foreign.Ptr
 import           Foreign.Storable
 import           Z.Data.Array.Unaligned
 import           Z.Data.Text.Print   (Print(..))
-import           Z.Data.JSON         (EncodeJSON, ToValue, FromValue)
+import           Z.Data.JSON         (JSON)
 import           Z.Data.CBytes as CBytes
 import           Z.Foreign
 import           Z.IO.Exception (throwUVIfMinus_, bracket, HasCallStack)
@@ -147,7 +147,7 @@ foreign import ccall unsafe hs_uv_accept_check_start :: Ptr UVHandle -> IO CInt
 
 --------------------------------------------------------------------------------
 -- tcp & pipe
-foreign import ccall unsafe uv_tcp_open :: Ptr UVHandle -> FD -> IO CInt
+foreign import ccall unsafe hs_uv_tcp_open :: Ptr UVHandle -> FD -> IO CInt
 foreign import ccall unsafe uv_tcp_init :: Ptr UVLoop -> Ptr UVHandle -> IO CInt
 foreign import ccall unsafe uv_tcp_init_ex :: Ptr UVLoop -> Ptr UVHandle -> CUInt -> IO CInt
 foreign import ccall unsafe uv_tcp_nodelay :: Ptr UVHandle -> CInt -> IO CInt
@@ -162,7 +162,7 @@ foreign import ccall unsafe uv_tcp_bind :: Ptr UVHandle -> MBA## SocketAddr -> C
 foreign import ccall unsafe hs_uv_tcp_connect :: Ptr UVHandle -> MBA## SocketAddr -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_set_socket_reuse :: Ptr UVHandle -> IO CInt
 
-foreign import ccall unsafe uv_pipe_open :: Ptr UVHandle -> FD -> IO CInt
+foreign import ccall unsafe hs_uv_pipe_open :: Ptr UVHandle -> FD -> IO CInt
 foreign import ccall unsafe uv_pipe_init :: Ptr UVLoop -> Ptr UVHandle -> CInt -> IO CInt
 foreign import ccall unsafe uv_pipe_bind :: Ptr UVHandle -> BA## Word8 -> IO CInt
 foreign import ccall unsafe hs_uv_pipe_connect :: Ptr UVHandle -> BA## Word8 -> IO UVSlotUnsafe
@@ -495,7 +495,7 @@ data DirEntType
     | DirEntChar
     | DirEntBlock
   deriving (Read, Show, Eq, Ord, Enum, Generic)
-    deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
+    deriving anyclass (Print, JSON)
 
 fromUVDirEntType :: UVDirEntType -> DirEntType
 fromUVDirEntType t
@@ -528,7 +528,7 @@ data UVTimeSpec = UVTimeSpec
     { uvtSecond     :: {-# UNPACK #-} !CLong
     , uvtNanoSecond :: {-# UNPACK #-} !CLong
     } deriving (Show, Read, Eq, Ord, Generic)
-        deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
+        deriving anyclass (Print, JSON)
 
 instance Storable UVTimeSpec where
     sizeOf _  = #{size uv_timespec_t}
@@ -557,7 +557,7 @@ data FStat = FStat
     , stCtim     :: {-# UNPACK #-} !UVTimeSpec
     , stBirthtim :: {-# UNPACK #-} !UVTimeSpec
     } deriving (Show, Read, Eq, Ord, Generic)
-        deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
+        deriving anyclass (Print, JSON)
 
 uvStatSize :: Int
 uvStatSize = #{size uv_stat_t}
@@ -640,7 +640,7 @@ pattern X_OK = #const X_OK
 
 data AccessResult = NoExistence | NoPermission | AccessOK 
     deriving (Show, Eq, Ord, Enum, Generic)
-    deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
+    deriving anyclass (Print, JSON)
 
 foreign import ccall unsafe hs_uv_fs_access :: BA## Word8 -> AccessMode -> IO Int
 foreign import ccall unsafe hs_uv_fs_access_threaded
@@ -723,7 +723,7 @@ newtype UID = UID
     Word32
 #endif
    deriving (Eq, Ord, Show, Read, Generic)
-   deriving newtype (Storable, Prim, Unaligned, Num, EncodeJSON, ToValue, FromValue)
+   deriving newtype (Storable, Prim, Unaligned, Num, JSON)
    deriving anyclass Print
 
 newtype GID = GID 
@@ -733,7 +733,7 @@ newtype GID = GID
     Word32
 #endif
    deriving (Eq, Ord, Show, Read, Generic)
-   deriving newtype (Storable, Prim, Unaligned, Num, EncodeJSON, ToValue, FromValue)
+   deriving newtype (Storable, Prim, Unaligned, Num, JSON)
    deriving anyclass Print
 
 type ProcessFlag = CUInt
@@ -805,14 +805,14 @@ data ProcessOptions = ProcessOptions
     , processStdStreams :: (ProcessStdStream, ProcessStdStream, ProcessStdStream) -- ^ Specifying how (stdin, stdout, stderr) should be passed/created to the child, see 'ProcessStdStream'
                             
     }   deriving (Eq, Ord, Show, Read, Generic)
-        deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
+        deriving anyclass (Print, JSON)
 
 data ProcessStdStream
     = ProcessIgnore     -- ^ redirect process std stream to \/dev\/null
     | ProcessCreate     -- ^ create a new std stream
     | ProcessInherit FD -- ^ pass an existing FD to child process as std stream
   deriving  (Eq, Ord, Show, Read, Generic)
-  deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
+  deriving anyclass (Print, JSON)
 
 processStdStreamFlag :: ProcessStdStream -> CInt
 processStdStreamFlag ProcessIgnore = #const UV_IGNORE
@@ -892,7 +892,7 @@ data TimeVal = TimeVal
     { tv_sec  :: {-# UNPACK #-} !CLong
     , tv_usec :: {-# UNPACK #-} !CLong
     }   deriving (Show, Read, Eq, Ord, Generic)
-        deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
+        deriving anyclass (Print, JSON)
 
 -- | Data type for resource usage results.
 --
@@ -916,7 +916,7 @@ data ResUsage = ResUsage
     , ru_nvcsw    :: {-# UNPACK #-} !Word64    -- ^  voluntary context switches (X)
     , ru_nivcsw   :: {-# UNPACK #-} !Word64    -- ^  involuntary context switches (X)
     }   deriving (Show, Read, Eq, Ord, Generic)
-        deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
+        deriving anyclass (Print, JSON)
 
 sizeOfResUsage :: Int
 sizeOfResUsage = #size uv_rusage_t
@@ -952,7 +952,7 @@ foreign import ccall unsafe uv_os_setpriority :: PID -> CInt -> IO CInt
 
 newtype PID = PID CInt 
     deriving (Eq, Ord, Show, Read, Generic)
-    deriving newtype (Storable, Prim, Unaligned, EncodeJSON, ToValue, FromValue)
+    deriving newtype (Storable, Prim, Unaligned, JSON)
     deriving anyclass Print
 
 type Priority = CInt
@@ -988,7 +988,7 @@ data OSName = OSName
     , os_version :: CBytes
     , os_machine :: CBytes
     }   deriving (Eq, Ord, Show, Read, Generic)
-        deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
+        deriving anyclass (Print, JSON)
 
 getOSName :: HasCallStack => IO OSName
 getOSName = do
@@ -1013,7 +1013,7 @@ data PassWD = PassWD
     , passwd_shell :: CBytes
     , passwd_homedir :: CBytes
     }   deriving (Eq, Ord, Show, Read, Generic)
-        deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
+        deriving anyclass (Print, JSON)
 
 foreign import ccall unsafe uv_os_get_passwd :: MBA## PassWD -> IO CInt
 foreign import ccall unsafe uv_os_free_passwd :: MBA## PassWD -> IO ()
@@ -1055,7 +1055,7 @@ data CPUInfo = CPUInfo
     , cpu_times_idle :: Word64  -- ^ milliseconds  
     , cpu_times_irq  :: Word64  -- ^ milliseconds
     }   deriving (Eq, Ord, Show, Read, Generic)
-        deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
+        deriving anyclass (Print, JSON)
 
 -- | Gets information about the CPUs on the system.
 getCPUInfo :: HasCallStack => IO [CPUInfo]
@@ -1095,7 +1095,7 @@ data TimeVal64 = TimeVal64
     { tv64_sec  :: {-# UNPACK #-} !Int64
     , tv64_usec :: {-# UNPACK #-} !Int32
     }   deriving (Show, Read, Eq, Ord, Generic)
-        deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
+        deriving anyclass (Print, JSON)
 
 foreign import ccall unsafe uv_gettimeofday :: MBA## TimeVal64 -> IO CInt
 

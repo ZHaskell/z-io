@@ -68,7 +68,7 @@ import GHC.Conc.Signal (Signal)
 import System.Exit
 import Z.Data.CBytes
 import Z.Data.CBytes                    as CBytes
-import Z.Data.JSON                      (EncodeJSON, ToValue, FromValue)
+import Z.Data.JSON                      (JSON)
 import Z.Data.Vector                    as V
 import qualified Z.Data.Text            as T
 import qualified Data.List              as List
@@ -100,7 +100,7 @@ defaultProcessOptions = ProcessOptions
 -- | Process state
 data ProcessState = ProcessRunning PID | ProcessExited ExitCode
   deriving (Show, Eq, Ord, Generic)
-  deriving anyclass (T.Print, EncodeJSON, ToValue, FromValue)
+  deriving anyclass (T.Print, JSON)
 
 -- | Wait until process exit and return the 'ExitCode'.
 waitProcessExit :: TVar ProcessState -> IO ExitCode

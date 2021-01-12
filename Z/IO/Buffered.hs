@@ -33,8 +33,6 @@ module Z.IO.Buffered
   , writeBuffer
   , writeBuilder
   , flushBuffer
-    -- * Exceptions
-  , IncompleteInput(..)
     -- * common buffer size
   , V.defaultChunkSize
   , V.smallChunkSize
@@ -63,7 +61,7 @@ import           Z.IO.Exception
 -- 'readInput' should return 0 on EOF.
 --
 class Input i where
-    readInput :: HasCallStack => i -> Ptr Word8 -> Int -> IO Int
+    readInput :: i -> Ptr Word8 -> Int -> IO Int
 
 -- | Output device
 --
@@ -71,7 +69,7 @@ class Input i where
 -- necessarily flushed to hardware, that should be done in device specific way).
 --
 class Output o where
-    writeOutput :: HasCallStack => o -> Ptr Word8 -> Int -> IO ()
+    writeOutput :: o -> Ptr Word8 -> Int -> IO ()
 
 -- | Input device with buffer, NOT THREAD SAFE!
 --
@@ -82,7 +80,7 @@ class Output o where
 --   are opened on a same 'Input' device, the behaviour is undefined.
 --
 data BufferedInput = BufferedInput
-    { bufInput    :: HasCallStack => Ptr Word8 -> Int -> IO Int
+    { bufInput    :: Ptr Word8 -> Int -> IO Int
     , bufPushBack :: {-# UNPACK #-} !(IORef V.Bytes)
     , inputBuffer :: {-# UNPACK #-} !(IORef (MutablePrimArray RealWorld Word8))
     }
@@ -96,7 +94,7 @@ data BufferedInput = BufferedInput
 --   are opened on a same 'BufferedOutput' device, the output will be interleaved.
 --
 data BufferedOutput = BufferedOutput
-    { bufOutput     :: HasCallStack => Ptr Word8 -> Int -> IO ()
+    { bufOutput     :: Ptr Word8 -> Int -> IO ()
     , bufIndex      :: {-# UNPACK #-} !Counter
     , outputBuffer  :: {-# UNPACK #-} !(MutablePrimArray RealWorld Word8)
     }
@@ -167,7 +165,8 @@ readBuffer BufferedInput{..} = do
 -- | Request UTF8 'T.Text' chunk from 'BufferedInput'.
 --
 -- The buffer size must be larger than 4 bytes to guarantee decoding progress. If there're
--- trailing bytes before EOF, 'IncompleteInput' are thrown.
+-- trailing bytes before EOF, an 'OtherError' with name 'EINCOMPLETE' will be thrown, if there're
+-- invalid UTF8 bytes, an 'OtherError' with name 'EINVALIDUTF8' will be thrown.`
 readBufferText :: HasCallStack => BufferedInput -> IO T.Text
 readBufferText BufferedInput{..} = do
     pb <- readIORef bufPushBack
@@ -190,7 +189,7 @@ readBufferText BufferedInput{..} = do
             copyPrimArray rbuf 0 arr s delta
             l <- bufInput (mutablePrimArrayContents rbuf `plusPtr` delta) (bufSiz - delta)
             -- if EOF is reached, no further progress is possible
-            when (l == 0) (throwIO (IncompleteInput callStack))
+            when (l == 0) (throwOtherError "EINCOMPLETE" "input is incomplete")
             handleBuf (l + delta)
   where
     handleBuf l = do
@@ -215,7 +214,7 @@ readBufferText BufferedInput{..} = do
         | otherwise = do
             let (i, _) = V.findR (\ w -> w >= 0b11000000 || w <= 0b01111111) bs
             if (i == -1)
-            then throwIO (T.InvalidUTF8Exception callStack)
+            then throwOtherError "EINVALIDUTF8" "invalid UTF8 bytes"
             else do
                 if T.decodeCharLen arr (s + i) > l - i
                 then do
@@ -225,7 +224,7 @@ readBufferText BufferedInput{..} = do
 
 -- | Read exactly N bytes.
 --
--- If EOF reached before N bytes read, a 'IncompleteInput' will be thrown
+-- If EOF reached before N bytes read, an 'OtherError' with name 'EINCOMPLETE' will be thrown.
 readExactly :: HasCallStack => Int -> BufferedInput -> IO V.Bytes
 readExactly n0 h0 = V.concat `fmap` (go h0 n0)
   where
@@ -240,7 +239,7 @@ readExactly n0 h0 = V.concat `fmap` (go h0 n0)
         else if l == n
             then return [chunk]
             else if l == 0
-                then throwIO (IncompleteInput callStack)
+                then throwOtherError "EINCOMPLETE" "input is incomplete"
                 else do
                     chunks <- go h (n - l)
                     return (chunk : chunks)
@@ -264,14 +263,6 @@ readAll h = loop []
 -- Useful for reading small file into memory.
 readAll' :: HasCallStack => BufferedInput -> IO V.Bytes
 readAll' i = V.concat <$> readAll i
-
--- | Exceptions when read not enough input.
---
--- Note this exception is a sub-type of 'SomeIOException'.
-data IncompleteInput = IncompleteInput CallStack deriving Show
-instance Exception IncompleteInput where
-    toException = ioExceptionToException
-    fromException = ioExceptionFromException
 
 -- | Push bytes back into buffer(if not empty).
 --

@@ -73,7 +73,7 @@ import Z.Data.Vector.Base               as V
 import Z.Data.Vector.Extra              as V
 import Z.Data.CBytes                    as CBytes
 import qualified Z.Data.Text.Print      as T
-import Z.Data.JSON                      (EncodeJSON, ToValue, FromValue)
+import Z.Data.JSON                      (JSON)
 import Z.IO.Network.SocketAddr
 import Z.Foreign
 import Z.IO.UV.FFI
@@ -113,7 +113,7 @@ data UDPConfig = UDPConfig
     , udpLocalAddr :: Maybe (SocketAddr, UDPFlag)   -- ^ do we want bind a local address before receiving & sending?
                                                     --   set to Nothing to let OS pick a random one.
     } deriving (Eq, Ord, Show, Generic)
-      deriving anyclass (T.Print, EncodeJSON, ToValue, FromValue)
+      deriving anyclass (T.Print, JSON)
 
 -- | @UDPConfig 512 Nothing@
 defaultUDPConfig :: UDPConfig
@@ -312,7 +312,7 @@ data UDPRecvConfig = UDPRecvConfig
                                                 --   increase this number can improve receiving performance,
                                                 --   at the cost of memory and potential GHC thread starving.
     } deriving (Eq, Ord, Show, Read, Generic)
-      deriving anyclass (T.Print, EncodeJSON, ToValue, FromValue)
+      deriving anyclass (T.Print, JSON)
 
 -- | @UDPRecvConfig 512 6@
 defaultUDPRecvConfig :: UDPRecvConfig

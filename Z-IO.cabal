@@ -1,6 +1,6 @@
 cabal-version:              2.4
 name:                       Z-IO
-version:                    0.3.0.0
+version:                    0.4.0.0
 synopsis:                   Simple and high performance IO toolkit for Haskell
 description:                Simple and high performance IO toolkit for Haskell, including
                             file system, network, ipc and more!
@@ -120,13 +120,13 @@ library
 
                             -- Z.Compression.Zlib
 
-    build-depends:          base                    >= 4.12 && < 5.0
+    build-depends:          base                    == 4.*
                           , exceptions              == 0.10.*
                           , primitive               >= 0.7.1 && < 0.7.2
                           , stm                     == 2.5.*
                           , unordered-containers    == 0.2.*
                           , containers              == 0.6.*
-                          , Z-Data                  == 0.3.* 
+                          , Z-Data                  == 0.4.* 
                           , time                    >= 1.9 && <= 2.0
                           , unix-time               >= 0.4.7 && <= 0.5
 
@@ -364,7 +364,6 @@ test-suite Z-IO-Test
                           , HUnit
                           , QuickCheck              >= 2.10
                           , quickcheck-instances
-                          , word8
                           , scientific
                           , primitive
                           , zlib

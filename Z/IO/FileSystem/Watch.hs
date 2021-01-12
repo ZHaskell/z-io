@@ -39,7 +39,7 @@ import           Z.Data.Array
 import           Z.Data.Array.Unaligned
 import           Z.Data.CBytes            (CBytes)
 import qualified Z.Data.CBytes            as CBytes
-import           Z.Data.JSON              (EncodeJSON, FromValue, ToValue)
+import           Z.Data.JSON              (JSON)
 import           Z.Data.Text.Print        (Print)
 import           Z.Data.Vector            (defaultChunkSize)
 import           Z.Foreign
@@ -55,7 +55,7 @@ import           Z.IO.LowResTimer
 -- | File event with path info.
 data FileEvent = FileAdd CBytes | FileRemove CBytes | FileModify CBytes
   deriving (Show, Read, Ord, Eq, Generic)
-  deriving anyclass (Print, FromValue, ToValue, EncodeJSON)
+  deriving anyclass (Print, JSON)
 
 
 -- | Start watching a list of given directories.

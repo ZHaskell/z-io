@@ -40,7 +40,7 @@ import           Foreign.Ptr
 import           GHC.Generics
 import           Z.Data.CBytes
 import           Z.Data.Text.Print   (Print)
-import           Z.Data.JSON         (EncodeJSON, ToValue, FromValue)
+import           Z.Data.JSON         (JSON)
 import           Z.IO.Exception
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
@@ -57,7 +57,7 @@ data IPCClientConfig = IPCClientConfig
                                     -- won't bind if set to 'Nothing'.
     , ipcTargetName :: CBytes       -- ^ target path (Unix) or a name (Windows).
     } deriving (Eq, Ord, Show, Read, Generic)
-      deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
+      deriving anyclass (Print, JSON)
 
 -- | Default config, connect to ".\/ipc".
 --
@@ -88,7 +88,7 @@ data IPCServerConfig = IPCServerConfig
     { ipcListenName       :: CBytes      -- ^ listening path (Unix) or a name (Windows).
     , ipcListenBacklog    :: Int           -- ^ listening pipe's backlog size, should be large enough(>128)
     } deriving (Eq, Ord, Show, Read, Generic)
-      deriving anyclass (Print, EncodeJSON, ToValue, FromValue)
+      deriving anyclass (Print, JSON)
 
 -- | A default hello world server on @.\/ipc@
 --
@@ -183,7 +183,7 @@ startIPCServer IPCServerConfig{..} ipcServerWorker = do
                             uvm <- getUVManager
                             withResource (initUVStream (\ loop hdl -> do
                                 throwUVIfMinus_ (uv_pipe_init loop hdl 0)
-                                throwUVIfMinus_ (uv_pipe_open hdl fd)) uvm) $ \ uvs -> do
+                                throwUVIfMinus_ (hs_uv_pipe_open hdl fd)) uvm) $ \ uvs -> do
                                 ipcServerWorker uvs
 
 --------------------------------------------------------------------------------

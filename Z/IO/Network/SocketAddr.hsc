@@ -82,7 +82,7 @@ import           System.IO.Unsafe
 import           Z.Data.CBytes
 import           Z.Data.Text.Print      (Print(..))
 import qualified Z.Data.Text.Print      as T
-import           Z.Data.JSON            (EncodeJSON(..), ToValue(..), FromValue(..), (.:))
+import           Z.Data.JSON            (JSON(..), (.:))
 import qualified Z.Data.JSON            as JSON
 import qualified Z.Data.JSON.Builder    as B
 import qualified Z.Data.Vector          as V
@@ -129,7 +129,8 @@ data SocketAddr
         {-# UNPACK #-} !ScopeID     -- sin6_scope_id (ditto)
     deriving (Eq, Ord, Generic)
 
-instance EncodeJSON SocketAddr where 
+instance JSON SocketAddr where 
+    {-# INLINE encodeJSON #-}
     encodeJSON (SocketAddrIPv4 addr port) = T.curly $ do
         "addr" `B.kv` encodeJSON addr
         T.char7 ','
@@ -143,7 +144,7 @@ instance EncodeJSON SocketAddr where
         T.char7 ','
         "scope" `B.kv` encodeJSON scope
 
-instance ToValue SocketAddr where 
+    {-# INLINE toValue #-}
     toValue (SocketAddrIPv4 addr port) = JSON.Object . V.pack $ 
         [ ("addr", toValue addr)
         , ("number", toValue port)
@@ -155,7 +156,7 @@ instance ToValue SocketAddr where
         , ("scope", toValue scope)
         ]
 
-instance FromValue SocketAddr where 
+    {-# INLINE fromValue #-}
     fromValue = JSON.withFlatMapR "Z.IO.Network.SocketAddr" $ \ fm -> do
         (addrV :: V.PrimVector Word) <- fm .: "addr"
         case V.length addrV of
@@ -222,13 +223,11 @@ ipv6 str (PortNumber port) = unsafeDupablePerformIO . withSocketAddrStorageUnsaf
 newtype IPv4 = IPv4 { getIPv4Addr :: Word32 }
     deriving (Eq, Ord, Generic)
     
-instance EncodeJSON IPv4 where
+instance JSON IPv4 where
     {-# INLINE encodeJSON #-}
     encodeJSON = encodeJSON . ipv4AddrToTuple
-instance ToValue IPv4 where
     {-# INLINE toValue #-}
     toValue = toValue . ipv4AddrToTuple
-instance FromValue IPv4 where
     {-# INLINE fromValue #-}
     fromValue v = tupleToIPv4Addr <$> fromValue v
 
@@ -311,15 +310,13 @@ data IPv6 = IPv6 {-# UNPACK #-}!Word32
                  {-# UNPACK #-}!Word32 
     deriving (Eq, Ord, Generic)
 
-instance EncodeJSON IPv6 where
+instance JSON IPv6 where
     {-# INLINE encodeJSON #-}
     encodeJSON addr = encodeJSON [a,b,c,d,e,f,g,h]
       where (a,b,c,d,e,f,g,h) = ipv6AddrToTuple addr
-instance ToValue IPv6 where
     {-# INLINE toValue #-}
     toValue addr = toValue [a,b,c,d,e,f,g,h]
       where (a,b,c,d,e,f,g,h) = ipv6AddrToTuple addr
-instance FromValue IPv6 where
     {-# INLINE fromValue #-}
     fromValue v = do
         [a,b,c,d,e,f,g,h] <- fromValue v
@@ -598,7 +595,7 @@ pokeSocketAddrMBA p (SocketAddrIPv6 addr port flow scope) =  do
 -- 60000
 newtype PortNumber = PortNumber Word16 
     deriving (Eq, Ord, Enum, Generic)
-    deriving newtype (Show, Print, Read, Num, Bounded, Real, Integral, EncodeJSON, ToValue, FromValue)
+    deriving newtype (Show, Print, Read, Num, Bounded, Real, Integral, JSON)
 
 -- | @:0@
 portAny :: PortNumber

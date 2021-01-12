@@ -64,6 +64,11 @@ module Z.IO.Exception
   , throwECLOSED
   , throwECLOSEDSTM
   , throwUVError
+  , throwOtherError
+    -- * Unwrapping Either/ / Maybe result
+  , UnwrapException(..)
+  , unwrap
+  , unwrapJust
     -- * Re-exports
   , module Control.Exception
   , HasCallStack
@@ -75,7 +80,7 @@ module Z.IO.Exception
 import           Control.Concurrent.STM
 import           Control.Exception      hiding (IOException)
 import           Control.Monad
-import           Data.Typeable          (cast)
+import           Data.Typeable          (Typeable, cast)
 import           Foreign.C.Types
 import           Foreign.Ptr
 import           GHC.Stack
@@ -169,15 +174,45 @@ throwUVIfMinus_ f = do
         desc <- uvStdError errno'
         throwUVError errno' (IOEInfo name desc callStack)
 
--- | Throw 'E.ResourceVanished' with name 'ECLOSED' and description 'resource is closed'.
+-- | Throw 'ResourceVanished' with name 'ECLOSED' and description 'resource is closed'.
 --
 throwECLOSED :: HasCallStack => IO a
+{-# INLINABLE throwECLOSED #-}
 throwECLOSED = throwIO (ResourceVanished
     (IOEInfo "ECLOSED" "resource is closed" callStack))
 
+-- | STM version of 'throwECLOSED'.
 throwECLOSEDSTM :: HasCallStack => STM a
+{-# INLINABLE throwECLOSEDSTM #-}
 throwECLOSEDSTM = throwSTM (ResourceVanished
     (IOEInfo "ECLOSED" "resource is closed" callStack))
+
+-- | Throw 'OtherError' with custom name and description.
+throwOtherError :: HasCallStack => T.Text -> T.Text -> IO a
+{-# INLINABLE throwOtherError #-}
+throwOtherError name desc = throwIO (OtherError (IOEInfo name desc callStack))
+
+--------------------------------------------------------------------------------
+
+-- | Exception for 'unwrap' \/ 'unwrapJust'.
+data UnwrapException e
+    = UnwrapEitherException CallStack e
+    | UnwrapMaybeException CallStack
+    deriving Show
+
+instance (Typeable e, Show e) => Exception (UnwrapException e)
+
+-- | Try to unwrap a value from 'Right', throw @UnwrapException e@ if 'Left e'.
+unwrap :: (HasCallStack, Show e, Typeable e) => Either e a -> IO a
+{-# INLINABLE unwrap #-}
+unwrap (Right x) = return x
+unwrap (Left e) = throwIO (UnwrapEitherException callStack e)
+
+-- | Try to unwrap a value from 'Just', throw @UnwrapException ()@ if 'Nothing'.
+unwrapJust :: HasCallStack => Maybe a -> IO a
+{-# INLINABLE unwrapJust #-}
+unwrapJust (Just x) = return x
+unwrapJust Nothing = throwIO (UnwrapMaybeException callStack :: UnwrapException ())
 
 --------------------------------------------------------------------------------
 

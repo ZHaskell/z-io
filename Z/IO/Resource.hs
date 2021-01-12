@@ -68,7 +68,7 @@ import           Z.IO.Exception
 --
 -- Library authors providing 'initXXX' are also encouraged to provide these guarantees.
 --
-newtype Resource a = Resource { acquire :: HasCallStack => IO (a, IO ()) }
+newtype Resource a = Resource { acquire :: IO (a, IO ()) }
 
 -- | Create 'Resource' from create and release action.
 --

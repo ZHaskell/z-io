@@ -21,8 +21,9 @@ Most of the time you don't need this module though, since modern hardware(SSD) a
 
 module Z.IO.FileSystem.Threaded
   ( -- * regular file devices
-    File, initFile, readFile, writeFile, getFileFD, seek
-  , quickReadFile, quickReadTextFile, quickWriteFile, quickWriteTextFile
+    File, initFile, readFileP, writeFileP, getFileFD, seek
+  , readFile, readTextFile, writeFile, writeTextFile
+  , readJSONFile, writeJSONFile
     -- * file offset bundle
   , FilePtrT, newFilePtrT, getFilePtrOffset, setFilePtrOffset
   -- * filesystem operations
@@ -118,6 +119,7 @@ import           Z.Data.PrimRef.PrimIORef
 import qualified Z.Data.Text                    as T
 import qualified Z.Data.Text.Print              as T
 import qualified Z.Data.Vector                  as V
+import qualified Z.Data.JSON                    as JSON
 import           Z.Foreign
 import           Z.IO.Buffered
 import           Z.IO.Exception
@@ -137,7 +139,7 @@ import           Prelude hiding                 (writeFile, readFile)
 --
 -- libuv implements read and write method with both implict and explict offset capable.
 -- Implict offset interface is provided by 'Input' \/ 'Output' instances.
--- Explict offset interface is provided by 'readFile' \/ 'writeFile'.
+-- Explict offset interface is provided by 'readFileP' \/ 'writeFileP'.
 --
 data File = File {-# UNPACK #-} !FD      -- ^ the file
                  {-# UNPACK #-} !(IORef Bool)  -- ^ closed flag
@@ -166,24 +168,24 @@ seek :: HasCallStack => File -> Int64 -> Whence -> IO Int64
 seek uvf off w = checkFileClosed uvf $ \ fd -> throwUVIfMinus $ hs_seek fd off w
 
 instance Input File where
-    readInput f buf bufSiz = readFile f buf bufSiz (-1)
+    readInput f buf bufSiz = readFileP f buf bufSiz (-1)
 
 -- | Read file with given offset
 --
 -- Read length may be smaller than buffer size.
-readFile :: HasCallStack
+readFileP :: HasCallStack
           => File
           -> Ptr Word8 -- ^ buffer
           -> Int       -- ^ buffer size
           -> Int64     -- ^ file offset, pass -1 to use default(system) offset
           -> IO Int    -- ^ read length
-readFile uvf buf bufSiz off =
+readFileP uvf buf bufSiz off =
     checkFileClosed uvf  $ \ fd -> do
         uvm <- getUVManager
         withUVRequest uvm (hs_uv_fs_read_threaded fd buf bufSiz off)
 
 instance Output File where
-    writeOutput f buf bufSiz = writeFile f buf bufSiz (-1)
+    writeOutput f buf bufSiz = writeFileP f buf bufSiz (-1)
 
 -- | Write buffer to file
 --
@@ -197,13 +199,13 @@ instance Output File where
 -- if a file is opened with O_APPEND, pwrite() appends data to the end of the file,
 -- regardless of the value of offset.
 -- @
-writeFile :: HasCallStack
+writeFileP :: HasCallStack
            => File
            -> Ptr Word8 -- ^ buffer
            -> Int       -- ^ buffer size
            -> Int64     -- ^ file offset, pass -1 to use default(system) offset
            -> IO ()
-writeFile uvf buf0 bufSiz0 off0 =
+writeFileP uvf buf0 bufSiz0 off0 =
     checkFileClosed uvf $ \ fd -> do
              (if off0 == -1 then go fd buf0 bufSiz0
                             else go' fd buf0 bufSiz0 off0)
@@ -230,7 +232,7 @@ writeFile uvf buf0 bufSiz0 off0 =
 -- Reading or writing using 'Input' \/ 'Output' instance will automatically increase offset.
 -- 'FilePtrT' and its operations are NOT thread safe, use 'MVar' 'FilePtrT' in multiple threads.
 --
--- The notes on linux 'writeFile' applied to 'FilePtr' too.
+-- The notes on linux 'writeFileP' applied to 'FilePtr' too.
 data FilePtrT = FilePtrT {-# UNPACK #-} !File
                          {-# UNPACK #-} !(PrimIORef Int64)
 
@@ -252,14 +254,14 @@ setFilePtrOffset (FilePtrT _ offsetRef) = writePrimIORef offsetRef
 instance Input FilePtrT where
     readInput (FilePtrT file offsetRef) buf bufSiz =
         readPrimIORef offsetRef >>= \ off -> do
-            l <- readFile file buf bufSiz off
+            l <- readFileP file buf bufSiz off
             writePrimIORef offsetRef (off + fromIntegral l)
             return l
 
 instance Output FilePtrT where
     writeOutput (FilePtrT file offsetRef) buf bufSiz =
         readPrimIORef offsetRef >>= \ off -> do
-            writeFile file buf bufSiz off
+            writeFileP file buf bufSiz off
             writePrimIORef offsetRef (off + fromIntegral bufSiz)
 
 --------------------------------------------------------------------------------
@@ -289,24 +291,33 @@ initFile path flags mode =
                 writeIORef closedRef True)
 
 -- | Quickly open a file and read its content.
-quickReadFile :: HasCallStack => CBytes -> IO V.Bytes
-quickReadFile filename = do
+readFile :: HasCallStack => CBytes -> IO V.Bytes
+readFile filename = do
     withResource (initFile filename O_RDONLY DEFAULT_MODE) $ \ file -> do
         readAll' =<< newBufferedInput file
 
 -- | Quickly open a file and read its content as UTF8 text.
-quickReadTextFile :: HasCallStack => CBytes -> IO T.Text
-quickReadTextFile filename = T.validate <$> quickReadFile filename
+readTextFile :: HasCallStack => CBytes -> IO T.Text
+readTextFile filename = T.validate <$> readFile filename
 
 -- | Quickly open a file and write some content.
-quickWriteFile :: HasCallStack => CBytes -> V.Bytes -> IO ()
-quickWriteFile filename content = do
+writeFile :: HasCallStack => CBytes -> V.Bytes -> IO ()
+writeFile filename content = do
     withResource (initFile filename (O_WRONLY .|. O_CREAT) DEFAULT_MODE) $ \ file -> do
         withPrimVectorSafe content (writeOutput file)
 
 -- | Quickly open a file and write some content as UTF8 text.
-quickWriteTextFile :: HasCallStack => CBytes -> T.Text -> IO ()
-quickWriteTextFile filename content = quickWriteFile filename (T.getUTF8Bytes content)
+writeTextFile :: HasCallStack => CBytes -> T.Text -> IO ()
+writeTextFile filename content = writeFile filename (T.getUTF8Bytes content)
+
+-- | Quickly open a file and read its content as a JSON value.
+-- Throw 'OtherError' with name @EJSON@ if JSON value is not parsed or converted.
+readJSONFile :: (HasCallStack, JSON.JSON a) => CBytes -> IO a
+readJSONFile filename = unwrap . JSON.decode' =<< readFile filename
+
+-- | Quickly open a file and write a JSON Value.
+writeJSONFile :: (HasCallStack, JSON.JSON a) => CBytes -> a -> IO ()
+writeJSONFile filename x = writeFile filename (JSON.encode x)
 
 --------------------------------------------------------------------------------
 
