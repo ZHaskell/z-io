@@ -311,9 +311,9 @@ writeTextFile :: HasCallStack => CBytes -> T.Text -> IO ()
 writeTextFile filename content = writeFile filename (T.getUTF8Bytes content)
 
 -- | Quickly open a file and read its content as a JSON value.
--- Throw 'OtherError' with name @EJSON@ if JSON value is not parsed or converted.
+-- Throw 'OtherError' with name @EPARSE@ if JSON value is not parsed.
 readJSONFile :: (HasCallStack, JSON.JSON a) => CBytes -> IO a
-readJSONFile filename = unwrap . JSON.decode' =<< readFile filename
+readJSONFile filename = unwrap "EPARSE" . JSON.decode' =<< readFile filename
 
 -- | Quickly open a file and write a JSON Value.
 writeJSONFile :: (HasCallStack, JSON.JSON a) => CBytes -> a -> IO ()

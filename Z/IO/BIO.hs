@@ -65,6 +65,7 @@ module Z.IO.BIO (
   , sourceTextFromBuffered, sourceTextFromInput
   , sourceJSONFromBuffered, sourceJSONFromInput
   , sourceParsedBufferInput, sourceParsedInput
+  , sourceParseChunksBufferedInput, sourceParseChunksInput
   -- ** Sink
   , sinkToList
   , sinkToBuffered
@@ -454,25 +455,22 @@ sourceTextFromBuffered i = BIO{ pull = do
 -- Throw 'OtherError' with name "EJSON" if JSON value is not parsed or converted.
 sourceJSONFromBuffered :: forall a. (JSON.JSON a, HasCallStack) => BufferedInput -> Source a
 {-# INLINABLE sourceJSONFromBuffered #-}
-sourceJSONFromBuffered bi = BIO{ pull = do
-    bs <- readBuffer bi
-    if V.null bs
-       then return Nothing
-       else do
-           (rest, r) <- JSON.decodeChunks (readBuffer bi) bs
-           unReadBuffer rest bi
-           case r of Right v -> return (Just v)
-                     Left e  -> throwOtherError "EJSON" (T.toText e) }
+sourceJSONFromBuffered = sourceParseChunksBufferedInput JSON.decodeChunks
 
 -- | Turn buffered input device into a packet source, throw 'OtherError' with name @EPARSE@ if parsing fail.
 sourceParsedBufferInput :: HasCallStack => P.Parser a -> BufferedInput -> Source a
 {-# INLINABLE sourceParsedBufferInput #-}
-sourceParsedBufferInput p bi = BIO{ pull = do
+sourceParsedBufferInput p = sourceParseChunksBufferedInput (P.parseChunks p)
+
+-- | Turn buffered input device into a packet source, throw 'OtherError' with name @EPARSE@ if parsing fail.
+sourceParseChunksBufferedInput :: (HasCallStack, T.Print e) => P.ParseChunks IO V.Bytes e a -> BufferedInput -> Source a
+{-# INLINABLE sourceParseChunksBufferedInput #-}
+sourceParseChunksBufferedInput cp bi = BIO{ pull = do
     bs <- readBuffer bi
     if V.null bs
        then return Nothing
        else do
-           (rest, r) <- P.parseChunks p (readBuffer bi) bs
+           (rest, r) <- cp (readBuffer bi) bs
            unReadBuffer rest bi
            case r of Right v -> return (Just v)
                      Left e  -> throwOtherError "EPARSE" (T.toText e) }
@@ -505,6 +503,11 @@ initSourceFromFile p = do
 sourceParsedInput :: (Input i, HasCallStack) => P.Parser a -> i -> IO (Source a)
 {-# INLINABLE sourceParsedInput #-}
 sourceParsedInput p i = sourceParsedBufferInput p <$> newBufferedInput i
+
+-- | Turn input device into a packet source.
+sourceParseChunksInput :: (T.Print e, Input i, HasCallStack) => P.ParseChunks IO V.Bytes e a -> i -> IO (Source a)
+{-# INLINABLE sourceParseChunksInput #-}
+sourceParseChunksInput p i = sourceParseChunksBufferedInput p <$> newBufferedInput i
 
 --------------------------------------------------------------------------------
 -- Sink

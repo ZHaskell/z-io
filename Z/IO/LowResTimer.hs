@@ -28,6 +28,7 @@ module Z.IO.LowResTimer
   , cancelLowResTimer_
   , timeoutLowRes
   , timeoutLowResEx
+  , threadDelayLowRes
   , throttle
   , throttle_
   , throttleTrailing_
@@ -121,6 +122,7 @@ lowResTimerManagerCapabilitiesChanged = do
 -- | Get a 'LowResTimerManager' for current thread.
 --
 getLowResTimerManager :: IO LowResTimerManager
+{-# INLINABLE getLowResTimerManager #-}
 getLowResTimerManager = do
     (cap, _) <- threadCapability =<< myThreadId
     lrtmArray <- readIORef lowResTimerManager
@@ -131,6 +133,7 @@ getLowResTimerManager = do
 -- This is mostly for testing purpose.
 --
 isLowResTimerManagerRunning :: LowResTimerManager -> IO Bool
+{-# INLINABLE isLowResTimerManagerRunning #-}
 isLowResTimerManagerRunning (LowResTimerManager _ _ _ runningLock) = readMVar runningLock
 
 -- | Register a new timer on current capability's timer manager, start the timing wheel if it's not turning.
@@ -144,6 +147,7 @@ isLowResTimerManagerRunning (LowResTimerManager _ _ _ runningLock) = readMVar ru
 registerLowResTimer :: Int          -- ^ timeout in unit of 0.1s
                     -> IO ()        -- ^ the action you want to perform, it should not block
                     -> IO LowResTimer
+{-# INLINABLE registerLowResTimer #-}
 registerLowResTimer t action = do
     lrtm <- getLowResTimerManager
     registerLowResTimerOn lrtm t action
@@ -152,6 +156,7 @@ registerLowResTimer t action = do
 registerLowResTimer_ :: Int          -- ^ timeout in unit of 0.1s
                      -> IO ()        -- ^ the action you want to perform, it should not block
                      -> IO ()
+{-# INLINABLE registerLowResTimer_ #-}
 registerLowResTimer_ t action = void (registerLowResTimer t action)
 
 -- | Same as 'registerLowResTimer', but allow you choose timer manager.
@@ -160,6 +165,7 @@ registerLowResTimerOn :: LowResTimerManager   -- ^ a low resolution timer manage
                       -> Int          -- ^ timeout in unit of 0.1s
                       -> IO ()        -- ^ the action you want to perform, it should not block
                       -> IO LowResTimer
+{-# INLINABLE registerLowResTimerOn #-}
 registerLowResTimerOn lrtm@(LowResTimerManager queue indexLock regCounter _) t action = do
 
     let (round_, tick) = (max 0 t) `quotRem` queueSize
@@ -186,6 +192,7 @@ newtype LowResTimer = LowResTimer Counter
 -- A return value <= 0 indictate the timer is firing or fired.
 --
 queryLowResTimer :: LowResTimer -> IO Int
+{-# INLINABLE queryLowResTimer #-}
 queryLowResTimer (LowResTimer c) = readPrimIORef c
 
 -- | Cancel a timer, return the remaining ticks.
@@ -193,11 +200,13 @@ queryLowResTimer (LowResTimer c) = readPrimIORef c
 -- This function have no effect after the timer is fired.
 --
 cancelLowResTimer :: LowResTimer -> IO Int
+{-# INLINABLE cancelLowResTimer #-}
 cancelLowResTimer (LowResTimer c) = atomicOrCounter c (-1)
 
 -- | @void . cancelLowResTimer@
 --
 cancelLowResTimer_ :: LowResTimer -> IO ()
+{-# INLINABLE cancelLowResTimer_ #-}
 cancelLowResTimer_ = void . cancelLowResTimer
 
 -- | similar to 'System.Timeout.timeout', this function put a limit on time which an IO can consume.
@@ -208,6 +217,7 @@ cancelLowResTimer_ = void . cancelLowResTimer
 timeoutLowRes :: Int    -- ^ timeout in unit of 0.1s
               -> IO a
               -> IO (Maybe a)
+{-# INLINABLE timeoutLowRes #-}
 timeoutLowRes timeo io = do
     mid <- myThreadId
     catch
@@ -225,6 +235,7 @@ timeoutLowResEx :: HasCallStack
                 => Int    -- ^ timeout in unit of 0.1s
                 -> IO a
                 -> IO a
+{-# INLINABLE timeoutLowResEx #-}
 timeoutLowResEx timeo io = do
     mid <- myThreadId
     timer <- registerLowResTimer timeo (timeoutAThread mid)
@@ -238,10 +249,21 @@ timeoutLowResEx timeo io = do
 data TimeOutException = TimeOutException ThreadId CallStack deriving Show
 instance Exception TimeOutException
 
+
+-- | Similiar to 'threadDelay', suspends the current thread for a given number of deciseconds.
+--
+threadDelayLowRes :: Int -> IO ()
+{-# INLINABLE threadDelayLowRes #-}
+threadDelayLowRes dsecs = mask_ $ do
+    m <- newEmptyMVar
+    t <- registerLowResTimer dsecs (putMVar m ())
+    takeMVar m `onException` cancelLowResTimer_ t
+
 --------------------------------------------------------------------------------
 -- | Check if low resolution timer manager loop is running, start loop if not.
 --
 ensureLowResTimerManager :: LowResTimerManager -> IO ()
+{-# INLINABLE ensureLowResTimerManager #-}
 ensureLowResTimerManager lrtm@(LowResTimerManager _ _ _ runningLock) = do
     modifyMVar_ runningLock $ \ running -> do
         unless running $ do
@@ -321,6 +343,7 @@ fireLowResTimerQueue (LowResTimerManager queue indexLock regCounter _) = do
 throttle :: Int         -- ^ cache time in unit of 0.1s
          -> IO a        -- ^ the original IO action
          -> IO (IO a)   -- ^ throttled IO action
+{-# INLINABLE throttle #-}
 throttle t action = do
     resultCounter <- newCounter 0
     resultRef <- newIORef =<< action
@@ -343,6 +366,7 @@ throttle t action = do
 throttle_ :: Int            -- ^ cache time in unit of 0.1s
           -> IO ()          -- ^ the original IO action
           -> IO (IO ())     -- ^ throttled IO action
+{-# INLINABLE throttle_ #-}
 throttle_ t action = do
     resultCounter <- newCounter 0
     return $ do
@@ -360,6 +384,7 @@ throttle_ t action = do
 throttleTrailing_ :: Int
                   -> IO ()        -- ^ the original IO action
                   -> IO (IO ())   -- ^ throttled IO action
+{-# INLINABLE throttleTrailing_ #-}
 throttleTrailing_ t action = do
     resultCounter <- newCounter 0
     return $ do

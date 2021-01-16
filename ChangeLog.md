@@ -1,5 +1,7 @@
 # Revision history for Z-IO
 
+## 0.5.0.0  -- 2020-12-29
+
 ## 0.3.0.0  -- 2020-12-29
 
 * Add `getSystemTime'` to `Z.IO.Time`.
