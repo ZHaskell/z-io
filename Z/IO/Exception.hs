@@ -65,10 +65,8 @@ module Z.IO.Exception
   , throwECLOSEDSTM
   , throwUVError
   , throwOtherError
-    -- * Unwrapping Either/ / Maybe result
-  , UnwrapException(..)
   , unwrap
-  , unwrapJust
+  , unwrap'
     -- * Re-exports
   , module Control.Exception
   , HasCallStack
@@ -194,25 +192,17 @@ throwOtherError name desc = throwIO (OtherError (IOEInfo name desc callStack))
 
 --------------------------------------------------------------------------------
 
--- | Exception for 'unwrap' \/ 'unwrapJust'.
-data UnwrapException e
-    = UnwrapEitherException CallStack e
-    | UnwrapMaybeException CallStack
-    deriving Show
-
-instance (Typeable e, Show e) => Exception (UnwrapException e)
-
--- | Try to unwrap a value from 'Right', throw @UnwrapException e@ if 'Left e'.
-unwrap :: (HasCallStack, Show e, Typeable e) => Either e a -> IO a
+-- | Try to unwrap a value from 'Right', throw @OtherError name desc@ with @desc == toText e@ if 'Left e'.
+unwrap :: (HasCallStack, T.Print e) => T.Text -> Either e a -> IO a
 {-# INLINABLE unwrap #-}
-unwrap (Right x) = return x
-unwrap (Left e) = throwIO (UnwrapEitherException callStack e)
+unwrap _ (Right x) = return x
+unwrap n (Left e)  = throwOtherError n (T.toText e)
 
--- | Try to unwrap a value from 'Just', throw @UnwrapException ()@ if 'Nothing'.
-unwrapJust :: HasCallStack => Maybe a -> IO a
-{-# INLINABLE unwrapJust #-}
-unwrapJust (Just x) = return x
-unwrapJust Nothing = throwIO (UnwrapMaybeException callStack :: UnwrapException ())
+-- | Try to unwrap a value from 'Just', throw @OtherError name desc@ if 'Nothing'.
+unwrap' :: HasCallStack => T.Text -> T.Text -> Maybe a -> IO a
+{-# INLINABLE unwrap' #-}
+unwrap' _ _ (Just x) = return x
+unwrap' n d Nothing = throwOtherError n d
 
 --------------------------------------------------------------------------------
 
