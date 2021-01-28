@@ -23,12 +23,11 @@ spec = describe "resource tests" $ do
                                (\ _ -> atomicSubCounter_ resCounter 1)
             resPool = initPool res 100 1
         R.withResource resPool $ \ pool -> do
-            let res = initInPool pool
-            forM_ [1..1000] $ \ k -> forkIO. R.withResource res $ \ i -> do
+            forM_ [1..1000] $ \ k -> forkIO. R.withResourceInPool pool $ \ i -> do
                 atomicAddCounter_ workerCounter 1
                 r <- readPrimIORef resCounter
-                threadDelay 100000
                 assertEqual "pool should limit max usage" True (r <= 100)
+                threadDelay 100000
 
             threadDelay 1000000
             -- first 100 worker quickly get resources
@@ -58,11 +57,11 @@ spec = describe "resource tests" $ do
 
             writePrimIORef workerCounter 0
 
-            forM_ [1..1000] $ \ k -> forkIO. R.withResource res $ \ i -> do
+            forM_ [1..1000] $ \ k -> forkIO. R.withResourceInPool pool $ \ i -> do
                 atomicAddCounter_ workerCounter 1
                 r <- readPrimIORef resCounter
-                threadDelay 100000
                 assertEqual "pool should limit max usage" True (r <= 100)
+                threadDelay 100000
 
 
             threadDelay 1000000
@@ -90,9 +89,8 @@ spec = describe "resource tests" $ do
                                (\ _ -> atomicSubCounter_ resCounter 1)
             resPool = initPool res 100 1
         R.withResource resPool $ \ pool -> do
-            let res = initInPool pool
 
-            forM_ [1..1000] $ \ k -> forkIO. R.withResource res $ \ i -> do
+            forM_ [1..1000] $ \ k -> forkIO. R.withResourceInPool pool $ \ i -> do
                 r <- readPrimIORef resCounter
                 threadDelay 100000
                 when (even i) (throwIO WorkerException)
