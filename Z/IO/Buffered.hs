@@ -26,6 +26,7 @@ module Z.IO.Buffered
   , readExactly
   , readToMagic
   , readLine
+  , readParser, readParser'
   , readAll, readAll'
     -- * Buffered Output
   , BufferedOutput, bufOutput
@@ -305,6 +306,16 @@ readParser :: HasCallStack => P.Parser a -> BufferedInput -> IO a
 {-# INLINABLE readParser #-}
 readParser = readParseChunks . P.parseChunks
 
+-- | Same with 'readParser', but throw 'OtherError' @EPARSE@ in case of parsing error.
+--
+readParser' :: HasCallStack => P.Parser a -> BufferedInput -> IO a
+readParser' p i = do
+    bs <- readBuffer i
+    (rest, r) <- P.parseChunks p (readBuffer i) bs
+    unReadBuffer rest i
+    case r of
+        Left e -> throwOtherError "EPARSE" (T.toText e)
+        Right v -> return v
 
 {-| Read until reach a magic bytes, return bytes(including the magic bytes).
 

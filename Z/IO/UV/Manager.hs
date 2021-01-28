@@ -191,7 +191,7 @@ withUVManager (UVManager _ loop loopData runningLock _) f = go
                 throwUVIfMinus_ (hs_uv_wake_up_async loopData)
                 return Nothing
             else do
-                r <- f loop
+                !r <- f loop
                 return (Just r)
         case r of
             Just r' -> return r'
@@ -219,14 +219,15 @@ startUVManager uvm@(UVManager _ _ _ runningLock _) = poll -- use a closure captu
         then yield >> poll                              -- we yield here, to let other threads do actual work
         else do                                         -- otherwise we still yield once
             yield                                       -- in case other threads can still progress
-            e' <- withMVar runningLock $ \ _ -> step uvm False   -- now we do another non-blocking poll to make sure
-            if e' > 0 then yield >> poll             -- if we got events somehow, we yield and go back
-            else do                                 -- if there's still no events, we directly jump to safe blocking poll
-                _ <- swapMVar runningLock True          -- after swap this lock, other thread can wake up us
-                _ <- step uvm True                  -- by send async handler, and it's thread safe
+            e' <- withMVar runningLock $ \ _ -> step uvm False   -- now we have done another non-blocking poll
+            if e' > 0 then yield >> poll            -- if we got events somehow, we yield and go back
+            else do                                 -- if there're still no events,
+                                                    -- we directly jump to safe blocking poll
+                _ <- swapMVar runningLock True      -- after swap this lock, other threads have to wake up us
+                _ <- step uvm True                  -- by send async handler, thus libuv's states are safe
                 _ <- swapMVar runningLock False
-
-                yield                               -- we yield here, to let other threads do actual work
+                                                    -- blocking poll only exits if there're events,
+                yield                               -- so we yield here, to let other threads do actual work
                 poll
 
     -- call uv_run, return the event number
@@ -255,7 +256,7 @@ startUVManager uvm@(UVManager _ _ _ runningLock _) = poll -- use a closure captu
                 -- After step finished, other threads are free to take the same slot,
                 -- thus can overwrite the buffer size table, i.e. the previous result.
                 --
-                r <- peekBufferSizeTable uvm slot
+                !r <- peekBufferSizeTable uvm slot
                 tryPutMVar lock r
             return c
 

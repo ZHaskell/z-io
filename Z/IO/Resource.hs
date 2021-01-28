@@ -26,7 +26,6 @@ module Z.IO.Resource (
   , Pool
   , PoolState(..)
   , initPool
-  , initInPool
   , withResourceInPool
   , poolStat, poolInUse
   -- * Re-export
@@ -229,14 +228,23 @@ poolStat pool = readTVarIO (_poolState pool)
 poolInUse :: Pool a -> IO Int
 poolInUse pool = readTVarIO (_poolInUse pool)
 
--- | Obtain the pooled resource inside a given resource pool.
+-- | Open resource inside a given resource pool and do some computation.
 --
--- You shouldn't use 'withResource' with this resource after you closed the pool,
--- a 'ResourceVanished' will be thrown.
---
-initInPool :: Pool a -> Resource a
-initInPool (Pool res limit itime entries inuse state) =
-    fst <$> initResource takeFromPool returnToPool
+-- This function is thread safe, concurrently usage will be guaranteed
+-- to get different resource. If exception happens,
+-- resource will be closed(not return to pool).
+withResourceInPool :: (MonadCatch.MonadMask m, MonadIO m, HasCallStack)
+                   => Pool a -> (a -> m b) -> m b
+withResourceInPool (Pool res limit itime entries inuse state) k =
+    fst <$> MonadCatch.generalBracket
+        (liftIO takeFromPool)
+        (\ r@(_, close) exit ->
+            case exit of
+                MonadCatch.ExitCaseSuccess _ -> liftIO (returnToPool r)
+                _ -> liftIO $ do
+                    atomically $ modifyTVar' inuse (subtract 1)
+                    close)
+        (\ (a, _) -> k a)
   where
     takeFromPool = join . atomically $ do
         c <- readTVar state
@@ -291,11 +299,3 @@ initInPool (Pool res limit itime entries inuse state) =
         | life > 1  = age es deadNum     dead     (Entry a (life-1):living)
         | otherwise = age es (deadNum+1) (a:dead) living
     age _ !deadNum dead living = (deadNum, dead, living)
-
--- | Open resource inside a given resource pool and do some computation.
---
-withResourceInPool :: (MonadCatch.MonadMask m, MonadIO m, HasCallStack)
-                   => Pool a -> (a -> m b) -> m b
-withResourceInPool pool = withResource res
-  where
-    res = initInPool pool
