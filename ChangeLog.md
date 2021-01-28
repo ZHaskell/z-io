@@ -1,6 +1,10 @@
 # Revision history for Z-IO
 
-## 0.5.0.0  -- 2020-12-29
+## 0.5.0.0  -- 2020-01-28
+
+* Add `unwrap/unwrap'` to `Z.IO.Exception`.
+* Add `readParseChunks` to `Z.IO.Buffered`, Change `readParser`'s type to match `readParseChunks`.
+* Add `sourceParseChunksBufferedInput`, `sourceParseChunksInput` to `Z.IO.BIO`.
 
 ## 0.3.0.0  -- 2020-12-29
 

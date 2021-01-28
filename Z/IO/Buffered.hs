@@ -21,6 +21,7 @@ module Z.IO.Buffered
   , newBufferedInput'
   , readBuffer, readBufferText
   , unReadBuffer
+  , readParser
   , readParseChunks
   , readExactly
   , readToMagic
@@ -293,6 +294,17 @@ readParseChunks cp i = do
     (rest, r) <- cp (readBuffer i) bs
     unReadBuffer rest i
     unwrap "EPARSE" r
+
+-- | Read buffer and parse with 'P.Parser'.
+--
+-- This function will continuously draw data from input before parsing finish. Unconsumed
+-- bytes will be returned to buffer.
+--
+-- Throw 'OtherError' with name @EPARSE@ if parsing failed.
+readParser :: HasCallStack => P.Parser a -> BufferedInput -> IO a
+{-# INLINABLE readParser #-}
+readParser = readParseChunks . P.parseChunks
+
 
 {-| Read until reach a magic bytes, return bytes(including the magic bytes).
 
