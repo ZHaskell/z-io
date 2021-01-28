@@ -8,8 +8,7 @@ license:                    BSD-3-Clause
 license-file:               LICENSE
 author:                     Dong Han, Tao He
 maintainer:                 winterland1989@gmail.com
-copyright:                  (c) Dong Han, 2017-2020
-                            (c) Tao He, 2017-2019
+copyright:                  (c) Project Z Contributors
 category:                   Data
 build-type:                 Simple
 homepage:                   https://github.com/haskell-Z/Z-IO
