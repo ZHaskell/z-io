@@ -64,7 +64,7 @@ module Z.IO.BIO (
   , sourceFromBuffered, sourceFromInput
   , sourceTextFromBuffered, sourceTextFromInput
   , sourceJSONFromBuffered, sourceJSONFromInput
-  , sourceParsedBufferInput, sourceParsedInput
+  , sourceParserBufferInput, sourceParserInput
   , sourceParseChunksBufferedInput, sourceParseChunksInput
   -- ** Sink
   , sinkToList
@@ -458,9 +458,9 @@ sourceJSONFromBuffered :: forall a. (JSON.JSON a, HasCallStack) => BufferedInput
 sourceJSONFromBuffered = sourceParseChunksBufferedInput JSON.decodeChunks
 
 -- | Turn buffered input device into a packet source, throw 'OtherError' with name @EPARSE@ if parsing fail.
-sourceParsedBufferInput :: HasCallStack => P.Parser a -> BufferedInput -> Source a
-{-# INLINABLE sourceParsedBufferInput #-}
-sourceParsedBufferInput p = sourceParseChunksBufferedInput (P.parseChunks p)
+sourceParserBufferInput :: HasCallStack => P.Parser a -> BufferedInput -> Source a
+{-# INLINABLE sourceParserBufferInput #-}
+sourceParserBufferInput p = sourceParseChunksBufferedInput (P.parseChunks p)
 
 -- | Turn buffered input device into a packet source, throw 'OtherError' with name @EPARSE@ if parsing fail.
 sourceParseChunksBufferedInput :: (HasCallStack, T.Print e) => P.ParseChunks IO V.Bytes e a -> BufferedInput -> Source a
@@ -500,9 +500,9 @@ initSourceFromFile p = do
     liftIO (sourceFromInput f)
 
 -- | Turn input device into a packet source.
-sourceParsedInput :: (Input i, HasCallStack) => P.Parser a -> i -> IO (Source a)
-{-# INLINABLE sourceParsedInput #-}
-sourceParsedInput p i = sourceParsedBufferInput p <$> newBufferedInput i
+sourceParserInput :: (Input i, HasCallStack) => P.Parser a -> i -> IO (Source a)
+{-# INLINABLE sourceParserInput #-}
+sourceParserInput p i = sourceParserBufferInput p <$> newBufferedInput i
 
 -- | Turn input device into a packet source.
 sourceParseChunksInput :: (T.Print e, Input i, HasCallStack) => P.ParseChunks IO V.Bytes e a -> i -> IO (Source a)

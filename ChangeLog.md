@@ -5,6 +5,7 @@
 * Add `unwrap/unwrap'` to `Z.IO.Exception`.
 * Add `readParseChunks` to `Z.IO.Buffered`, Change `readParser`'s type to match `readParseChunks`.
 * Add `sourceParseChunksBufferedInput`, `sourceParseChunksInput` to `Z.IO.BIO`.
+* Add `newJSONLogger/defaultJSONFmt` to `Z.IO.Logger`, provide simple JSON structured logging. 
 
 ## 0.3.0.0  -- 2020-12-29
 

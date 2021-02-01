@@ -46,6 +46,7 @@ module Z.IO.Logger
   , withDefaultLogger
   , newLogger
   , newColoredLogger
+  , newJSONLogger
     -- * logging functions
   , debug
   , info
@@ -63,7 +64,7 @@ module Z.IO.Logger
   , defaultTSCache
   , defaultFmtCallStack
   , defaultLevelFmt
-  , LogFormatter, defaultFmt, coloredFmt
+  , LogFormatter, defaultFmt, defaultColoredFmt, defaultJSONFmt
   , pushLogIORef, flushLogIORef
     -- * Constants
     -- ** Level
@@ -79,9 +80,13 @@ module Z.IO.Logger
 import           Control.Concurrent.MVar
 import           Control.Monad
 import           Data.IORef
+import           Foreign.C.Types         (CInt(..))
+import           GHC.Conc.Sync           (ThreadId(..), myThreadId)
+import           GHC.Exts                (ThreadId#)
 import           GHC.Stack
 import           System.IO.Unsafe        (unsafePerformIO)
 import qualified Z.Data.Builder          as B
+import qualified Z.Data.JSON.Builder     as JB
 import qualified Z.Data.CBytes           as CB
 import           Z.Data.Vector.Base      as V
 import           Z.IO.Buffered
@@ -95,6 +100,7 @@ type LogFormatter = B.Builder ()            -- ^ data\/time string
                   -> Level                  -- ^ log level
                   -> B.Builder ()           -- ^ log content
                   -> CallStack              -- ^ call stack trace
+                  -> ThreadId               -- ^ logging thread id
                   -> B.Builder ()
 
 -- | Extensible logger type.
@@ -141,7 +147,21 @@ defaultTSCache = unsafePerformIO $ do
         t <- getSystemTime'
         CB.toBuilder <$> formatSystemTime iso8061DateFormat t
 
--- | Make a new simple logger.
+-- | Make a new colored logger(connected to stderr).
+--
+-- This logger will output colorized log if stderr is connected to TTY.
+newColoredLogger :: LoggerConfig -> IO Logger
+newColoredLogger LoggerConfig{..} = do
+    logsRef <- newIORef []
+    let flush = flushLogIORef stderrBuf logsRef
+    throttledFlush <- throttleTrailing_ loggerMinFlushInterval flush
+    return $ Logger (pushLogIORef logsRef loggerLineBufSize)
+                    flush throttledFlush defaultTSCache
+                    (if isStdStreamTTY stderr then defaultColoredFmt
+                                              else defaultFmt)
+                    loggerConfigLevel
+
+-- | Make a new simple logger, see 'defaultFmt'.
 --
 newLogger :: LoggerConfig
           -> MVar BufferedOutput
@@ -154,18 +174,17 @@ newLogger LoggerConfig{..} oLock = do
                     flush throttledFlush defaultTSCache defaultFmt
                     loggerConfigLevel
 
--- | Make a new colored logger(connected to stderr).
+-- | Make a new structured JSON logger, see 'defaultJSONFmt'
 --
--- This logger will output colorized log if stderr is connected to TTY.
-newColoredLogger :: LoggerConfig -> IO Logger
-newColoredLogger LoggerConfig{..} = do
+newJSONLogger :: LoggerConfig
+              -> MVar BufferedOutput
+              -> IO Logger
+newJSONLogger LoggerConfig{..} oLock = do
     logsRef <- newIORef []
-    let flush = flushLogIORef stderrBuf logsRef
+    let flush = flushLogIORef oLock logsRef
     throttledFlush <- throttleTrailing_ loggerMinFlushInterval flush
     return $ Logger (pushLogIORef logsRef loggerLineBufSize)
-                    flush throttledFlush defaultTSCache
-                    (if isStdStreamTTY stderr then coloredFmt
-                                              else defaultFmt)
+                    flush throttledFlush defaultTSCache defaultJSONFmt
                     loggerConfigLevel
 
 -- | Use 'pushLogIORef' and 'pushLogIORef' to implement a simple 'IORef' based concurrent logger.
@@ -196,20 +215,21 @@ flushLogIORef oLock logsRef =
 
 -- | A default log formatter
 --
--- @ [DEBUG][2020-10-09T07:44:14UTC][<interactive>:7:1]This a debug message\\n@
+-- @[FATAL][2021-02-01T15:03:30+0800][<interactive>:31:1][thread#669]...@
 defaultFmt :: LogFormatter
-defaultFmt ts level content cstack = do
+defaultFmt ts level content cstack (ThreadId tid#) = do
     B.square (defaultLevelFmt level)
     B.square ts
     B.square $ defaultFmtCallStack cstack
+    B.square $ "thread#" >> B.int (getThreadId tid#)
     content
     B.char8 '\n'
 
 -- | A default colored log formatter
 --
 -- DEBUG level is 'Cyan', WARNING level is 'Yellow', FATAL and CRITICAL level are 'Red'.
-coloredFmt :: LogFormatter
-coloredFmt ts level content cstack = do
+defaultColoredFmt :: LogFormatter
+defaultColoredFmt ts level content cstack (ThreadId tid#) = do
     let blevel = defaultLevelFmt level
     B.square (case level of
         DEBUG    -> color Cyan blevel
@@ -219,7 +239,25 @@ coloredFmt ts level content cstack = do
         _        -> blevel)
     B.square ts
     B.square $ defaultFmtCallStack cstack
+    B.square $ "thread#" >> B.int (getThreadId tid#)
     content
+    B.char8 '\n'
+
+-- | A default JSON log formatter.
+--
+-- @{"level":"FATAL","time":"2021-02-01T15:02:19+0800","loc":"<interactive>:27:1","theadId":606,"content":"..."}\\n@
+defaultJSONFmt :: LogFormatter
+defaultJSONFmt ts level content cstack (ThreadId tid#) = do
+    B.curly $ do
+        "level" `JB.kv` B.quotes (defaultLevelFmt level)
+        B.comma
+        "time" `JB.kv` B.quotes ts
+        B.comma
+        "loc" `JB.kv` B.quotes (defaultFmtCallStack cstack)
+        B.comma
+        "thead" `JB.kv`  B.int (getThreadId tid#)
+        B.comma
+        "content" `JB.kv` JB.string (B.unsafeBuildText content)
     B.char8 '\n'
 
 -- | Default stack formatter which fetch the logging source and location.
@@ -365,7 +403,10 @@ otherLevelTo logger level flushNow =
 otherLevelTo_ :: Level -> Bool -> CallStack -> Logger -> B.Builder () -> IO ()
 otherLevelTo_ level flushNow cstack logger bu = when (level >= loggerLevel logger) $ do
     ts <- loggerTSCache logger
-    (loggerPushBuilder logger) $ (loggerFmt logger) ts level bu cstack
+    tid <- myThreadId
+    (loggerPushBuilder logger) $ (loggerFmt logger) ts level bu cstack tid
     if flushNow
     then flushLogger logger
     else flushLoggerThrottled logger
+
+foreign import ccall unsafe "rts_getThreadId" getThreadId :: ThreadId# -> CInt
