@@ -19,7 +19,7 @@ Most of the time you don't need this module though, since modern hardware(SSD) a
 
 -}
 
-module Z.IO.FileSystem.Threaded
+module Z.IO.FileSystem.BaseThreaded
   ( -- * regular file devices
     File, initFile, readFileP, writeFileP, getFileFD, seek
   , readFile, readTextFile, writeFile, writeTextFile
@@ -30,6 +30,7 @@ module Z.IO.FileSystem.Threaded
   , mkdir, mkdirp
   , unlink
   , mkdtemp
+  , mkstemp
   , rmdir, rmdirrf
   , DirEntType(..)
   , scandir
@@ -384,6 +385,16 @@ mkdtemp path = do
         (p'', _) <- CBytes.allocCBytesUnsafe (size+7) $ \ p' -> do  -- we append "XXXXXX\NUL" in C
             uvm <- getUVManager
             withUVRequest_ uvm (hs_uv_fs_mkdtemp_threaded p size p')
+        return p''
+
+-- | The same as 'Z.IO.FileSystem.Base.mkstemp', but a threaded version.
+mkstemp :: HasCallStack => CBytes -> IO CBytes
+mkstemp template = do
+    let size = CBytes.length template
+    CBytes.withCBytesUnsafe template $ \ p -> do
+        (p'', _) <- CBytes.allocCBytesUnsafe (size+7) $ \ p' -> do  -- we append "XXXXXX\NUL" in C
+            uvm <- getUVManager
+            withUVRequest_ uvm (hs_uv_fs_mkstemp_threaded p size p')
         return p''
 
 -- | Equivalent to <http://linux.die.net/man/2/rmdir rmdir(2)>.

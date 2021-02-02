@@ -37,7 +37,7 @@
 
 #if !defined(_WIN32)
 
-#include <unistd.h> 
+#include <unistd.h>
 
 #if defined(__sun)
 # include <sys/port.h>
@@ -190,7 +190,7 @@ typedef struct {
 //
 // But in practice, we never directly return a free slot back to slot_table, because
 // the haskell thread allocating slot may be paused by RTS before its takeMVar parking its
-// TSO since parking itself need an allocation. Now if uv_run fired its callback and 
+// TSO since parking itself need an allocation. Now if uv_run fired its callback and
 // free the slot, next registration will got the same slot, and mess up with previous
 // haskell thread. In order to solve this race condition, we free a slot in two steps:
 //
@@ -302,7 +302,7 @@ HsInt hs_uv_upd_send(uv_udp_t* handle, const struct sockaddr* addr, char* buf, H
 int hs_uv_udp_check_start(uv_check_t* check);
 
 ////////////////////////////////////////////////////////////////////////////////
-// fs
+// filesystem
 
 // we define file open flag here for compatibility on libuv < v1.16
 // see https://github.com/libuv/libuv/commit/4b666bd2d82a51f1c809b2703a91679789c1ec01#diff-a5e63f9b16ca783355e2d83941c3eafb
@@ -586,7 +586,7 @@ void hs_uv_fs_readlink_extra_cleanup(char** path);
 void hs_uv_fs_readlink_cleanup(char* path);
 
 ////////////////////////////////////////////////////////////////////////////////
-// fs, none thread pool version
+// filesystem, none thread pool version
 int64_t hs_seek(int file, int64_t off, int origin);
 
 int32_t hs_uv_fs_open(const char* path, int flags, int mode);
@@ -596,6 +596,7 @@ HsInt hs_uv_fs_write(int32_t file, char* buffer, HsInt buffer_size, int64_t offs
 HsInt hs_uv_fs_unlink(const char* path);
 HsInt hs_uv_fs_mkdir(const char* path, int mode);
 HsInt hs_uv_fs_mkdtemp(const char* tpl, HsInt tpl_size, char* temp_path);
+HsInt hs_uv_fs_mkstemp(const char* tpl, HsInt tpl_size, char* temp_path);
 HsInt hs_uv_fs_rmdir(const char* path);
 HsInt hs_uv_fs_scandir(const char* path, uv_dirent_t*** dents);
 HsInt hs_uv_fs_stat(const char* path, uv_stat_t* stat);
@@ -629,6 +630,7 @@ HsInt hs_uv_fs_write_threaded(int32_t file, char* buffer, HsInt buffer_size, int
 HsInt hs_uv_fs_unlink_threaded(const char* path, uv_loop_t* loop);
 HsInt hs_uv_fs_mkdir_threaded(const char* path, int mode, uv_loop_t* loop);
 HsInt hs_uv_fs_mkdtemp_threaded(const char* tpl, HsInt tpl_size, char* temp_path, uv_loop_t* loop);
+HsInt hs_uv_fs_mkstemp_threaded(const char* tpl, HsInt tpl_size, char* temp_path, uv_loop_t* loop);
 HsInt hs_uv_fs_rmdir_threaded(const char* path, uv_loop_t* loop);
 HsInt hs_uv_fs_scandir_threaded(const char* path, uv_dirent_t*** dents, uv_loop_t* loop);
 HsInt hs_uv_fs_stat_threaded(const char* path, uv_stat_t* stat, uv_loop_t* loop);

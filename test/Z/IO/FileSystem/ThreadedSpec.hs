@@ -13,7 +13,7 @@ import           Foreign.Marshal.Array
 import           Foreign.Ptr
 import           Z.IO.Buffered
 import           Z.IO.Exception
-import           Z.IO.FileSystem.Threaded
+import           Z.IO.FileSystem.BaseThreaded
 import           Z.IO.Resource
 import           Z.IO.UV.Manager
 import           Test.Hspec
