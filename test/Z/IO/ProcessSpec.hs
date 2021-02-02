@@ -53,13 +53,13 @@ spec = describe "process" $ do
         tempdir <- mkdtemp "stdio-filesystem-unit"
         let ifilename = tempdir <> "/test-stdin"
             ofilename = tempdir <> "/test-stdout"
-        withResource (initFile ifilename (O_RDWR .|. O_CREAT) DEFAULT_MODE) $ \ input -> do
+        withResource (initFile ifilename (O_RDWR .|. O_CREAT) DEFAULT_FILE_MODE) $ \ input -> do
             bi <- newBufferedOutput' 4096 input
             writeBuffer bi "hello world" >> flushBuffer bi
 
-        ecode <- withResource (initFile ifilename O_RDWR DEFAULT_MODE) $ \ input -> do
+        ecode <- withResource (initFile ifilename O_RDWR DEFAULT_FILE_MODE) $ \ input -> do
 
-            withResource (initFile ofilename (O_RDWR .|. O_CREAT) DEFAULT_MODE) $ \ output -> do
+            withResource (initFile ofilename (O_RDWR .|. O_CREAT) DEFAULT_FILE_MODE) $ \ output -> do
 
                 iF <- getFileFD input
                 oF <- getFileFD output
@@ -71,7 +71,7 @@ spec = describe "process" $ do
 
                         waitProcessExit pstate
 
-        withResource (initFile ofilename (O_RDWR .|. O_CREAT) DEFAULT_MODE) $ \ output -> do
+        withResource (initFile ofilename (O_RDWR .|. O_CREAT) DEFAULT_FILE_MODE) $ \ output -> do
             bo <- newBufferedInput' 4096 output
             o <- readBuffer bo
             assertEqual "cat echo back" "hello world" o

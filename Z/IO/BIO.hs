@@ -496,7 +496,7 @@ sourceJSONFromInput i = sourceJSONFromBuffered <$> newBufferedInput i
 initSourceFromFile :: HasCallStack => CBytes -> Resource (Source V.Bytes)
 {-# INLINABLE initSourceFromFile #-}
 initSourceFromFile p = do
-    f <- FS.initFile p FS.O_RDONLY FS.DEFAULT_MODE
+    f <- FS.initFile p FS.O_RDONLY FS.DEFAULT_FILE_MODE
     liftIO (sourceFromInput f)
 
 -- | Turn input device into a packet source.
@@ -547,7 +547,7 @@ sinkToOutput o =
 initSinkToFile :: HasCallStack => CBytes -> Resource (Sink V.Bytes)
 {-# INLINABLE initSinkToFile #-}
 initSinkToFile p = do
-    f <- FS.initFile p (FS.O_APPEND .|. FS.O_CREAT .|. FS.O_WRONLY) FS.DEFAULT_MODE
+    f <- FS.initFile p (FS.O_APPEND .|. FS.O_CREAT .|. FS.O_WRONLY) FS.DEFAULT_FILE_MODE
     liftIO (sinkToOutput f)
 
 -- | Turn an 'Output' into 'B.Builder' sink.

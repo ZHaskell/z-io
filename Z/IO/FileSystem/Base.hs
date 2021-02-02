@@ -48,7 +48,8 @@ module Z.IO.FileSystem.Base
   , pattern X_OK
   -- ** FileMode
   , FileMode
-  , pattern DEFAULT_MODE
+  , pattern DEFAULT_FILE_MODE
+  , pattern DEFAULT_DIR_MODE
   , pattern S_IRWXU
   , pattern S_IRUSR
   , pattern S_IWUSR
@@ -104,25 +105,25 @@ module Z.IO.FileSystem.Base
 
 import           Control.Monad
 import           Data.Bits
-import           Data.Int
 import           Data.IORef
+import           Data.Int
 import           Data.Word
+import           Foreign.Marshal.Alloc    (allocaBytes)
 import           Foreign.Ptr
-import           Foreign.Storable               (peekElemOff)
-import           Foreign.Marshal.Alloc          (allocaBytes)
-import           Z.Data.CBytes                  as CBytes
+import           Foreign.Storable         (peekElemOff)
+import           Prelude                  hiding (readFile, writeFile)
+import           Z.Data.CBytes            as CBytes
+import qualified Z.Data.JSON              as JSON
 import           Z.Data.PrimRef.PrimIORef
-import qualified Z.Data.Text                    as T
-import qualified Z.Data.Text.Print              as T
-import qualified Z.Data.Vector                  as V
-import qualified Z.Data.JSON                    as JSON
+import qualified Z.Data.Text              as T
+import qualified Z.Data.Text.Print        as T
+import qualified Z.Data.Vector            as V
 import           Z.Foreign
 import           Z.IO.Buffered
 import           Z.IO.Exception
-import qualified Z.IO.FileSystem.FilePath       as P
+import qualified Z.IO.FileSystem.FilePath as P
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
-import           Prelude hiding (writeFile, readFile)
 
 --------------------------------------------------------------------------------
 -- File
@@ -260,7 +261,7 @@ initFile :: HasCallStack
          => CBytes
          -> FileFlag        -- ^ Opening flags, e.g. 'O_CREAT' @.|.@ 'O_RDWR'
          -> FileMode      -- ^ Sets the file mode (permission and sticky bits),
-                            -- but only if the file was created, see 'DEFAULT_MODE'.
+                            -- but only if the file was created, see 'DEFAULT_FILE_MODE'.
          -> Resource File
 initFile path flags mode =
     initResource
@@ -276,7 +277,7 @@ initFile path flags mode =
 -- | Quickly open a file and read its content.
 readFile :: HasCallStack => CBytes -> IO V.Bytes
 readFile filename = do
-    withResource (initFile filename O_RDONLY DEFAULT_MODE) $ \ file -> do
+    withResource (initFile filename O_RDONLY DEFAULT_FILE_MODE) $ \ file -> do
         readAll' =<< newBufferedInput file
 
 -- | Quickly open a file and read its content as UTF8 text.
@@ -286,7 +287,7 @@ readTextFile filename = T.validate <$> readFile filename
 -- | Quickly open a file and write some content.
 writeFile :: HasCallStack => CBytes -> V.Bytes -> IO ()
 writeFile filename content = do
-    withResource (initFile filename (O_WRONLY .|. O_CREAT) DEFAULT_MODE) $ \ file -> do
+    withResource (initFile filename (O_WRONLY .|. O_CREAT) DEFAULT_FILE_MODE) $ \ file -> do
         withPrimVectorSafe content (writeOutput file)
 
 -- | Quickly open a file and write some content as UTF8 text.
@@ -316,16 +317,21 @@ mkdir path mode = throwUVIfMinus_ . withCBytesUnsafe path $ \ p ->
 --
 -- Note mode is currently not implemented on Windows. On unix you should set execute bit
 -- if you want the directory is accessable(so that child folder can be created), e.g. 0o777.
+--
+-- >>> mkdirp "p/a" DEFAULT_DIR_MODE
 mkdirp :: HasCallStack => CBytes -> FileMode -> IO ()
 mkdirp path mode = do
     r <- withCBytesUnsafe path $ \ p -> hs_uv_fs_mkdir p mode
-    if fromIntegral r == UV_ENOENT
-    then do
-        (root, segs) <- P.splitSegments path
-        case segs of
-            seg:segs' -> loop segs' =<< P.join root seg
-            _ -> throwUVIfMinus_ (return r)
-    else throwUVIfMinus_ (return r)
+    case fromIntegral r of
+        UV_ENOENT -> do
+            (root, segs) <- P.splitSegments path
+            case segs of
+                seg:segs' -> loop segs' =<< P.join root seg
+                _         -> throwUVIfMinus_ (return r)
+        UV_EEXIST -> do
+            canIgnore <- isDir path
+            unless canIgnore $ throwUVIfMinus_ (return r)
+        _ -> throwUVIfMinus_ (return r)
   where
     loop segs p = do
         a <- access p F_OK
@@ -335,7 +341,7 @@ mkdirp path mode = do
             NoPermission -> throwUVIfMinus_ (return UV_EACCES)
         case segs of
             (nextp:ps) -> P.join p nextp >>= loop ps
-            _  -> return ()
+            _          -> return ()
 
 -- | Equivalent to <http://linux.die.net/man/2/unlink unlink(2)>.
 unlink :: HasCallStack => CBytes -> IO ()
