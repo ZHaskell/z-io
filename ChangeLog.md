@@ -1,11 +1,16 @@
 # Revision history for Z-IO
 
+## 0.5.1.0  -- 2020-02-02
+
+* FileSystem: replace `DEFAULT_MODE` with `DEFAULT_FILE_MODE` & `DEFAULT_DIR_MODE`.
+* Ignore exception while `mkdirp` on an exist directory.
+
 ## 0.5.0.0  -- 2020-01-28
 
 * Add `unwrap/unwrap'` to `Z.IO.Exception`.
 * Add `readParseChunks` to `Z.IO.Buffered`, Change `readParser`'s type to match `readParseChunks`.
 * Add `sourceParseChunksBufferedInput`, `sourceParseChunksInput` to `Z.IO.BIO`.
-* Add `newJSONLogger/defaultJSONFmt` to `Z.IO.Logger`, provide simple JSON structured logging. 
+* Add `newJSONLogger/defaultJSONFmt` to `Z.IO.Logger`, provide simple JSON structured logging.
 
 ## 0.3.0.0  -- 2020-12-29
 

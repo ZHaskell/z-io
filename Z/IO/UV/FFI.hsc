@@ -299,9 +299,13 @@ pattern S_IWOTH = #const S_IWOTH
 pattern S_IXOTH :: FileMode
 pattern S_IXOTH = #const S_IXOTH
 
--- | Default mode for open, 0o666(readable and writable).
-pattern DEFAULT_MODE :: FileMode
-pattern DEFAULT_MODE = 0o666
+-- | Default mode for file open, 0x666(readable and writable).
+pattern DEFAULT_FILE_MODE :: FileMode
+pattern DEFAULT_FILE_MODE = 0o644
+
+-- | Default mode for open, 0x755.
+pattern DEFAULT_DIR_MODE :: FileMode
+pattern DEFAULT_DIR_MODE = 0o755
 
 -- | This is the file type mask.
 pattern S_IFMT :: FileMode

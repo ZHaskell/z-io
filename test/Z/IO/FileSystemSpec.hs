@@ -36,7 +36,7 @@ spec = describe "filesystem operations" $ do
 
 
         let flags = O_RDWR .|. O_CREAT
-            mode = DEFAULT_MODE
+            mode = DEFAULT_FILE_MODE
             filename = "test-file"
 
         it "Opens and writes a file" $ do
