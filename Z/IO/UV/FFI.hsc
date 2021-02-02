@@ -45,7 +45,7 @@ foreign import ccall unsafe uv_version_string :: IO CString
 --------------------------------------------------------------------------------
 -- Type alias
 type UVSlot = Int
--- | UVSlotUnsafe wrap a slot which may not have a 'MVar' in blocking table, 
+-- | UVSlotUnsafe wrap a slot which may not have a 'MVar' in blocking table,
 --   i.e. the blocking table need to be resized.
 newtype UVSlotUnsafe = UVSlotUnsafe { unsafeGetSlot :: UVSlot }
 type FD = CInt
@@ -77,7 +77,7 @@ peekUVBufferTable p = (,)
     <$> (#{peek hs_loop_data, buffer_table          } p)
     <*> (#{peek hs_loop_data, buffer_size_table     } p)
 
-type UVRunMode = CInt 
+type UVRunMode = CInt
 
 pattern UV_RUN_DEFAULT :: UVRunMode
 pattern UV_RUN_DEFAULT = #const UV_RUN_DEFAULT
@@ -174,14 +174,14 @@ foreign import ccall unsafe uv_udp_init_ex :: Ptr UVLoop -> Ptr UVHandle -> CUIn
 foreign import ccall unsafe uv_udp_open :: Ptr UVHandle -> FD -> IO CInt
 foreign import ccall unsafe uv_udp_bind :: Ptr UVHandle -> MBA## SocketAddr -> UDPFlag -> IO CInt
 
-type Membership = CInt 
+type Membership = CInt
 
 pattern LEAVE_GROUP :: Membership
 pattern LEAVE_GROUP = #const UV_LEAVE_GROUP
 pattern JOIN_GROUP :: Membership
 pattern JOIN_GROUP = #const UV_JOIN_GROUP
 
-type UDPFlag = CInt 
+type UDPFlag = CInt
 
 pattern UDP_DEFAULT        :: UDPFlag
 pattern UDP_DEFAULT         = 0
@@ -215,11 +215,11 @@ foreign import ccall unsafe uv_udp_recv_stop :: Ptr UVHandle -> IO CInt
 
 foreign import ccall unsafe hs_uv_udp_check_start :: Ptr UVHandle -> IO CInt
 
-foreign import ccall unsafe hs_uv_udp_send 
+foreign import ccall unsafe hs_uv_udp_send
     :: Ptr UVHandle -> MBA## SocketAddr -> Ptr Word8 -> Int -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_udp_send_connected
     :: Ptr UVHandle -> Ptr Word8 -> Int -> IO UVSlotUnsafe
-foreign import ccall unsafe uv_udp_getsockname 
+foreign import ccall unsafe uv_udp_getsockname
     :: Ptr UVHandle -> MBA## SocketAddr -> MBA## CInt -> IO CInt
 foreign import ccall unsafe uv_udp_getpeername
     :: Ptr UVHandle -> MBA## SocketAddr -> MBA## CInt -> IO CInt
@@ -231,7 +231,7 @@ foreign import ccall unsafe uv_udp_getpeername
 -- | Terminal mode.
 --
 -- When in 'TTY_MODE_RAW' mode, input is always available character-by-character,
--- not including modifiers. Additionally, all special processing of characters by the terminal is disabled, 
+-- not including modifiers. Additionally, all special processing of characters by the terminal is disabled,
 -- including echoing input characters. Note that CTRL+C will no longer cause a SIGINT when in this mode.
 type TTYMode = CInt
 
@@ -328,23 +328,26 @@ foreign import ccall unsafe hs_uv_fs_unlink  :: BA## Word8 -> IO Int
 foreign import ccall unsafe hs_uv_fs_mkdir   :: BA## Word8 -> FileMode -> IO Int
 foreign import ccall unsafe hs_uv_fs_rmdir   :: BA## Word8 -> IO Int
 foreign import ccall unsafe hs_uv_fs_mkdtemp :: BA## Word8 -> Int -> MBA## Word8 -> IO Int
+foreign import ccall unsafe hs_uv_fs_mkstemp :: BA## Word8 -> Int -> MBA## Word8 -> IO Int
 
 -- threaded functions
-foreign import ccall unsafe hs_uv_fs_open_threaded 
+foreign import ccall unsafe hs_uv_fs_open_threaded
     :: BA## Word8 -> FileFlag -> FileMode -> Ptr UVLoop -> IO UVSlotUnsafe
-foreign import ccall unsafe hs_uv_fs_close_threaded 
+foreign import ccall unsafe hs_uv_fs_close_threaded
     :: FD -> Ptr UVLoop -> IO UVSlotUnsafe
-foreign import ccall unsafe hs_uv_fs_read_threaded  
+foreign import ccall unsafe hs_uv_fs_read_threaded
     :: FD -> Ptr Word8 -> Int -> Int64 -> Ptr UVLoop -> IO UVSlotUnsafe
-foreign import ccall unsafe hs_uv_fs_write_threaded 
+foreign import ccall unsafe hs_uv_fs_write_threaded
     :: FD -> Ptr Word8 -> Int -> Int64 -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_unlink_threaded
     :: BA## Word8 -> Ptr UVLoop -> IO UVSlotUnsafe
-foreign import ccall unsafe hs_uv_fs_mkdir_threaded 
+foreign import ccall unsafe hs_uv_fs_mkdir_threaded
     :: BA## Word8 -> FileMode -> Ptr UVLoop -> IO UVSlotUnsafe
-foreign import ccall unsafe hs_uv_fs_rmdir_threaded 
+foreign import ccall unsafe hs_uv_fs_rmdir_threaded
     :: BA## Word8 -> Ptr UVLoop -> IO UVSlotUnsafe
-foreign import ccall unsafe hs_uv_fs_mkdtemp_threaded 
+foreign import ccall unsafe hs_uv_fs_mkdtemp_threaded
+    :: BA## Word8 -> Int -> MBA## Word8 -> Ptr UVLoop -> IO UVSlotUnsafe
+foreign import ccall unsafe hs_uv_fs_mkstemp_threaded
     :: BA## Word8 -> Int -> MBA## Word8 -> Ptr UVLoop -> IO UVSlotUnsafe
 
 type FileFlag = CInt
@@ -375,8 +378,8 @@ pattern O_DSYNC = #const UV_FS_O_DSYNC
 
 -- | If the 'O_CREAT' flag is set and the file already exists, fail the open.
 --
--- Note In general, the behavior of 'O_EXCL' is undefined if it is used without 'O_CREAT'. There is one exception: on 
--- Linux 2.6 and later, 'O_EXCL' can be used without 'O_CREAT' if pathname refers to a block device. If the block 
+-- Note In general, the behavior of 'O_EXCL' is undefined if it is used without 'O_CREAT'. There is one exception: on
+-- Linux 2.6 and later, 'O_EXCL' can be used without 'O_CREAT' if pathname refers to a block device. If the block
 -- device is in use by the system (e.g., mounted), the open will fail with the error @EBUSY@.
 pattern O_EXCL :: FileFlag
 pattern O_EXCL = #const UV_FS_O_EXCL
@@ -389,7 +392,7 @@ pattern O_EXLOCK :: FileFlag
 pattern O_EXLOCK = #const UV_FS_O_EXLOCK
 
 -- | Do not update the file access time when the file is read.
--- 
+--
 -- Note 'O_NOATIME' is not supported on Windows.
 pattern O_NOATIME :: FileFlag
 pattern O_NOATIME = #const UV_FS_O_NOATIME
@@ -413,7 +416,7 @@ pattern O_NONBLOCK :: FileFlag
 pattern O_NONBLOCK = #const UV_FS_O_NONBLOCK
 
 -- | Access is intended to be random. The system can use this as a hint to optimize file caching.
--- 
+--
 -- Note 'O_RANDOM' is only supported on Windows via @FILE_FLAG_RANDOM_ACCESS@.
 pattern O_RANDOM :: FileFlag
 pattern O_RANDOM = #const UV_FS_O_RANDOM
@@ -428,7 +431,7 @@ pattern O_RDWR = #const UV_FS_O_RDWR
 
 
 -- | Access is intended to be sequential from beginning to end. The system can use this as a hint to optimize file caching.
--- 
+--
 -- Note 'O_SEQUENTIAL' is only supported on Windows via @FILE_FLAG_SEQUENTIAL_SCAN@.
 pattern O_SEQUENTIAL :: FileFlag
 pattern O_SEQUENTIAL = #const UV_FS_O_SEQUENTIAL
@@ -519,12 +522,12 @@ foreign import ccall unsafe hs_uv_fs_scandir_cleanup
     :: Ptr (Ptr DirEntType) -> Int -> IO ()
 foreign import ccall unsafe hs_uv_fs_scandir
     :: BA## Word8 -> MBA## (Ptr DirEntType) -> IO Int
-foreign import ccall unsafe hs_uv_fs_scandir_extra_cleanup 
+foreign import ccall unsafe hs_uv_fs_scandir_extra_cleanup
     :: Ptr (Ptr (Ptr DirEntType)) -> Int -> IO ()
 foreign import ccall unsafe hs_uv_fs_scandir_threaded
     :: BA## Word8 -> Ptr (Ptr (Ptr DirEntType)) -> Ptr UVLoop -> IO UVSlotUnsafe
 
-data UVTimeSpec = UVTimeSpec 
+data UVTimeSpec = UVTimeSpec
     { uvtSecond     :: {-# UNPACK #-} !CLong
     , uvtNanoSecond :: {-# UNPACK #-} !CLong
     } deriving (Show, Read, Eq, Ord, Generic)
@@ -601,11 +604,11 @@ foreign import ccall unsafe hs_uv_fs_fsync_threaded
     :: FD -> Ptr UVLoop -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_fs_fdatasync_threaded
     :: FD -> Ptr UVLoop -> IO UVSlotUnsafe
-foreign import ccall unsafe hs_uv_fs_ftruncate_threaded 
+foreign import ccall unsafe hs_uv_fs_ftruncate_threaded
     :: FD -> Int64 -> Ptr UVLoop -> IO UVSlotUnsafe
 
 -- | Flags control copying.
--- 
+--
 --  * 'COPYFILE_EXCL': If present, uv_fs_copyfile() will fail with UV_EEXIST if the destination path already exists. The default behavior is to overwrite the destination if it exists.
 --  * 'COPYFILE_FICLONE': If present, uv_fs_copyfile() will attempt to create a copy-on-write reflink. If the underlying platform does not support copy-on-write, then a fallback copy mechanism is used.
 --  * 'COPYFILE_FICLONE_FORCE': If present, uv_fs_copyfile() will attempt to create a copy-on-write reflink. If the underlying platform does not support copy-on-write, or an error occurs while attempting to use copy-on-write, then an error is returned.
@@ -638,7 +641,7 @@ pattern W_OK = #const W_OK
 pattern X_OK :: AccessMode
 pattern X_OK = #const X_OK
 
-data AccessResult = NoExistence | NoPermission | AccessOK 
+data AccessResult = NoExistence | NoPermission | AccessOK
     deriving (Show, Eq, Ord, Enum, Generic)
     deriving anyclass (Print, JSON)
 
@@ -696,7 +699,7 @@ foreign import ccall unsafe hs_uv_fs_readlink
     :: BA## Word8 -> MBA## CString -> IO Int
 foreign import ccall unsafe hs_uv_fs_realpath
     :: BA## Word8  -> MBA## CString -> IO Int
-foreign import ccall unsafe hs_uv_fs_readlink_extra_cleanup 
+foreign import ccall unsafe hs_uv_fs_readlink_extra_cleanup
     :: Ptr CString -> IO ()
 foreign import ccall unsafe hs_uv_fs_readlink_threaded
     :: BA## Word8  -> Ptr CString -> Ptr UVLoop -> IO UVSlotUnsafe
@@ -716,7 +719,7 @@ foreign import ccall unsafe hs_uv_fs_lchown_threaded
 --------------------------------------------------------------------------------
 -- process
 
-newtype UID = UID 
+newtype UID = UID
 #if defined(_WIN32)
     Word8
 #else
@@ -726,7 +729,7 @@ newtype UID = UID
    deriving newtype (Storable, Prim, Unaligned, Num, JSON)
    deriving anyclass Print
 
-newtype GID = GID 
+newtype GID = GID
 #if defined(_WIN32)
     Word8
 #else
@@ -749,12 +752,12 @@ pattern PROCESS_SETUID = (#const UV_PROCESS_SETUID)
 pattern PROCESS_SETGID :: ProcessFlag
 pattern PROCESS_SETGID = (#const UV_PROCESS_SETGID)
 -- | Do not wrap any arguments in quotes, or perform any other escaping, when
--- converting the argument list into a command line string. 
+-- converting the argument list into a command line string.
 --
 -- This option is only meaningful on Windows systems. On Unix it is silently ignored.
 pattern PROCESS_WINDOWS_VERBATIM_ARGUMENTS :: ProcessFlag
 pattern PROCESS_WINDOWS_VERBATIM_ARGUMENTS = (#const UV_PROCESS_WINDOWS_VERBATIM_ARGUMENTS)
--- | Spawn the child process in a detached state 
+-- | Spawn the child process in a detached state
 --
 -- This will make it a process group leader, and will effectively enable the child to keep running after
 -- the parent exits.
@@ -765,12 +768,12 @@ pattern PROCESS_DETACHED = (#const UV_PROCESS_DETACHED)
 -- This option is only meaningful on Windows systems. On Unix it is silently ignored.
 pattern PROCESS_WINDOWS_HIDE :: ProcessFlag
 pattern PROCESS_WINDOWS_HIDE = (#const UV_PROCESS_WINDOWS_HIDE)
--- | Hide the subprocess console window that would normally be created. 
+-- | Hide the subprocess console window that would normally be created.
 --
 -- This option is only meaningful on Windows systems. On Unix it is silently ignored.
 pattern PROCESS_WINDOWS_HIDE_CONSOLE :: ProcessFlag
 pattern PROCESS_WINDOWS_HIDE_CONSOLE = (#const UV_PROCESS_WINDOWS_HIDE_CONSOLE)
--- | Hide the subprocess GUI window that would normally be created. 
+-- | Hide the subprocess GUI window that would normally be created.
 --
 -- This option is only meaningful on Windows systems. On Unix it is silently ignored.
 pattern PROCESS_WINDOWS_HIDE_GUI :: ProcessFlag
@@ -793,7 +796,7 @@ pattern PROCESS_WINDOWS_HIDE_GUI = (#const UV_PROCESS_WINDOWS_HIDE_GUI)
 
 data ProcessOptions = ProcessOptions
     { processFile :: CBytes                     -- ^ Path pointing to the program to be executed.
-    , processArgs :: [CBytes]                   -- ^ Command line arguments. 
+    , processArgs :: [CBytes]                   -- ^ Command line arguments.
                                                 -- On Windows this uses CreateProcess which concatenates
                                                 -- the arguments into a string this can cause some strange errors.
                                                 -- See the 'PROCESS_WINDOWS_VERBATIM_ARGUMENTS'.
@@ -803,7 +806,7 @@ data ProcessOptions = ProcessOptions
     , processUID :: UID -- ^ This happens only when the appropriate bits are set in the flags fields.
     , processGID :: GID -- ^ This happens only when the appropriate bits are set in the flags fields.
     , processStdStreams :: (ProcessStdStream, ProcessStdStream, ProcessStdStream) -- ^ Specifying how (stdin, stdout, stderr) should be passed/created to the child, see 'ProcessStdStream'
-                            
+
     }   deriving (Eq, Ord, Show, Read, Generic)
         deriving anyclass (Print, JSON)
 
@@ -816,12 +819,12 @@ data ProcessStdStream
 
 processStdStreamFlag :: ProcessStdStream -> CInt
 processStdStreamFlag ProcessIgnore = #const UV_IGNORE
-processStdStreamFlag ProcessCreate = (#const UV_CREATE_PIPE) 
+processStdStreamFlag ProcessCreate = (#const UV_CREATE_PIPE)
                             .|. (#const UV_READABLE_PIPE)
                             .|. (#const UV_WRITABLE_PIPE)
 processStdStreamFlag (ProcessInherit _) = #const UV_INHERIT_FD
 
-foreign import ccall unsafe hs_uv_spawn :: Ptr UVLoop 
+foreign import ccall unsafe hs_uv_spawn :: Ptr UVLoop
                                         -> MBA## ProcessOptions         --  option
                                         -> BA## Word8                   --  file
                                         -> BAArray## Word8              --  all args
@@ -888,7 +891,7 @@ foreign import ccall unsafe uv_get_constrained_memory :: IO Word64
 
 -- | Data type for storing times.
 -- typedef struct { long tv_sec; long tv_usec; } uv_timeval_t;
-data TimeVal = TimeVal 
+data TimeVal = TimeVal
     { tv_sec  :: {-# UNPACK #-} !CLong
     , tv_usec :: {-# UNPACK #-} !CLong
     }   deriving (Show, Read, Eq, Ord, Generic)
@@ -896,7 +899,7 @@ data TimeVal = TimeVal
 
 -- | Data type for resource usage results.
 --
--- Members marked with (X) are unsupported on Windows. 
+-- Members marked with (X) are unsupported on Windows.
 -- See <https://man7.org/linux/man-pages/man2/getrusage.2.html getrusage(2)> for supported fields on Unix
 data ResUsage = ResUsage
     { ru_utime    :: {-# UNPACK #-} !TimeVal   -- ^  user CPU time used, in microseconds
@@ -950,7 +953,7 @@ foreign import ccall unsafe uv_os_getppid :: IO PID
 foreign import ccall unsafe uv_os_getpriority :: PID -> MBA## CInt -> IO CInt
 foreign import ccall unsafe uv_os_setpriority :: PID -> CInt -> IO CInt
 
-newtype PID = PID CInt 
+newtype PID = PID CInt
     deriving (Eq, Ord, Show, Read, Generic)
     deriving newtype (Storable, Prim, Unaligned, JSON)
     deriving anyclass Print
@@ -962,12 +965,12 @@ pattern PRIORITY_NORMAL       :: Priority
 pattern PRIORITY_ABOVE_NORMAL :: Priority
 pattern PRIORITY_HIGH         :: Priority
 pattern PRIORITY_HIGHEST      :: Priority
-pattern PRIORITY_LOW           = #const UV_PRIORITY_LOW         
-pattern PRIORITY_BELOW_NORMAL  = #const UV_PRIORITY_BELOW_NORMAL  
-pattern PRIORITY_NORMAL        = #const UV_PRIORITY_NORMAL        
-pattern PRIORITY_ABOVE_NORMAL  = #const UV_PRIORITY_ABOVE_NORMAL  
-pattern PRIORITY_HIGH          = #const UV_PRIORITY_HIGH          
-pattern PRIORITY_HIGHEST       = #const UV_PRIORITY_HIGHEST       
+pattern PRIORITY_LOW           = #const UV_PRIORITY_LOW
+pattern PRIORITY_BELOW_NORMAL  = #const UV_PRIORITY_BELOW_NORMAL
+pattern PRIORITY_NORMAL        = #const UV_PRIORITY_NORMAL
+pattern PRIORITY_ABOVE_NORMAL  = #const UV_PRIORITY_ABOVE_NORMAL
+pattern PRIORITY_HIGH          = #const UV_PRIORITY_HIGH
+pattern PRIORITY_HIGHEST       = #const UV_PRIORITY_HIGHEST
 
 foreign import ccall unsafe uv_hrtime :: IO Word64
 
@@ -997,9 +1000,9 @@ getOSName = do
     sn <- peekMBACBytes mba## (#offset uv_utsname_t, sysname)
     re <- peekMBACBytes mba## (#offset uv_utsname_t, release)
     ve <- peekMBACBytes mba## (#offset uv_utsname_t, version)
-    ma <- peekMBACBytes mba##  (#offset uv_utsname_t, machine) 
+    ma <- peekMBACBytes mba##  (#offset uv_utsname_t, machine)
     return (OSName sn re ve ma)
-    
+
 foreign import ccall unsafe uv_os_uname :: MBA## OSName -> IO CInt
 
 foreign import ccall unsafe hs_uv_random :: MBA## Word8 -> CSize -> CInt -> IO CInt
@@ -1018,10 +1021,10 @@ data PassWD = PassWD
 foreign import ccall unsafe uv_os_get_passwd :: MBA## PassWD -> IO CInt
 foreign import ccall unsafe uv_os_free_passwd :: MBA## PassWD -> IO ()
 
--- | Gets a subset of the password file entry for the current effective uid (not the real uid). 
+-- | Gets a subset of the password file entry for the current effective uid (not the real uid).
 --
 -- The populated data includes the username, euid, gid, shell, and home directory.
--- On non-Windows systems, all data comes from getpwuid_r(3). 
+-- On non-Windows systems, all data comes from getpwuid_r(3).
 -- On Windows, uid and gid are set to -1 and have no meaning, and shell is empty.
 getPassWD :: HasCallStack => IO PassWD
 getPassWD =  bracket
@@ -1049,10 +1052,10 @@ foreign import ccall unsafe uv_free_cpu_info :: Ptr CPUInfo -> CInt -> IO ()
 data CPUInfo = CPUInfo
     { cpu_model :: CBytes
     , cpu_speed :: CInt
-    , cpu_times_user :: Word64  -- ^ milliseconds 
+    , cpu_times_user :: Word64  -- ^ milliseconds
     , cpu_times_nice :: Word64  -- ^ milliseconds
-    , cpu_times_sys  :: Word64  -- ^ milliseconds 
-    , cpu_times_idle :: Word64  -- ^ milliseconds  
+    , cpu_times_sys  :: Word64  -- ^ milliseconds
+    , cpu_times_idle :: Word64  -- ^ milliseconds
     , cpu_times_irq  :: Word64  -- ^ milliseconds
     }   deriving (Eq, Ord, Show, Read, Generic)
         deriving anyclass (Print, JSON)
@@ -1060,8 +1063,8 @@ data CPUInfo = CPUInfo
 -- | Gets information about the CPUs on the system.
 getCPUInfo :: HasCallStack => IO [CPUInfo]
 getCPUInfo = bracket
-    (do (p, (len, _)) <-  allocPrimUnsafe $ \ pp -> 
-            allocPrimUnsafe $ \ plen -> 
+    (do (p, (len, _)) <-  allocPrimUnsafe $ \ pp ->
+            allocPrimUnsafe $ \ plen ->
                 throwUVIfMinus_ (uv_cpu_info pp plen)
         return (p, len))
     (\ (p, len) -> uv_free_cpu_info p len)
@@ -1084,7 +1087,7 @@ foreign import ccall unsafe uv_loadavg :: MBA## (Double, Double, Double) -> IO (
 -- | Gets the load average. See: <https://en.wikipedia.org/wiki/Load_(computing)>
 getLoadAvg :: IO (Double, Double, Double)
 getLoadAvg = do
-    (arr, _) <- allocPrimArrayUnsafe 3 uv_loadavg 
+    (arr, _) <- allocPrimArrayUnsafe 3 uv_loadavg
     return ( indexPrimArray arr 0
            , indexPrimArray arr 1
            , indexPrimArray arr 2)

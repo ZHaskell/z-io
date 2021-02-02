@@ -89,8 +89,8 @@ library
                             Z.IO.BIO.Concurrent
 
                             Z.IO.FileSystem
+                            Z.IO.FileSystem.BaseThreaded
                             Z.IO.FileSystem.FilePath
-                            Z.IO.FileSystem.Threaded
                             Z.IO.FileSystem.Watch
 
                             Z.IO.Network.SocketAddr
@@ -118,6 +118,8 @@ library
                             Z.IO.Environment
 
                             -- Z.Compression.Zlib
+
+    other-modules:          Z.IO.FileSystem.Base
 
     build-depends:          base                    >= 4.12 && <5.0
                           , exceptions              == 0.10.*
