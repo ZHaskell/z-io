@@ -46,7 +46,7 @@ import           Z.Foreign
 import           Z.IO.BIO
 import           Z.IO.BIO.Concurrent
 import           Z.IO.Exception
-import           Z.IO.FileSystem
+import           Z.IO.FileSystem.Base
 import qualified Z.IO.FileSystem.FilePath as P
 import           Z.IO.UV.FFI
 import           Z.IO.UV.Manager

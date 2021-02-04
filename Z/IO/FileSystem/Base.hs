@@ -7,27 +7,30 @@ Maintainer  : winterland1989@gmail.com
 Stability   : experimental
 Portability : non-portable
 
-This module provide IO operations related to filesystem, operations are implemented using unsafe FFIs, which should be prefered when the operations' estimated time is short(<1ms), which is much common on modern SSDs.
+This module provide IO operations related to filesystem, operations are
+implemented using unsafe FFIs, which should be prefered when the operations'
+estimated time is short(<1ms), which is much common on modern SSDs.
 -}
 module Z.IO.FileSystem.Base
-  ( -- * regular file devices
+  ( -- * Regular file devices
     File, initFile, readFileP, writeFileP, getFileFD, seek
   , readFile, readTextFile, writeFile, writeTextFile
   , readJSONFile, writeJSONFile
     -- * file offset bundle
   , FilePtr, newFilePtr, getFilePtrOffset, setFilePtrOffset
-  -- * filesystem operations
+  -- * Filesystem operations
   , mkdir, mkdirp
   , unlink
-  , mkdtemp
-  , mkstemp
-  , rmdir, rmdirrf
+  , mkdtemp, mkstemp , initTempFile, initTempDir, Env.getTempDir
+  , rmdir, rmrf
   , DirEntType(..)
   , scandir
   , scandirRecursively
+    -- ** File stats
   , FStat(..), UVTimeSpec(..)
-  , stat, lstat, fstat
+  , doesPathExist
   , isLink, isDir, isFile
+  , stat, lstat, fstat
   , rename
   , fsync, fdatasync
   , ftruncate
@@ -112,6 +115,7 @@ import           Foreign.Marshal.Alloc    (allocaBytes)
 import           Foreign.Ptr
 import           Foreign.Storable         (peekElemOff)
 import           Prelude                  hiding (readFile, writeFile)
+import qualified Z.Data.Builder           as B
 import           Z.Data.CBytes            as CBytes
 import qualified Z.Data.JSON              as JSON
 import           Z.Data.PrimRef.PrimIORef
@@ -120,6 +124,7 @@ import qualified Z.Data.Text.Print        as T
 import qualified Z.Data.Vector            as V
 import           Z.Foreign
 import           Z.IO.Buffered
+import qualified Z.IO.Environment         as Env
 import           Z.IO.Exception
 import qualified Z.IO.FileSystem.FilePath as P
 import           Z.IO.Resource
@@ -305,7 +310,9 @@ writeJSONFile filename x = writeFile filename (JSON.encode x)
 
 --------------------------------------------------------------------------------
 
--- | Equivalent to <http://linux.die.net/man/2/mkdir mkdir(2)>.
+-- | Create a directory named path with numeric mode 'FileMode'.
+--
+-- Equivalent to <http://linux.die.net/man/2/mkdir mkdir(2)>.
 --
 -- Note mode is currently not implemented on Windows. On unix you should set execute bit
 -- if you want the directory is accessable, e.g. 0o777.
@@ -313,10 +320,14 @@ mkdir :: HasCallStack => CBytes -> FileMode -> IO ()
 mkdir path mode = throwUVIfMinus_ . withCBytesUnsafe path $ \ p ->
      hs_uv_fs_mkdir p mode
 
--- | Equivalent to @mkdir -p@
+-- | Recursive directory creation function. Like 'mkdir', but makes all
+-- intermediate-level directories needed to contain the leaf directory.
 --
--- Note mode is currently not implemented on Windows. On unix you should set execute bit
--- if you want the directory is accessable(so that child folder can be created), e.g. 0o777.
+-- Equivalent to @mkdir -p@,
+--
+-- Note mode is currently not implemented on Windows. On unix you should set
+-- execute bit if you want the directory is accessable(so that child folder
+-- can be created), e.g. 0o777.
 --
 -- >>> mkdirp "p/a" DEFAULT_DIR_MODE
 mkdirp :: HasCallStack => CBytes -> FileMode -> IO ()
@@ -347,6 +358,19 @@ mkdirp path mode = do
 unlink :: HasCallStack => CBytes -> IO ()
 unlink path = throwUVIfMinus_ (withCBytesUnsafe path hs_uv_fs_unlink)
 
+-------------------------------------------------------------------------------
+-- Temporary
+
+initTempFile :: CBytes -> Resource File
+initTempFile prefix =
+    initResource initAction unlink >>= (\f -> initFile f O_RDWR DEFAULT_FILE_MODE)
+    where
+        initAction = Env.getTempDir >>= (`P.join` prefix) >>= mkstemp
+
+initTempDir :: CBytes -> Resource CBytes
+initTempDir prefix =
+    initResource (Env.getTempDir >>= (`P.join` prefix) >>= mkdtemp) rmrf
+
 -- | Equivalent to <mkdtemp http://linux.die.net/man/3/mkdtemp>
 --
 -- Creates a temporary directory in the most secure manner possible.
@@ -375,29 +399,46 @@ mkstemp template = do
             throwUVIfMinus_ (hs_uv_fs_mkstemp p size p')
         return p'
 
+-------------------------------------------------------------------------------
+
 -- | Equivalent to <http://linux.die.net/man/2/rmdir rmdir(2)>.
 --
 -- Note this function may inherent OS limitations such as argument must be an empty folder.
 rmdir :: HasCallStack => CBytes -> IO ()
 rmdir path = throwUVIfMinus_ (withCBytesUnsafe path hs_uv_fs_rmdir)
 
--- | Equivalent to @rmdir -rf@
---
--- This function will try to remove folder and files contained by it.
-rmdirrf :: HasCallStack => CBytes -> IO ()
-rmdirrf path = do
-    ds <- scandir path
-    forM_ ds $ \ (d, t) -> do
-        if t /= DirEntDir
-        then unlink d
-        else rmdirrf =<< path `P.join` d
-    rmdir path
+-- | Removes a file or directory at path together with its contents and
+-- subdirectories. Symbolic links are removed without affecting their targets.
+-- If the path does not exist, nothing happens.
+rmrf :: HasCallStack => CBytes -> IO ()
+rmrf path =
+    withCBytesUnsafe path $ \path' ->
+    allocaBytes uvStatSize $ \s -> do
+        r <- throwUVIf (hs_uv_fs_stat path' s) (\r -> r < 0 && r /= fromIntegral UV_ENOENT)
+        case fromIntegral r of
+            UV_ENOENT -> return ()   -- nothing if path does not exist.
+            _         -> do
+                st <- peekUVStat s
+                case stMode st .&. S_IFMT of
+                  S_IFREG -> unlink path
+                  S_IFLNK -> unlink path
+                  S_IFDIR -> do
+                      ds <- scandir path
+                      forM_ ds $ \ (d, t) ->
+                          if t /= DirEntDir then unlink d
+                                            else rmrf =<< path `P.join` d
+                      rmdir path
+                  mode    -> do
+                      let desc = "Unsupported file mode: " <> (B.buildText $ B.hex mode)
+                      throwIO $ UnsupportedOperation (IOEInfo "" desc callStack)
 
 -- | Equivalent to <http://linux.die.net/man/3/scandir scandir(3)>.
 --
 -- Note Unlike scandir(3), this function does not return the “.” and “..” entries.
 --
--- Note On Linux, getting the type of an entry is only supported by some file systems (btrfs, ext2, ext3 and ext4 at the time of this writing), check the <http://linux.die.net/man/2/getdents getdents(2)> man page.
+-- Note On Linux, getting the type of an entry is only supported by some file
+-- systems (btrfs, ext2, ext3 and ext4 at the time of this writing), check the
+-- <http://linux.die.net/man/2/getdents getdents(2)> man page.
 scandir :: HasCallStack => CBytes -> IO [(CBytes, DirEntType)]
 scandir path = do
     bracket
@@ -434,6 +475,28 @@ scandirRecursively dir p = loop [] =<< P.normalize dir
 
 --------------------------------------------------------------------------------
 
+-- | Does given path exist?
+doesPathExist :: CBytes -> IO Bool
+doesPathExist path =
+    withCBytesUnsafe path $ \path' ->
+    allocaBytes uvStatSize $ \size' -> do
+        r <- throwUVIf (hs_uv_fs_stat path' size') (\r -> r < 0 && r /= fromIntegral UV_ENOENT)
+        case fromIntegral r of
+            UV_ENOENT -> return False
+            _         -> return True
+
+-- | If given path is a symbolic link?
+isLink :: HasCallStack => CBytes -> IO Bool
+isLink p = lstat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFLNK)
+
+-- | If given path is a directory or a symbolic link to a directory?
+isDir :: HasCallStack => CBytes -> IO Bool
+isDir p = stat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFDIR)
+
+-- | If given path is a file or a symbolic link to a file?
+isFile :: HasCallStack => CBytes -> IO Bool
+isFile p = stat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFREG)
+
 -- | Equivalent to <http://linux.die.net/man/2/stat stat(2)>
 stat :: HasCallStack => CBytes -> IO FStat
 stat path = withCBytesUnsafe path $ \ p ->
@@ -454,18 +517,6 @@ fstat uvf = checkFileClosed uvf $ \ fd ->
     allocaBytes uvStatSize $ \ s -> do
         throwUVIfMinus_ (hs_uv_fs_fstat fd s)
         peekUVStat s
-
--- | If given path is a symbolic link?
-isLink :: HasCallStack => CBytes -> IO Bool
-isLink p = lstat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFLNK)
-
--- | If given path is a directory or a symbolic link to a directory?
-isDir :: HasCallStack => CBytes -> IO Bool
-isDir p = stat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFDIR)
-
--- | If given path is a file or a symbolic link to a file?
-isFile :: HasCallStack => CBytes -> IO Bool
-isFile p = stat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFREG)
 
 --------------------------------------------------------------------------------
 

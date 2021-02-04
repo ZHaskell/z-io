@@ -61,6 +61,8 @@ module Z.IO.Exception
   , throwOOMIfNull
   , throwUVIfMinus
   , throwUVIfMinus_
+  , throwUVIf
+  , throwUVIf_
   , throwECLOSED
   , throwECLOSEDSTM
   , throwUVError
@@ -78,7 +80,7 @@ module Z.IO.Exception
 import           Control.Concurrent.STM
 import           Control.Exception      hiding (IOException)
 import           Control.Monad
-import           Data.Typeable          (Typeable, cast)
+import           Data.Typeable          (cast)
 import           Foreign.C.Types
 import           Foreign.Ptr
 import           GHC.Stack
@@ -143,37 +145,38 @@ throwOOMIfNull f = do
         else return addr
 
 -- | Throw appropriate IO exception if return value < 0 (libuv's convention).
---
+{-# INLINABLE throwUVIfMinus #-}
 throwUVIfMinus :: (HasCallStack, Integral a)
                => IO a    -- ^ the IO action
                -> IO a
-{-# INLINABLE throwUVIfMinus #-}
-throwUVIfMinus f = do
-    errno <- f
-    let errno' = fromIntegral errno
-    if errno' < 0
-        then do
-            name <- uvErrName errno'
-            desc <- uvStdError errno'
-            throwUVError errno' (IOEInfo name desc callStack)
-        else return errno
+throwUVIfMinus f = throwUVIf f (< 0)
 
 -- | Throw appropriate IO exception if return value < 0, otherwise ignore the result.
---
+{-# INLINABLE throwUVIfMinus_ #-}
 throwUVIfMinus_ :: (HasCallStack, Integral a)
                 => IO a    -- ^ the IO action
                 -> IO ()
-{-# INLINABLE throwUVIfMinus_ #-}
-throwUVIfMinus_ f = do
+throwUVIfMinus_ f = throwUVIf_ f (< 0)
+
+-- | Throw appropriate IO exception if condition is true.
+{-# INLINABLE throwUVIf #-}
+throwUVIf :: (HasCallStack, Integral a) => IO a -> (a -> Bool) -> IO a
+throwUVIf f cond = do
     errno <- f
-    let errno' = fromIntegral errno
-    when (errno' < 0) $ do
-        name <- uvErrName errno'
-        desc <- uvStdError errno'
-        throwUVError errno' (IOEInfo name desc callStack)
+    if cond errno
+       then do let errno' = fromIntegral errno
+               name <- uvErrName errno'
+               desc <- uvStdError errno'
+               throwUVError errno' (IOEInfo name desc callStack)
+       else return errno
+
+-- | Throw appropriate IO exception if condition is true, otherwise ignore the
+-- result.
+{-# INLINABLE throwUVIf_ #-}
+throwUVIf_ :: (HasCallStack, Integral a) => IO a -> (a -> Bool) -> IO ()
+throwUVIf_ f cond = void $ throwUVIf f cond
 
 -- | Throw 'ResourceVanished' with name 'ECLOSED' and description 'resource is closed'.
---
 throwECLOSED :: HasCallStack => IO a
 {-# INLINABLE throwECLOSED #-}
 throwECLOSED = throwIO (ResourceVanished
@@ -202,7 +205,7 @@ unwrap n (Left e)  = throwOtherError n (T.toText e)
 unwrap' :: HasCallStack => T.Text -> T.Text -> Maybe a -> IO a
 {-# INLINABLE unwrap' #-}
 unwrap' _ _ (Just x) = return x
-unwrap' n d Nothing = throwOtherError n d
+unwrap' n d Nothing  = throwOtherError n d
 
 --------------------------------------------------------------------------------
 
