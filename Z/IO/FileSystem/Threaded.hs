@@ -28,25 +28,28 @@ Most of the time you don't need this module though, since modern hardware(SSD) a
 -- FIXME: An elegant way to keep this module's API same with 'Z.IO.FileSystem.Base'
 -- automatically.
 
-module Z.IO.FileSystem.BaseThreaded
-  ( -- * regular file devices
+module Z.IO.FileSystem.Threaded
+  ( -- * Regular file devices
     File, initFile, readFileP, writeFileP, getFileFD, seek
   , readFile, readTextFile, writeFile, writeTextFile
   , readJSONFile, writeJSONFile
-    -- * file offset bundle
-  , FilePtrT, newFilePtrT, getFilePtrOffset, setFilePtrOffset
-  -- * filesystem operations
+    -- * File offset bundle
+  , FilePtr, newFilePtr, getFilePtrOffset, setFilePtrOffset
+  -- * Filesystem operations
   , mkdir, mkdirp
   , unlink
-  , mkdtemp
-  , mkstemp
+  , mkdtemp, mkstemp , initTempFile, initTempDir
   , rmdir, rmrf
   , DirEntType(..)
   , scandir
   , scandirRecursively
+    -- ** File stats
   , FStat(..), UVTimeSpec(..)
-  , stat, lstat, fstat
+  , doesPathExist, doesFileExist, doesDirExist
   , isLink, isDir, isFile
+  , isLinkSt, isDirSt, isFileSt
+  , stat, lstat, fstat
+  , stat', lstat'
   , rename
   , fsync, fdatasync
   , ftruncate
@@ -135,11 +138,14 @@ import qualified Z.Data.Text.Print        as T
 import qualified Z.Data.Vector            as V
 import           Z.Foreign
 import           Z.IO.Buffered
+import qualified Z.IO.Environment         as Env
 import           Z.IO.Exception
 import qualified Z.IO.FileSystem.FilePath as P
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
 import           Z.IO.UV.Manager
+
+#include "_Shared.hs"
 
 --------------------------------------------------------------------------------
 -- File
@@ -239,43 +245,6 @@ writeFileP uvf buf0 bufSiz0 off0 =
                    (bufSiz-written)
                    (off+fromIntegral written)
 
--- | File bundled with offset.
---
--- Reading or writing using 'Input' \/ 'Output' instance will automatically increase offset.
--- 'FilePtrT' and its operations are NOT thread safe, use 'MVar' 'FilePtrT' in multiple threads.
---
--- The notes on linux 'writeFileP' applied to 'FilePtr' too.
-data FilePtrT = FilePtrT {-# UNPACK #-} !File
-                         {-# UNPACK #-} !(PrimIORef Int64)
-
--- |  Create a file offset bundle from an 'File'.
---
-newFilePtrT :: File      -- ^ the file we're reading
-            -> Int64      -- ^ initial offset
-            -> IO FilePtrT
-newFilePtrT uvf off = FilePtrT uvf <$> newPrimIORef off
-
--- | Get current offset.
-getFilePtrOffset :: FilePtrT -> IO Int64
-getFilePtrOffset (FilePtrT _ offsetRef) = readPrimIORef offsetRef
-
--- | Change current offset.
-setFilePtrOffset :: FilePtrT -> Int64 -> IO ()
-setFilePtrOffset (FilePtrT _ offsetRef) = writePrimIORef offsetRef
-
-instance Input FilePtrT where
-    readInput (FilePtrT file offsetRef) buf bufSiz =
-        readPrimIORef offsetRef >>= \ off -> do
-            l <- readFileP file buf bufSiz off
-            writePrimIORef offsetRef (off + fromIntegral l)
-            return l
-
-instance Output FilePtrT where
-    writeOutput (FilePtrT file offsetRef) buf bufSiz =
-        readPrimIORef offsetRef >>= \ off -> do
-            writeFileP file buf bufSiz off
-            writePrimIORef offsetRef (off + fromIntegral bufSiz)
-
 --------------------------------------------------------------------------------
 
 -- | init a file 'Resource', which open a file when used.
@@ -302,35 +271,6 @@ initFile path flags mode =
                 throwUVIfMinus_ (hs_uv_fs_close fd)
                 writeIORef closedRef True)
 
--- | Quickly open a file and read its content.
-readFile :: HasCallStack => CBytes -> IO V.Bytes
-readFile filename = do
-    withResource (initFile filename O_RDONLY DEFAULT_FILE_MODE) $ \ file -> do
-        readAll' =<< newBufferedInput file
-
--- | Quickly open a file and read its content as UTF8 text.
-readTextFile :: HasCallStack => CBytes -> IO T.Text
-readTextFile filename = T.validate <$> readFile filename
-
--- | Quickly open a file and write some content.
-writeFile :: HasCallStack => CBytes -> V.Bytes -> IO ()
-writeFile filename content = do
-    withResource (initFile filename (O_WRONLY .|. O_CREAT) DEFAULT_FILE_MODE) $ \ file -> do
-        withPrimVectorSafe content (writeOutput file)
-
--- | Quickly open a file and write some content as UTF8 text.
-writeTextFile :: HasCallStack => CBytes -> T.Text -> IO ()
-writeTextFile filename content = writeFile filename (T.getUTF8Bytes content)
-
--- | Quickly open a file and read its content as a JSON value.
--- Throw 'OtherError' with name @EPARSE@ if JSON value is not parsed.
-readJSONFile :: (HasCallStack, JSON.JSON a) => CBytes -> IO a
-readJSONFile filename = unwrap "EPARSE" . JSON.decode' =<< readFile filename
-
--- | Quickly open a file and write a JSON Value.
-writeJSONFile :: (HasCallStack, JSON.JSON a) => CBytes -> a -> IO ()
-writeJSONFile filename x = writeFile filename (JSON.encode x)
-
 --------------------------------------------------------------------------------
 
 -- | Equivalent to <http://linux.die.net/man/2/mkdir mkdir(2)>.
@@ -354,18 +294,18 @@ mkdirp path mode = do
             (root, segs) <- P.splitSegments path
             case segs of
                 seg:segs' -> loop segs' =<< P.join root seg
-                _         -> throwUVIfMinus_ (return r)
+                _         -> throwUV r
         UV_EEXIST -> do
             canIgnore <- isDir path
-            unless canIgnore $ throwUVIfMinus_ (return r)
-        _ -> throwUVIfMinus_ (return r)
+            unless canIgnore (throwUV r)
+        _ -> throwUV r
   where
     loop segs p = do
         a <- access p F_OK
         case a of
             AccessOK     -> return ()
             NoExistence  -> mkdir p mode
-            NoPermission -> throwUVIfMinus_ (return UV_EACCES)
+            NoPermission -> throwUV UV_EACCES
         case segs of
             (nextp:ps) -> P.join p nextp >>= loop ps
             _          -> return ()
@@ -422,28 +362,24 @@ rmrf path =
     withCBytesUnsafe path $ \path' ->
     allocaBytes uvStatSize $ \s -> do
         uvm <- getUVManager
-        withUVRequest' uvm (hs_uv_fs_stat_threaded path' s) $ \r -> do
-            let errno = fromIntegral r
-            case errno of
-              UV_ENOENT -> return ()
-              _ | errno < 0 -> do
-                  name <- uvErrName errno
-                  desc <- uvStdError errno
-                  throwUVError errno (IOEInfo name desc callStack)
-              _ -> do
-                  st <- peekUVStat s
-                  case stMode st .&. S_IFMT of
-                    S_IFREG -> unlink path
-                    S_IFLNK -> unlink path
-                    S_IFDIR -> do
-                        ds <- scandir path
-                        forM_ ds $ \ (d, t) ->
-                            if t /= DirEntDir then unlink d
-                                              else rmrf =<< path `P.join` d
-                        rmdir path
-                    mode    -> do
-                        let desc = "Unsupported file mode: " <> (B.buildText $ B.hex mode)
-                        throwIO $ UnsupportedOperation (IOEInfo "" desc callStack)
+        withUVRequest' uvm (hs_uv_fs_stat_threaded path' s) $ \ r -> do
+            if  | r == fromIntegral UV_ENOENT -> pure ()
+                | r < 0 -> throwUV r
+                | otherwise -> do
+                    st <- peekUVStat s
+                    case stMode st .&. S_IFMT of
+                        S_IFREG -> unlink path
+                        S_IFLNK -> unlink path
+                        S_IFDIR -> do
+                            ds <- scandir path
+                            forM_ ds $ \ (d, t) ->
+                                if t /= DirEntDir
+                                then unlink d
+                                else rmrf =<< path `P.join` d
+                            rmdir path
+                        mode    -> do
+                            let desc = B.buildText $ "Unsupported file mode: " >> B.hex mode
+                            throwIO $ UnsupportedOperation (IOEInfo "" desc callStack)
 
 --------------------------------------------------------------------------------
 
@@ -469,26 +405,6 @@ scandir path = do
             !p' <- fromCString p
             return (p', typ'))
 
--- | Find all files and directories within a given directory with a predicator.
---
--- @
---  import Z.IO.FileSystem.FilePath (splitExtension)
---  -- find all haskell source file within current dir
---  scandirRecursively "."  (\ p _ -> (== ".hs") . snd <$> splitExtension p)
--- @
-scandirRecursively :: HasCallStack => CBytes -> (CBytes -> DirEntType -> IO Bool) -> IO [CBytes]
-scandirRecursively dir p = loop [] =<< P.normalize dir
-  where
-    loop acc0 pdir =
-        foldM (\ acc (d,t) -> do
-            d' <- pdir `P.join` d
-            r <- p d' t
-            let acc' = if r then (d':acc) else acc
-            if (t == DirEntDir)
-            then loop acc' d'
-            else return acc'
-        ) acc0 =<< scandir pdir
-
 --------------------------------------------------------------------------------
 
 -- | Equivalent to <http://linux.die.net/man/2/stat stat(2)>
@@ -509,6 +425,32 @@ lstat path =
             withUVRequest_ uvm (hs_uv_fs_lstat_threaded p s)
             peekUVStat s
 
+-- | Equivalent to <http://linux.die.net/man/2/stat stat(2)>
+--
+-- Return 'Nothing' instead of throwing 'NoSuchThing' if the file doesn't exist.
+stat' :: HasCallStack => CBytes -> IO (Maybe FStat)
+stat' path = do
+    withCBytesUnsafe path $ \ p ->
+         allocaBytes uvStatSize $ \ s -> do
+            uvm <- getUVManager
+            withUVRequest' uvm (hs_uv_fs_stat_threaded p s) $ \ r ->
+                if  | r == fromIntegral UV_ENOENT -> pure Nothing
+                    | r < 0           -> throwUV r
+                    | otherwise       -> Just <$> peekUVStat s
+
+-- | Equivalent to <http://linux.die.net/man/2/lstat lstat(2)>
+--
+-- Return 'Nothing' instead of throwing 'NoSuchThing' if the link doesn't exist.
+lstat' :: HasCallStack => CBytes -> IO (Maybe FStat)
+lstat' path =
+    withCBytesUnsafe path $ \ p ->
+         allocaBytes uvStatSize $ \ s -> do
+            uvm <- getUVManager
+            withUVRequest' uvm (hs_uv_fs_lstat_threaded p s) $ \ r ->
+                if  | r == fromIntegral UV_ENOENT -> pure Nothing
+                    | r < 0           -> throwUV r
+                    | otherwise       -> Just <$> peekUVStat s
+
 -- | Equivalent to <http://linux.die.net/man/2/fstat fstat(2)>
 fstat :: HasCallStack => File -> IO FStat
 fstat uvf = checkFileClosed uvf $ \ fd ->
@@ -516,18 +458,6 @@ fstat uvf = checkFileClosed uvf $ \ fd ->
         uvm <- getUVManager
         withUVRequest_ uvm (hs_uv_fs_fstat_threaded fd s)
         peekUVStat s)
-
--- | If given path is a symbolic link?
-isLink :: HasCallStack => CBytes -> IO Bool
-isLink p = lstat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFLNK)
-
--- | If given path is a directory or a symbolic link to a directory?
-isDir :: HasCallStack => CBytes -> IO Bool
-isDir p = stat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFDIR)
-
--- | If given path is a file or a symbolic link to a file?
-isFile :: HasCallStack => CBytes -> IO Bool
-isFile p = stat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFREG)
 
 --------------------------------------------------------------------------------
 

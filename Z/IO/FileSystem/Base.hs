@@ -21,17 +21,18 @@ module Z.IO.FileSystem.Base
   -- * Filesystem operations
   , mkdir, mkdirp
   , unlink
-  , mkdtemp, mkstemp , initTempFile, initTempDir, Env.getTempDir
+  , mkdtemp, mkstemp , initTempFile, initTempDir
   , rmdir, rmrf
   , DirEntType(..)
   , scandir
   , scandirRecursively
     -- ** File stats
   , FStat(..), UVTimeSpec(..)
-  , doesPathExist, doesFileExist, doesDirectoryExist
+  , doesPathExist, doesFileExist, doesDirExist
   , isLink, isDir, isFile
-  , isLinkFromSt, isDirFromSt, isFileFromSt
+  , isLinkSt, isDirSt, isFileSt
   , stat, lstat, fstat
+  , stat', lstat'
   , rename
   , fsync, fdatasync
   , ftruncate
@@ -131,6 +132,8 @@ import qualified Z.IO.FileSystem.FilePath as P
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
 
+#include "_Shared.hs"
+
 --------------------------------------------------------------------------------
 -- File
 
@@ -220,42 +223,6 @@ writeFileP uvf buf0 bufSiz0 off0 =
                    (bufSiz-written)
                    (off+fromIntegral written)
 
--- | File bundled with offset.
---
--- Reading or writing using 'Input' \/ 'Output' instance will automatically increase offset.
--- 'FilePtr' and its operations are NOT thread safe, use 'MVar' 'FilePtr' in multiple threads.
---
--- The notes on linux 'writeFileP' applied to 'FilePtr' too.
-data FilePtr = FilePtr {-# UNPACK #-} !File
-                       {-# UNPACK #-} !(PrimIORef Int64)
-
--- |  Create a file offset bundle from an 'File'.
---
-newFilePtr :: File       -- ^ the file we're reading
-           -> Int64      -- ^ initial offset
-           -> IO FilePtr
-newFilePtr uvf off = FilePtr uvf <$> newPrimIORef off
-
--- | Get current offset.
-getFilePtrOffset :: FilePtr -> IO Int64
-getFilePtrOffset (FilePtr _ offsetRef) = readPrimIORef offsetRef
-
--- | Change current offset.
-setFilePtrOffset :: FilePtr -> Int64 -> IO ()
-setFilePtrOffset (FilePtr _ offsetRef) = writePrimIORef offsetRef
-
-instance Input FilePtr where
-    readInput (FilePtr file offsetRef) buf bufSiz =
-        readPrimIORef offsetRef >>= \ off -> do
-            l <- readFileP file buf bufSiz off
-            writePrimIORef offsetRef (off + fromIntegral l)
-            return l
-
-instance Output FilePtr where
-    writeOutput (FilePtr file offsetRef) buf bufSiz =
-        readPrimIORef offsetRef >>= \ off -> do
-            writeFileP file buf bufSiz off
-            writePrimIORef offsetRef (off + fromIntegral bufSiz)
 
 --------------------------------------------------------------------------------
 
@@ -279,35 +246,6 @@ initFile path flags mode =
             unless closed $ do
                 throwUVIfMinus_ (hs_uv_fs_close fd)
                 writeIORef closedRef True)
-
--- | Quickly open a file and read its content.
-readFile :: HasCallStack => CBytes -> IO V.Bytes
-readFile filename = do
-    withResource (initFile filename O_RDONLY DEFAULT_FILE_MODE) $ \ file -> do
-        readAll' =<< newBufferedInput file
-
--- | Quickly open a file and read its content as UTF8 text.
-readTextFile :: HasCallStack => CBytes -> IO T.Text
-readTextFile filename = T.validate <$> readFile filename
-
--- | Quickly open a file and write some content.
-writeFile :: HasCallStack => CBytes -> V.Bytes -> IO ()
-writeFile filename content = do
-    withResource (initFile filename (O_WRONLY .|. O_CREAT) DEFAULT_FILE_MODE) $ \ file -> do
-        withPrimVectorSafe content (writeOutput file)
-
--- | Quickly open a file and write some content as UTF8 text.
-writeTextFile :: HasCallStack => CBytes -> T.Text -> IO ()
-writeTextFile filename content = writeFile filename (T.getUTF8Bytes content)
-
--- | Quickly open a file and read its content as a JSON value.
--- Throw 'OtherError' with name @EPARSE@ if JSON value is not parsed.
-readJSONFile :: (HasCallStack, JSON.JSON a) => CBytes -> IO a
-readJSONFile filename = unwrap "EPARSE" . JSON.decode' =<< readFile filename
-
--- | Quickly open a file and write a JSON Value.
-writeJSONFile :: (HasCallStack, JSON.JSON a) => CBytes -> a -> IO ()
-writeJSONFile filename x = writeFile filename (JSON.encode x)
 
 --------------------------------------------------------------------------------
 
@@ -339,18 +277,18 @@ mkdirp path mode = do
             (root, segs) <- P.splitSegments path
             case segs of
                 seg:segs' -> loop segs' =<< P.join root seg
-                _         -> throwUVIfMinus_ (return r)
+                _         -> throwUV r
         UV_EEXIST -> do
             canIgnore <- isDir path
-            unless canIgnore $ throwUVIfMinus_ (return r)
-        _ -> throwUVIfMinus_ (return r)
+            unless canIgnore $ throwUV r
+        _ -> throwUV r
   where
     loop segs p = do
         a <- access p F_OK
         case a of
             AccessOK     -> return ()
             NoExistence  -> mkdir p mode
-            NoPermission -> throwUVIfMinus_ (return UV_EACCES)
+            NoPermission -> throwUV UV_EACCES
         case segs of
             (nextp:ps) -> P.join p nextp >>= loop ps
             _          -> return ()
@@ -359,18 +297,6 @@ mkdirp path mode = do
 unlink :: HasCallStack => CBytes -> IO ()
 unlink path = throwUVIfMinus_ (withCBytesUnsafe path hs_uv_fs_unlink)
 
--------------------------------------------------------------------------------
--- Temporary
-
-initTempFile :: CBytes -> Resource File
-initTempFile prefix =
-    initResource initAction unlink >>= (\f -> initFile f O_RDWR DEFAULT_FILE_MODE)
-    where
-        initAction = Env.getTempDir >>= (`P.join` prefix) >>= mkstemp
-
-initTempDir :: CBytes -> Resource CBytes
-initTempDir prefix =
-    initResource (Env.getTempDir >>= (`P.join` prefix) >>= mkdtemp) rmrf
 
 -- | Equivalent to <mkdtemp http://linux.die.net/man/3/mkdtemp>
 --
@@ -415,23 +341,24 @@ rmrf :: HasCallStack => CBytes -> IO ()
 rmrf path =
     withCBytesUnsafe path $ \path' ->
     allocaBytes uvStatSize $ \s -> do
-        r <- throwUVIf (hs_uv_fs_stat path' s) (\r -> r < 0 && r /= fromIntegral UV_ENOENT)
-        case fromIntegral r of
-            UV_ENOENT -> return ()   -- nothing if path does not exist.
-            _         -> do
+        r <- fromIntegral <$> hs_uv_fs_stat path' s
+        if  | r == UV_ENOENT -> pure ()   -- nothing if path does not exist.
+            | r < 0     -> throwUV r
+            | otherwise -> do
                 st <- peekUVStat s
                 case stMode st .&. S_IFMT of
-                  S_IFREG -> unlink path
-                  S_IFLNK -> unlink path
-                  S_IFDIR -> do
-                      ds <- scandir path
-                      forM_ ds $ \ (d, t) ->
-                          if t /= DirEntDir then unlink d
-                                            else rmrf =<< path `P.join` d
-                      rmdir path
-                  mode    -> do
-                      let desc = "Unsupported file mode: " <> (B.buildText $ B.hex mode)
-                      throwIO $ UnsupportedOperation (IOEInfo "" desc callStack)
+                    S_IFREG -> unlink path
+                    S_IFLNK -> unlink path
+                    S_IFDIR -> do
+                        ds <- scandir path
+                        forM_ ds $ \ (d, t) ->
+                            if t /= DirEntDir
+                            then unlink d
+                            else rmrf =<< path `P.join` d
+                        rmdir path
+                    mode    -> do
+                        let desc = B.buildText $ "Unsupported file mode: " >> B.hex mode
+                        throwIO $ UnsupportedOperation (IOEInfo "" desc callStack)
 
 -- | Equivalent to <http://linux.die.net/man/3/scandir scandir(3)>.
 --
@@ -454,81 +381,8 @@ scandir path = do
             !p' <- fromCString p
             return (p', typ'))
 
--- | Find all files and directories within a given directory with a predicator.
---
--- @
---  import Z.IO.FileSystem.FilePath (splitExtension)
---  -- find all haskell source file within current dir
---  scandirRecursively "."  (\\ p _ -> (== ".hs") . snd \<$\> splitExtension p)
--- @
-scandirRecursively :: HasCallStack => CBytes -> (CBytes -> DirEntType -> IO Bool) -> IO [CBytes]
-scandirRecursively dir p = loop [] =<< P.normalize dir
-  where
-    loop acc0 pdir =
-        foldM (\ acc (d,t) -> do
-            d' <- pdir `P.join` d
-            r <- p d' t
-            let acc' = if r then (d':acc) else acc
-            if (t == DirEntDir)
-            then loop acc' d'
-            else return acc'
-        ) acc0 =<< scandir pdir
-
 --------------------------------------------------------------------------------
 -- File Status
-
--- | Does given path exist?
-doesPathExist :: CBytes -> IO Bool
-doesPathExist path =
-    withCBytesUnsafe path $ \path' ->
-    allocaBytes uvStatSize $ \size' -> do
-        r <- throwUVIf (hs_uv_fs_stat path' size') (\r -> r < 0 && r /= fromIntegral UV_ENOENT)
-        case fromIntegral r of
-            UV_ENOENT -> return False
-            _         -> return True
-
--- | Returns True if the argument file exists and is not a directory, and False
--- otherwise.
-doesFileExist :: CBytes -> IO Bool
-doesFileExist path =
-    withCBytesUnsafe path $ \path' ->
-    allocaBytes uvStatSize $ \size' -> do
-        r <- throwUVIf (hs_uv_fs_stat path' size') (\r -> r < 0 && r /= fromIntegral UV_ENOENT)
-        case fromIntegral r of
-            UV_ENOENT -> return False
-            _         -> (not . isDirFromSt) <$> peekUVStat size'
-
--- | Returns True if the argument file exists and is either a directory or a
--- symbolic link to a directory, and False otherwise.
-doesDirectoryExist :: CBytes -> IO Bool
-doesDirectoryExist path =
-    withCBytesUnsafe path $ \path' ->
-    allocaBytes uvStatSize $ \size' -> do
-        r <- throwUVIf (hs_uv_fs_stat path' size') (\r -> r < 0 && r /= fromIntegral UV_ENOENT)
-        case fromIntegral r of
-            UV_ENOENT -> return False
-            _         -> isDirFromSt <$> peekUVStat size'
-
--- | If given path is a symbolic link?
-isLink :: HasCallStack => CBytes -> IO Bool
-isLink = fmap isLinkFromSt . lstat
-
--- | If given path is a directory or a symbolic link to a directory?
-isDir :: HasCallStack => CBytes -> IO Bool
-isDir = fmap isDirFromSt . stat
-
--- | If given path is a file or a symbolic link to a file?
-isFile :: HasCallStack => CBytes -> IO Bool
-isFile = fmap isFileFromSt . stat
-
-isLinkFromSt :: FStat -> Bool
-isLinkFromSt st = stMode st .&. S_IFMT == S_IFLNK
-
-isDirFromSt :: FStat -> Bool
-isDirFromSt st = stMode st .&. S_IFMT == S_IFDIR
-
-isFileFromSt :: FStat -> Bool
-isFileFromSt st = stMode st .&. S_IFMT == S_IFREG
 
 -- | Equivalent to <http://linux.die.net/man/2/stat stat(2)>
 stat :: HasCallStack => CBytes -> IO FStat
@@ -543,6 +397,28 @@ lstat path = withCBytesUnsafe path $ \ p ->
      allocaBytes uvStatSize $ \ s -> do
         throwUVIfMinus_ (hs_uv_fs_lstat p s)
         peekUVStat s
+
+-- | Equivalent to <http://linux.die.net/man/2/stat stat(2)>
+--
+-- Return 'Nothing' instead of throwing 'NoSuchThing' if the file doesn't exist.
+stat' :: HasCallStack => CBytes -> IO (Maybe FStat)
+stat' path = withCBytesUnsafe path $ \ p ->
+     allocaBytes uvStatSize $ \ s -> do
+        r <- fromIntegral <$> hs_uv_fs_stat p s
+        if  | r == UV_ENOENT -> return Nothing
+            | r < 0 -> throwUV r
+            | otherwise -> Just <$> peekUVStat s
+
+-- | Equivalent to <http://linux.die.net/man/2/lstat lstat(2)>
+--
+-- Return 'Nothing' instead of throwing 'NoSuchThing' if the link doesn't exist.
+lstat' :: HasCallStack => CBytes -> IO (Maybe FStat)
+lstat' path = withCBytesUnsafe path $ \ p ->
+     allocaBytes uvStatSize $ \ s -> do
+        r <- fromIntegral <$> hs_uv_fs_lstat p s
+        if  | r == UV_ENOENT -> return Nothing
+            | r < 0 -> throwUV r
+            | otherwise -> Just <$> peekUVStat s
 
 -- | Equivalent to <http://linux.die.net/man/2/fstat fstat(2)>
 fstat :: HasCallStack => File -> IO FStat

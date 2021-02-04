@@ -63,6 +63,7 @@ module Z.IO.Exception
   , throwUVIfMinus_
   , throwUVIf
   , throwUVIf_
+  , throwUV
   , throwECLOSED
   , throwECLOSEDSTM
   , throwUVError
@@ -159,21 +160,18 @@ throwUVIfMinus_ :: (HasCallStack, Integral a)
 throwUVIfMinus_ f = throwUVIf_ f (< 0)
 
 -- | Throw appropriate IO exception if condition is true.
-{-# INLINABLE throwUVIf #-}
 throwUVIf :: (HasCallStack, Integral a) => IO a -> (a -> Bool) -> IO a
+{-# INLINABLE throwUVIf #-}
 throwUVIf f cond = do
     errno <- f
     if cond errno
-       then do let errno' = fromIntegral errno
-               name <- uvErrName errno'
-               desc <- uvStdError errno'
-               throwUVError errno' (IOEInfo name desc callStack)
+       then throwUV errno
        else return errno
 
 -- | Throw appropriate IO exception if condition is true, otherwise ignore the
 -- result.
-{-# INLINABLE throwUVIf_ #-}
 throwUVIf_ :: (HasCallStack, Integral a) => IO a -> (a -> Bool) -> IO ()
+{-# INLINABLE throwUVIf_ #-}
 throwUVIf_ f cond = void $ throwUVIf f cond
 
 -- | Throw 'ResourceVanished' with name 'ECLOSED' and description 'resource is closed'.
@@ -229,7 +227,17 @@ instance T.Print IOEInfo where
          T.stringUTF8 (prettyCallStack cstack)
          "}"
 
+-- | Throw a UV Exception with given libuv's errno.
+throwUV :: (Integral a, HasCallStack) => a -> IO b
+{-# INLINABLE throwUV #-}
+throwUV e = do
+    let e' = fromIntegral e
+    name <- uvErrName e'
+    desc <- uvStdError e'
+    throwUVError e' (IOEInfo name desc callStack)
+
 throwUVError :: CInt -> IOEInfo -> IO a
+{-# INLINABLE throwUVError #-}
 throwUVError e info = case e of
     UV_EOF             -> throwIO (EOF                     info)
     UV_E2BIG           -> throwIO (ResourceExhausted       info)
