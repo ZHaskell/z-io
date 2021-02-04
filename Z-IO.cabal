@@ -6,13 +6,13 @@ description:                Simple and high performance IO toolkit for Haskell, 
                             file system, network, ipc and more!
 license:                    BSD-3-Clause
 license-file:               LICENSE
-author:                     Dong Han, Tao He
+author:                     Z.Haskell Contributors
 maintainer:                 winterland1989@gmail.com
-copyright:                  (c) Project Z Contributors
+copyright:                  (c) Z.Haskell Contributors
 category:                   Data
 build-type:                 Simple
-homepage:                   https://github.com/haskell-Z/Z-IO
-bug-reports:                https://github.com/haskell-Z/Z-IO/issues
+homepage:                   https://github.com/ZHaskell/Z-IO
+bug-reports:                https://github.com/ZHaskell/Z-IO/issues
 
 extra-source-files:         ChangeLog.md
                             README.md
@@ -78,7 +78,7 @@ extra-source-files:         ChangeLog.md
 
 source-repository head
     type:     git
-    location: git://github.com/haskell-Z/Z-IO.git
+    location: git://github.com/ZHaskell/Z-IO.git
 
 flag no-pkg-config
     description: Don't use pkg-config to check for library dependences(on platforms other than linux, win and osx)

@@ -1,9 +1,13 @@
 # Revision history for Z-IO
 
-## 0.5.1.0  -- 2020-02-02
+## 0.6.0.0  -- 2020-02-04
 
 * FileSystem: replace `DEFAULT_MODE` with `DEFAULT_FILE_MODE` & `DEFAULT_DIR_MODE`.
 * Ignore exception while `mkdirp` on an exist directory.
+* Make `rmrf` more like `rm -rf`, which can be used on files.
+* Add `doesPathExist/doesFileExist/doesDirExist` to file system module.
+* Add `Z.IO.FileSystem` re-export `Z.IO.FileSystem.Watch` and `Z.IO.FileSystem.FilePath`.
+* Add `mkstemp`, `initTempFile/initTempDir` to file system module.
 
 ## 0.5.0.0  -- 2020-01-28
 

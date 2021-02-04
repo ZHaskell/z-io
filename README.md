@@ -1,12 +1,12 @@
 ## Z-IO
 
 [![Hackage](https://img.shields.io/hackage/v/Z-IO.svg?style=flat)](https://hackage.haskell.org/package/Z-IO)
-[![Linux Build Status](https://github.com/haskell-Z/z-io/workflows/ubuntu-ci/badge.svg)](https://github.com/haskell-Z/z-io/actions)
-[![MacOS Build Status](https://github.com/haskell-Z/z-io/workflows/osx-ci/badge.svg)](https://github.com/haskell-Z/z-io/actions)
-[![Windows Build Status](https://github.com/haskell-Z/z-io/workflows/win-ci/badge.svg)](https://github.com/haskell-Z/z-io/actions)
-[![Docker Build Status](https://github.com/haskell-Z/z-io/workflows/docker-ci/badge.svg)](https://github.com/haskell-Z/z-io/actions)
+[![Linux Build Status](https://github.com/ZHaskell/z-io/workflows/ubuntu-ci/badge.svg)](https://github.com/ZHaskell/z-io/actions)
+[![MacOS Build Status](https://github.com/ZHaskell/z-io/workflows/osx-ci/badge.svg)](https://github.com/ZHaskell/z-io/actions)
+[![Windows Build Status](https://github.com/ZHaskell/z-io/workflows/win-ci/badge.svg)](https://github.com/ZHaskell/z-io/actions)
+[![Docker Build Status](https://github.com/ZHaskell/z-io/workflows/docker-ci/badge.svg)](https://github.com/ZHaskell/z-io/actions)
 
-This package is part of [Z](https://github.com/haskell-Z/Z) project, provides basic IO operations:
+This package is part of [Z.Haskell](https://github.com/ZHaskell/Z) project, provides basic IO operations:
 
 * IO resource management, resource pool
 * File system operations
@@ -62,7 +62,7 @@ startTCPServer defaultTCPServerConfig{
 
 ```bash
 # get code
-git clone --recursive git@github.com:haskell-Z/z-io.git
+git clone --recursive git@github.com:ZHaskell/z-io.git
 cd z-io
 # build
 cabal build
