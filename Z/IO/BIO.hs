@@ -108,7 +108,7 @@ import           Z.Data.Vector.Base64
 import           Z.Data.Vector.Hex
 import           Z.IO.Buffered
 import           Z.IO.Exception
-import qualified Z.IO.FileSystem        as FS
+import qualified Z.IO.FileSystem.Base   as FS
 import           Z.IO.Resource
 
 -- | A 'BIO'(blocked IO) node.

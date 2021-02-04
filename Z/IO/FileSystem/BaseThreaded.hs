@@ -7,7 +7,13 @@ Maintainer  : winterland1989@gmail.com
 Stability   : experimental
 Portability : non-portable
 
-This module provides filesystem API exactly same with `Z.IO.FileSystem`, operations(except 'seek') are implemented using libuv's threadpool to achieve non-block behavior (non-block here meaning won't block other haskell threads), which would be prefered when the operations' estimated time is long(>1ms) or running with a non-threaded haskell runtime, such as accessing network filesystem or scan a very large directory. Otherwise you may block RTS's capability thus all the other haskell threads live on it.
+This module provides filesystem API exactly same with `Z.IO.FileSystem.Base`,
+operations(except 'seek') are implemented using libuv's threadpool to achieve
+non-block behavior (non-block here meaning won't block other haskell threads),
+which would be prefered when the operations' estimated time is long(>1ms) or
+running with a non-threaded haskell runtime, such as accessing network filesystem
+or scan a very large directory. Otherwise you may block RTS's capability thus
+all the other haskell threads live on it.
 
 The threadpool version operations have overheads similar to safe FFI, but provide same adventages:
 
@@ -18,6 +24,9 @@ The threadpool version operations have overheads similar to safe FFI, but provid
 Most of the time you don't need this module though, since modern hardware(SSD) are sufficiently fast.
 
 -}
+
+-- FIXME: An elegant way to keep this module's API same with 'Z.IO.FileSystem.Base'
+-- automatically.
 
 module Z.IO.FileSystem.BaseThreaded
   ( -- * regular file devices
@@ -31,7 +40,7 @@ module Z.IO.FileSystem.BaseThreaded
   , unlink
   , mkdtemp
   , mkstemp
-  , rmdir, rmdirrf
+  , rmdir, rmrf
   , DirEntType(..)
   , scandir
   , scandirRecursively
@@ -117,6 +126,7 @@ import           Foreign.Marshal.Alloc    (allocaBytes)
 import           Foreign.Ptr
 import           Foreign.Storable         (peekElemOff)
 import           Prelude                  hiding (readFile, writeFile)
+import qualified Z.Data.Builder           as B
 import           Z.Data.CBytes            as CBytes
 import qualified Z.Data.JSON              as JSON
 import           Z.Data.PrimRef.PrimIORef
@@ -404,17 +414,36 @@ rmdir path = do
     uvm <- getUVManager
     withCBytesUnsafe path (\ p -> void . withUVRequest uvm $ hs_uv_fs_rmdir_threaded p)
 
--- | Equivalent to @rmdir -rf@
---
--- This function will try to remove folder and files contained by it.
-rmdirrf :: HasCallStack => CBytes -> IO ()
-rmdirrf path = do
-    ds <- scandir path
-    forM_ ds $ \ (d, t) -> do
-        if t /= DirEntDir
-        then unlink d
-        else rmdirrf =<< path `P.join` d
-    rmdir path
+-- | Removes a file or directory at path together with its contents and
+-- subdirectories. Symbolic links are removed without affecting their targets.
+-- If the path does not exist, nothing happens.
+rmrf :: HasCallStack => CBytes -> IO ()
+rmrf path =
+    withCBytesUnsafe path $ \path' ->
+    allocaBytes uvStatSize $ \s -> do
+        uvm <- getUVManager
+        withUVRequest' uvm (hs_uv_fs_stat_threaded path' s) $ \r -> do
+            let errno = fromIntegral r
+            case errno of
+              UV_ENOENT -> return ()
+              _ | errno < 0 -> do
+                  name <- uvErrName errno
+                  desc <- uvStdError errno
+                  throwUVError errno (IOEInfo name desc callStack)
+              _ -> do
+                  st <- peekUVStat s
+                  case stMode st .&. S_IFMT of
+                    S_IFREG -> unlink path
+                    S_IFLNK -> unlink path
+                    S_IFDIR -> do
+                        ds <- scandir path
+                        forM_ ds $ \ (d, t) ->
+                            if t /= DirEntDir then unlink d
+                                              else rmrf =<< path `P.join` d
+                        rmdir path
+                    mode    -> do
+                        let desc = "Unsupported file mode: " <> (B.buildText $ B.hex mode)
+                        throwIO $ UnsupportedOperation (IOEInfo "" desc callStack)
 
 --------------------------------------------------------------------------------
 
