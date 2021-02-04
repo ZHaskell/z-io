@@ -28,8 +28,9 @@ module Z.IO.FileSystem.Base
   , scandirRecursively
     -- ** File stats
   , FStat(..), UVTimeSpec(..)
-  , doesPathExist
+  , doesPathExist, doesFileExist, doesDirectoryExist
   , isLink, isDir, isFile
+  , isLinkFromSt, isDirFromSt, isFileFromSt
   , stat, lstat, fstat
   , rename
   , fsync, fdatasync
@@ -474,6 +475,7 @@ scandirRecursively dir p = loop [] =<< P.normalize dir
         ) acc0 =<< scandir pdir
 
 --------------------------------------------------------------------------------
+-- File Status
 
 -- | Does given path exist?
 doesPathExist :: CBytes -> IO Bool
@@ -485,17 +487,48 @@ doesPathExist path =
             UV_ENOENT -> return False
             _         -> return True
 
+-- | Returns True if the argument file exists and is not a directory, and False
+-- otherwise.
+doesFileExist :: CBytes -> IO Bool
+doesFileExist path =
+    withCBytesUnsafe path $ \path' ->
+    allocaBytes uvStatSize $ \size' -> do
+        r <- throwUVIf (hs_uv_fs_stat path' size') (\r -> r < 0 && r /= fromIntegral UV_ENOENT)
+        case fromIntegral r of
+            UV_ENOENT -> return False
+            _         -> (not . isDirFromSt) <$> peekUVStat size'
+
+-- | Returns True if the argument file exists and is either a directory or a
+-- symbolic link to a directory, and False otherwise.
+doesDirectoryExist :: CBytes -> IO Bool
+doesDirectoryExist path =
+    withCBytesUnsafe path $ \path' ->
+    allocaBytes uvStatSize $ \size' -> do
+        r <- throwUVIf (hs_uv_fs_stat path' size') (\r -> r < 0 && r /= fromIntegral UV_ENOENT)
+        case fromIntegral r of
+            UV_ENOENT -> return False
+            _         -> isDirFromSt <$> peekUVStat size'
+
 -- | If given path is a symbolic link?
 isLink :: HasCallStack => CBytes -> IO Bool
-isLink p = lstat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFLNK)
+isLink = fmap isLinkFromSt . lstat
 
 -- | If given path is a directory or a symbolic link to a directory?
 isDir :: HasCallStack => CBytes -> IO Bool
-isDir p = stat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFDIR)
+isDir = fmap isDirFromSt . stat
 
 -- | If given path is a file or a symbolic link to a file?
 isFile :: HasCallStack => CBytes -> IO Bool
-isFile p = stat p >>= \ st -> return (stMode st .&. S_IFMT == S_IFREG)
+isFile = fmap isFileFromSt . stat
+
+isLinkFromSt :: FStat -> Bool
+isLinkFromSt st = stMode st .&. S_IFMT == S_IFLNK
+
+isDirFromSt :: FStat -> Bool
+isDirFromSt st = stMode st .&. S_IFMT == S_IFDIR
+
+isFileFromSt :: FStat -> Bool
+isFileFromSt st = stMode st .&. S_IFMT == S_IFREG
 
 -- | Equivalent to <http://linux.die.net/man/2/stat stat(2)>
 stat :: HasCallStack => CBytes -> IO FStat

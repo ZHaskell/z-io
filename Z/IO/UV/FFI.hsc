@@ -564,7 +564,7 @@ data FStat = FStat
     , stCtim     :: {-# UNPACK #-} !UVTimeSpec
     , stBirthtim :: {-# UNPACK #-} !UVTimeSpec
     } deriving (Show, Read, Eq, Ord, Generic)
-        deriving anyclass (Print, JSON)
+      deriving anyclass (Print, JSON)
 
 uvStatSize :: Int
 uvStatSize = #{size uv_stat_t}
