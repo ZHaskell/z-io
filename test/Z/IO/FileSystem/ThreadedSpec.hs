@@ -49,7 +49,7 @@ spec = describe "filesystem (threadpool version) operations" $ do
                 written <- readExactly size i
                 written @?= content
 
-                fr <- newFilePtrT file 0
+                fr <- newFilePtr file 0
                 i <- newBufferedInput' 4096 fr
                 written <- readExactly size i
                 written @=? content
@@ -72,7 +72,7 @@ spec = describe "filesystem (threadpool version) operations" $ do
                 Just firstLine <- readLine i
                 firstLine  @=? fst (V.break (== c2w '\n') content2)
 
-                fr <- newFilePtrT file (fromIntegral $ size2 `div` 2)
+                fr <- newFilePtr file (fromIntegral $ size2 `div` 2)
                 i <- newBufferedInput' 4096 fr
                 replicateM_ 512 $ do
                     Just firstLine <- readLine i
