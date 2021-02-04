@@ -18,6 +18,9 @@ extra-source-files:         ChangeLog.md
                             README.md
                             LICENSE
 
+                            -- shared Haskell soruce
+                            Z/IO/FileSystem/_Shared.hs
+
                             -- zlib C sources
                             third_party/zlib/crc32.h
                             third_party/zlib/inffast.h 
