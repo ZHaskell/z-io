@@ -266,9 +266,8 @@ mkdir path mode = throwUVIfMinus_ . withCBytesUnsafe path $ \ p ->
 --
 -- Note mode is currently not implemented on Windows. On unix you should set
 -- execute bit if you want the directory is accessable(so that child folder
--- can be created), e.g. 0o777.
+-- can be created), e.g. 'DEFAULT_DIR_MODE'.
 --
--- >>> mkdirp "p/a" DEFAULT_DIR_MODE
 mkdirp :: HasCallStack => CBytes -> FileMode -> IO ()
 mkdirp path mode = do
     r <- withCBytesUnsafe path $ \ p -> hs_uv_fs_mkdir p mode

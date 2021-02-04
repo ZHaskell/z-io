@@ -25,6 +25,9 @@ exceptions and pull the sink(which indicate EOF) on producer side.
 @
 (sink, src) <- newTQueueNode 2  -- it's important to correctly set the numebr of producers
 
+--------------------------------------------------------------------------------
+-- producers
+
 forkIO $ do
     ...
     push x sink             -- producer using push
@@ -35,6 +38,10 @@ forkIO $ do
     ...
     (runBIO $ ... >|> sink) -- producer using BIO
         `onException` (pull sink)
+
+--------------------------------------------------------------------------------
+-- consumers
+
 forkIO $ do
     ...
     r <- pull src           -- consumer using pull

@@ -119,17 +119,17 @@ isDir = fmap isDirSt . stat
 isFile :: HasCallStack => CBytes -> IO Bool
 isFile = fmap isFileSt . stat
 
--- | Shortcut to @\ st -> stMode st .&. S_IFMT == S_IFLNK@
+-- | Shortcut to @\\ st -> stMode st .&. S_IFMT == S_IFLNK@
 --
 -- Note you should use 'lstat' to get the link's stat.
 isLinkSt :: FStat -> Bool
 isLinkSt st = stMode st .&. S_IFMT == S_IFLNK
 
--- | Shortcut to @\ st -> stMode st .&. S_IFMT == S_IFDIR@
+-- | Shortcut to @\\ st -> stMode st .&. S_IFMT == S_IFDIR@
 isDirSt :: FStat -> Bool
 isDirSt st = stMode st .&. S_IFMT == S_IFDIR
 
--- | Shortcut to @\ st -> stMode st .&. S_IFMT == S_IFREG@
+-- | Shortcut to @\\ st -> stMode st .&. S_IFMT == S_IFREG@
 isFileSt :: FStat -> Bool
 isFileSt st = stMode st .&. S_IFMT == S_IFREG
 
@@ -137,10 +137,8 @@ isFileSt st = stMode st .&. S_IFMT == S_IFREG
 
 -- | Make a temporary file under system 'Env.getTempDir' and automatically clean after used.
 --
--- @
--- > withResource (initTempFile "foo") $ printStd
--- > File 13
--- @
+-- >>> withResource (initTempFile "foo") $ printStd
+-- File 13
 --
 initTempFile :: CBytes -> Resource File
 initTempFile prefix =
@@ -150,10 +148,8 @@ initTempFile prefix =
 
 -- | Make a temporary directory under system 'Env.getTempDir' and automatically clean after used.
 --
--- @
--- > withResource (initTempDir "foo") $ printStd
+-- >>> withResource (initTempDir "foo") $ printStd
 -- "/tmp/fooxfWR0L"
--- @
 --
 initTempDir :: CBytes -> Resource CBytes
 initTempDir prefix =

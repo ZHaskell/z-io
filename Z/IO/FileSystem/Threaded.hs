@@ -283,7 +283,15 @@ mkdir path mode = do
     withCBytesUnsafe path $ \ p ->
         withUVRequest_ uvm (hs_uv_fs_mkdir_threaded p mode)
 
--- | The same as 'Z.IO.FileSystem.Base.mkdirp', but a threaded version.
+-- | Recursive directory creation function. Like 'mkdir', but makes all
+-- intermediate-level directories needed to contain the leaf directory.
+--
+-- Equivalent to @mkdir -p@,
+--
+-- Note mode is currently not implemented on Windows. On unix you should set
+-- execute bit if you want the directory is accessable(so that child folder
+-- can be created), e.g. 'DEFAULT_DIR_MODE'.
+--
 mkdirp :: HasCallStack => CBytes -> FileMode -> IO ()
 mkdirp path mode = do
     uvm <- getUVManager
@@ -327,6 +335,7 @@ unlink path = do
 --
 -- Note: the argument is the prefix of the temporary directory,
 -- so no need to add XXXXXX ending.
+--
 mkdtemp :: HasCallStack => CBytes -> IO CBytes
 mkdtemp path = do
     let size = CBytes.length path
@@ -336,7 +345,7 @@ mkdtemp path = do
             withUVRequest_ uvm (hs_uv_fs_mkdtemp_threaded p size p')
         return p''
 
--- | The same as 'Z.IO.FileSystem.Base.mkstemp', but a threaded version.
+-- | Equivalent to <mkstemp https://man7.org/linux/man-pages/man3/mkstemp.3.html>
 mkstemp :: HasCallStack => CBytes -> IO CBytes
 mkstemp template = do
     let size = CBytes.length template

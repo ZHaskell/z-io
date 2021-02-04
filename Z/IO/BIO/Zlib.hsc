@@ -7,7 +7,14 @@ Maintainer  : winterland1989@gmail.com
 Stability   : experimental
 Portability : non-portable
 
-This module provides <https://zlib.net zlib> bindings, with 'BIO' streaming interface.
+This module provides <https://zlib.net zlib> bindings, with 'BIO' streaming interface, e.g.
+
+@
+-- add compressor to your BIO chain to compress streaming blocks of 'V.Bytes'.
+(_, zlibCompressor) <- newCompress defaultCompressConfig{compressWindowBits = 31}
+runBIO $ src >|> zlibCompressor >|> sink
+@
+
 -}
 
 module Z.IO.BIO.Zlib(
