@@ -6,7 +6,7 @@
 [![Windows Build Status](https://github.com/ZHaskell/z-io/workflows/win-ci/badge.svg)](https://github.com/ZHaskell/z-io/actions)
 [![Docker Build Status](https://github.com/ZHaskell/z-io/workflows/docker-ci/badge.svg)](https://github.com/ZHaskell/z-io/actions)
 
-This package is part of [Z.Haskell](https://github.com/ZHaskell/Z) project, provides basic IO operations:
+This package is part of [Z.Haskell](https://z.haskell.world) project, provides basic IO operations:
 
 * IO resource management, resource pool
 * File system operations

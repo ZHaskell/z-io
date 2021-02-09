@@ -141,6 +141,7 @@ foreign import ccall unsafe hs_uv_listen_resume :: Ptr UVHandle -> IO ()
 foreign import ccall unsafe hs_uv_read_start :: Ptr UVHandle -> IO CInt
 foreign import ccall unsafe uv_read_stop :: Ptr UVHandle -> IO CInt
 foreign import ccall unsafe hs_uv_write :: Ptr UVHandle -> Ptr Word8 -> Int -> IO UVSlotUnsafe
+foreign import ccall unsafe hs_uv_try_write :: Ptr UVHandle -> Ptr Word8 -> Int -> IO Int
 
 foreign import ccall unsafe hs_uv_shutdown :: Ptr UVHandle -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_accept_check_start :: Ptr UVHandle -> IO CInt

@@ -81,10 +81,10 @@ import Z.IO.UV.Manager
 import Z.IO.Exception
 import Z.IO.Resource
 
--- | UDP socket client.
+-- | UDP socket.
 --
 -- UDP is not a sequential protocol, thus not an instance of 'Input\/Output'.
--- Message are received or sent individually, UDP socket client is NOT thread safe!
+-- Message are received or sent individually, UDP socket is NOT thread safe!
 -- Use 'MVar' 'UDP' in multiple threads.
 --
 data UDP = UDP
@@ -365,7 +365,11 @@ newRecvBuf bufSiz bufArrSiz = do
 
 -- | Recv UDP message within a loop
 --
--- Loop receiving can be faster since it can reuse receiving buffer.
+-- Loop receiving can be faster since it can reuse receiving buffer. Unlike TCP server
+-- from "Z.IO.Network.TCP"server, UDP worker function is called on current haskell thread
+-- instead of a forked one, if you have heavy computations to do within the worker function,
+-- consider using 'forkBa', or a producer-consumer architecture
+--
 recvUDPLoop :: HasCallStack
             => UDPRecvConfig
             -> UDP

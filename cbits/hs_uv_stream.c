@@ -93,6 +93,11 @@ HsInt hs_uv_write(uv_stream_t* handle, char* buf, HsInt buf_siz){
     } else return slot;
 }
 
+HsInt hs_uv_try_write(uv_stream_t* handle, char* buf, HsInt buf_siz){
+    uv_buf_t buf_t = { .base = buf, .len = (size_t)buf_siz };
+    return (HsInt)uv_try_write(handle, &buf_t, 1);
+}
+
 void hs_shutdown_cb(uv_shutdown_t* req, int status){
     HsInt slot = (HsInt)req->data;
     uv_loop_t* loop = req->handle->loop;

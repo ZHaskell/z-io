@@ -161,6 +161,27 @@ instance Output UVStream where
         -- OS will guarantee writing TTY and socket will not
         -- hang forever anyway.
         throwUVIfMinus_  (uninterruptibleMask_ $ takeMVar m)
+        {- wait for https://github.com/libuv/libuv/pull/2874
+        -- attempt blocking write first
+        r <- hs_uv_try_write hdl buf len
+        if  | r == len -> return ()
+            | r < 0 && r /= fromIntegral UV_EAGAIN -> throwUV r
+            | otherwise -> do
+                m <- withUVManager' uvm $ do
+                    reqSlot <- if r > 0
+                        then getUVSlot uvm (hs_uv_write hdl (buf `plusPtr` r) (len - r))
+                        else getUVSlot uvm (hs_uv_write hdl buf len)
+                    m <- getBlockMVar uvm reqSlot
+                    _ <- tryTakeMVar m
+                    return m
+                -- we can't cancel uv_write_t with current libuv,
+                -- otherwise disaster will happen if buffer got collected.
+                -- so we have to turn to uninterruptibleMask_'s help.
+                -- i.e. writing UVStream is an uninterruptible operation.
+                -- OS will guarantee writing TTY and socket will not
+                -- hang forever anyway.
+                throwUVIfMinus_  (uninterruptibleMask_ $ takeMVar m)
+        -}
 
 --------------------------------------------------------------------------------
 

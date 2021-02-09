@@ -27,12 +27,13 @@ module Z.IO.Network.TCP (
   , helloWorld
   , echo
   -- * Internal helper
+  , startServerLoop
   , setTCPNoDelay
   , setTCPKeepAlive
   , initTCPStream
   ) where
 
-import           Control.Concurrent.MVar
+import           Control.Concurrent
 import           Control.Monad
 import           Control.Monad.IO.Class
 import           Data.Primitive.PrimArray
@@ -106,13 +107,13 @@ data TCPServerConfig = TCPServerConfig
 defaultTCPServerConfig :: TCPServerConfig
 defaultTCPServerConfig = TCPServerConfig
     (SocketAddrIPv4 ipv4Any 8888)
-    128
+    256
     True
     30
 
--- | Start a server
+-- | Start a TCP server
 --
--- Fork new worker thread upon a new connection.
+-- Fork new worker threads upon a new connection.
 --
 startTCPServer :: HasCallStack
                => TCPServerConfig
@@ -120,13 +121,39 @@ startTCPServer :: HasCallStack
                                         -- run in a seperated haskell thread,
                                         -- will be closed upon exception or worker finishes.
                -> IO ()
-startTCPServer TCPServerConfig{..} tcpServerWorker = do
-    let backLog = max tcpListenBacklog 128
+startTCPServer TCPServerConfig{..} = startServerLoop
+    (max tcpListenBacklog 128)
+    initTCPStream
+    -- bind is safe without withUVManager
+    (\ serverHandle -> withSocketAddrUnsafe tcpListenAddr $ \ addrPtr -> do
+        throwUVIfMinus_ (uv_tcp_bind serverHandle addrPtr 0))
+    (\ fd worker -> void . forkBa $ do
+        -- It's important to use the worker thread's mananger instead of server's one!
+        uvm <- getUVManager
+        withResource (initUVStream (\ loop hdl -> do
+            throwUVIfMinus_ (uv_tcp_init loop hdl)
+            throwUVIfMinus_ (uv_tcp_open hdl fd)) uvm) $ \ uvs -> do
+            -- safe without withUVManager
+            when tcpServerWorkerNoDelay . throwUVIfMinus_ $
+                uv_tcp_nodelay (uvsHandle uvs) 1
+            when (tcpServerWorkerKeepAlive > 0) . throwUVIfMinus_ $
+                uv_tcp_keepalive (uvsHandle uvs) 1 tcpServerWorkerKeepAlive
+            worker uvs)
+
+-- | Start a server loop with different kind of @uv_stream@s, such as tcp or pipe.
+--
+startServerLoop :: HasCallStack
+                => Int -- ^ backLog
+                -> (UVManager -> Resource UVStream) -- ^ uv_tream_t initializer
+                -> (Ptr UVHandle -> IO ())          -- ^ bind function
+                -> (FD -> (UVStream -> IO ()) -> IO ()) -- ^ thread spawner
+                -> (UVStream -> IO ())                  -- ^ worker
+                -> IO ()
+{-# INLINABLE startServerLoop #-}
+startServerLoop backLog initStream bind spawn worker = do
     serverUVManager <- getUVManager
-    withResource (initTCPStream serverUVManager) $ \ (UVStream serverHandle serverSlot _ _) -> do
-        -- bind is safe without withUVManager
-        withSocketAddrUnsafe tcpListenAddr $ \ addrPtr -> do
-            throwUVIfMinus_ (uv_tcp_bind serverHandle addrPtr 0)
+    withResource (initStream serverUVManager) $ \ (UVStream serverHandle serverSlot _ _) -> do
+        bind serverHandle
         bracket
             (do check <- throwOOMIfNull $ hs_uv_check_alloc
                 throwUVIfMinus_ (hs_uv_check_init check serverHandle)
@@ -136,14 +163,14 @@ startTCPServer TCPServerConfig{..} tcpServerWorker = do
 -- The buffer passing of accept is a litte complicated here, to get maximum performance,
 -- we do batch accepting. i.e. recv multiple client inside libuv's event loop:
 --
--- we poke uvmanager's buffer table as a Ptr Word8, with byte size (backLog*sizeof(FD))
+-- We poke uvmanager's buffer table like a normal Ptr Word8, with byte size (backLog*sizeof(FD))
 -- inside libuv event loop, we cast the buffer back to int32_t* pointer.
 -- each accept callback push a new socket fd to the buffer, and increase a counter(buffer_size_table).
 -- backLog should be large enough(>128), so under windows we can't possibly filled it up within one
 -- uv_run, under unix we hacked uv internal to provide a stop and resume function, when backLog is
 -- reached, we will stop receiving.
 --
--- once back to haskell side, we read all accepted sockets and fork worker threads.
+-- Once back to haskell side, we read all accepted sockets and fork worker threads.
 -- if backLog is reached, we resume receiving from haskell side.
 --
 -- Step 1.
@@ -187,24 +214,13 @@ startTCPServer TCPServerConfig{..} tcpServerWorker = do
                             copyMutablePrimArray acceptBuf' 0 acceptBuf (acceptCountDown+1) acceptCount
                             unsafeFreezePrimArray acceptBuf'
 
-                        -- fork worker thread
+                        -- looping to fork worker threads
                         forM_ [0..sizeofPrimArray acceptBufCopy-1] $ \ i -> do
                             let fd = indexPrimArray acceptBufCopy i
                             if fd < 0
                             -- minus fd indicate a server error and we should close server
                             then throwUVIfMinus_ (return fd)
-                            -- It's important to use the worker thread's mananger instead of server's one!
-                            else void . forkBa $ do
-                                uvm <- getUVManager
-                                withResource (initUVStream (\ loop hdl -> do
-                                    throwUVIfMinus_ (uv_tcp_init loop hdl)
-                                    throwUVIfMinus_ (uv_tcp_open hdl fd)) uvm) $ \ uvs -> do
-                                    -- safe without withUVManager
-                                    when tcpServerWorkerNoDelay . throwUVIfMinus_ $
-                                        uv_tcp_nodelay (uvsHandle uvs) 1
-                                    when (tcpServerWorkerKeepAlive > 0) . throwUVIfMinus_ $
-                                        uv_tcp_keepalive (uvsHandle uvs) 1 tcpServerWorkerKeepAlive
-                                    tcpServerWorker uvs
+                            else spawn fd worker
 
 --------------------------------------------------------------------------------
 
