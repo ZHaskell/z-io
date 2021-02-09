@@ -1,5 +1,11 @@
 # Revision history for Z-IO
 
+## 0.6.1.0  -- 2020-02-09
+
+* Fix a bug in `newMagicSplitter/newLineSplitter` code.
+* Remove `sourceFromInput` and related functions to reduce API surface, use `newBufferedInput` with `sourceFromBuffered` instead.
+* Refactor server loop to allow more code sharing between `Z.IO.Network.TCP` and `Z.IO.Network.IPC`.
+
 ## 0.6.0.0  -- 2020-02-04
 
 * FileSystem: replace `DEFAULT_MODE` with `DEFAULT_FILE_MODE` & `DEFAULT_DIR_MODE`.
