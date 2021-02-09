@@ -176,7 +176,7 @@ infixl 3 >|>
 infixl 3 >~>
 
 -- | Connect two 'BIO' nodes, feed left one's output to right one's input.
-(>|>) :: BIO a b -> BIO b c -> BIO a c
+(>|>) :: HasCallStack => BIO a b -> BIO b c -> BIO a c
 {-# INLINE (>|>) #-}
 BIO pushA pullA >|> BIO pushB pullB = BIO push_ pull_
   where
@@ -199,7 +199,7 @@ BIO pushA pullA >|> BIO pushB pullB = BIO push_ pull_
 (>~>) = flip fmap
 
 -- | Connect BIO to an effectful function.
-(>!>) :: BIO a b -> (HasCallStack => b -> IO c) -> BIO a c
+(>!>) :: HasCallStack => BIO a b -> (b -> IO c) -> BIO a c
 {-# INLINE (>!>) #-}
 (>!>) BIO{..} f = BIO push_ pull_
   where
@@ -211,21 +211,21 @@ BIO pushA pullA >|> BIO pushB pullB = BIO push_ pull_
                   _       -> return Nothing
 
 -- | Connect two 'BIO' source, after first reach EOF, draw element from second.
-appendSource :: Source a -> Source a  -> IO (Source a)
+appendSource :: HasCallStack => Source a -> Source a  -> IO (Source a)
 {-# INLINE appendSource #-}
 b1 `appendSource` b2 = concatSource [b1, b2]
 
 -- | Fuse two 'BIO' sinks, i.e. everything written to the fused sink will be written to left and right sink.
 --
 -- Flush result 'BIO' will effectively flush both sink.
-joinSink :: Sink out -> Sink out -> Sink out
+joinSink :: HasCallStack => Sink out -> Sink out -> Sink out
 {-# INLINE joinSink #-}
 b1 `joinSink` b2 = fuseSink [b1, b2]
 
 -- | Fuse a list of 'BIO' sinks, everything written to the fused sink will be written to every sink in the list.
 --
 -- Flush result 'BIO' will effectively flush every sink in the list.
-fuseSink :: [Sink out] -> Sink out
+fuseSink :: HasCallStack => [Sink out] -> Sink out
 {-# INLINABLE fuseSink #-}
 fuseSink ss = BIO push_ pull_
   where
@@ -233,7 +233,7 @@ fuseSink ss = BIO push_ pull_
     pull_ = mapM_ pull ss >> return Nothing
 
 -- | Connect list of 'BIO' sources, after one reach EOF, draw element from next.
-concatSource :: [Source a] -> IO (Source a)
+concatSource :: HasCallStack => [Source a] -> IO (Source a)
 {-# INLINABLE concatSource #-}
 concatSource ss0 = newIORef ss0 >>= \ ref -> return (BIO{ pull = loop ref})
   where
@@ -248,7 +248,7 @@ concatSource ss0 = newIORef ss0 >>= \ ref -> return (BIO{ pull = loop ref})
                     _      -> writeIORef ref rest >> loop ref
 
 -- | Zip two 'BIO' source into one, reach EOF when either one reached EOF.
-zipSource :: Source a -> Source b -> IO (Source (a,b))
+zipSource :: HasCallStack => Source a -> Source b -> IO (Source (a,b))
 {-# INLINABLE zipSource #-}
 zipSource (BIO _ pullA) (BIO _ pullB) = do
     finRef <- newIORef False
@@ -268,7 +268,7 @@ zipSource (BIO _ pullA) (BIO _ pullB) = do
 -- | Zip two 'BIO' node into one, reach EOF when either one reached EOF.
 --
 -- The output item number should match, unmatched output will be discarded.
-zipBIO :: BIO a b -> BIO a c -> IO (BIO a (b, c))
+zipBIO :: HasCallStack => BIO a b -> BIO a c -> IO (BIO a (b, c))
 {-# INLINABLE zipBIO #-}
 zipBIO (BIO pushA pullA) (BIO pushB pullB) = do
     finRef <- newIORef False
@@ -367,7 +367,7 @@ runBlock_ BIO{..} inp = do
         case r of Just _ -> loop f
                   _      -> return ()
 
--- | Wrap a stream computation into a pure interface.
+-- | Wrap 'runBlock' into a pure interface.
 --
 -- You can wrap a stateful BIO computation(including the creation of 'BIO' node),
 -- when you can guarantee a computation is pure, e.g. compressing, decoding, etc.
@@ -408,7 +408,7 @@ runBlocks_ bio [] = loop
             Just _ -> loop
             _      -> return ()
 
--- | Wrap a stream computation into a pure interface.
+-- | Wrap 'runBlocks' into a pure interface.
 --
 -- Similar to 'unsafeRunBlock', but with a list of input blocks.
 unsafeRunBlocks :: HasCallStack => IO (BIO inp out) -> [inp] -> [out]
