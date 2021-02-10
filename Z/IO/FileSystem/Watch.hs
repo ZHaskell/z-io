@@ -20,21 +20,22 @@ runBIO $ src >|> sinkToIO printLineStd
 @
 -}
 
-module Z.IO.FileSystem.Watch (
-    FileEvent(..)
-  , watchDirs
-  , watchDirsRecursively
-  ) where
+module Z.IO.FileSystem.Watch
+    ( FileEvent(..)
+    , simpleWatchDirs
+    , watchDirs
+    , watchDirsRecursively
+    ) where
 
 import           Control.Concurrent
 import           Control.Monad
 import           Data.Bits
-import           Data.IORef
 import qualified Data.HashMap.Strict      as HM
+import           Data.IORef
 import qualified Data.List                as List
+import           Data.Primitive.PrimArray
 import           Data.Word
 import           GHC.Generics
-import           Data.Primitive.PrimArray
 import           Z.Data.Array
 import           Z.Data.Array.Unaligned
 import           Z.Data.CBytes            (CBytes)
@@ -48,18 +49,26 @@ import           Z.IO.BIO.Concurrent
 import           Z.IO.Exception
 import           Z.IO.FileSystem.Base
 import qualified Z.IO.FileSystem.FilePath as P
+import           Z.IO.LowResTimer
 import           Z.IO.UV.FFI
 import           Z.IO.UV.Manager
-import           Z.IO.LowResTimer
 
 -- | File event with path info.
 data FileEvent = FileAdd CBytes | FileRemove CBytes | FileModify CBytes
   deriving (Show, Read, Ord, Eq, Generic)
   deriving anyclass (Print, JSON)
 
+-- | Watching a list of given directories.
+simpleWatchDirs :: [CBytes]     -- ^ Directories to be watched
+                -> Bool         -- ^ Should recursive?
+                -> (FileEvent -> IO ())  -- ^ Callback function to handle 'FileEvent'
+                -> IO ()
+simpleWatchDirs dirs isRecursive callback = do
+    let watchFunc = if isRecursive == True then watchDirsRecursively else watchDirs
+    srcEvent <- join $ snd <$> watchFunc dirs
+    runBIO $ srcEvent >|> sinkToIO callback
 
--- | Start watching a list of given directories.
---
+-- | Start watching a list of given directories, stream version.
 watchDirs :: [CBytes] -> IO (IO (), IO (Source FileEvent))
 watchDirs dirs =  do
     forM_ dirs $ \ dir -> do
@@ -67,8 +76,7 @@ watchDirs dirs =  do
         unless b (throwUVIfMinus_ (return UV_ENOTDIR))
     watch_ 0 dirs
 
--- | Start watching a list of given directories recursively.
---
+-- | Start watching a list of given directories recursively, stream version.
 watchDirsRecursively :: [CBytes] -> IO (IO (), IO (Source FileEvent))
 watchDirsRecursively dirs = do
 #if defined(linux_HOST_OS)
@@ -195,7 +203,7 @@ watch_ flag dirs = do
             me' <- atomicModifyIORef' eRef $ \ me ->
                 case me of
                     Just e -> (Nothing, Just e)
-                    _ -> (Nothing, Nothing)
+                    _      -> (Nothing, Nothing)
             forM_ me' (push sink)
 
         me' <- atomicModifyIORef' eRef $ \ me ->
