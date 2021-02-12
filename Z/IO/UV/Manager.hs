@@ -65,7 +65,7 @@ import           Z.IO.UV.FFI
 
 data UVManager = UVManager
     { uvmBlockTable :: {-# UNPACK #-} !(IORef (UnliftedArray (MVar Int)))
-    -- ^ A array to store threads blocked on async IO.
+    -- ^ An array to store threads blocked on async IO.
     , uvmLoop       :: {-# UNPACK #-} !(Ptr UVLoop)
     -- ^ The uv loop refrerence
     , uvmLoopData   :: {-# UNPACK #-} !(Ptr UVLoopData)

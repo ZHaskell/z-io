@@ -85,7 +85,7 @@ initResource create release = Resource $ do
 -- This function is useful when you want to add some initialization and clean up action
 -- inside 'Resource' monad.
 --
-initResource_ :: IO () -> IO () -> Resource ()
+initResource_ :: IO a -> IO () -> Resource a
 {-# INLINE initResource_ #-}
 initResource_ create release = Resource $ do
     r <- create

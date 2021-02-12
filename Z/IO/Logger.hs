@@ -245,7 +245,7 @@ defaultColoredFmt ts level content cstack (ThreadId tid#) = do
 
 -- | A default JSON log formatter.
 --
--- @{"level":"FATAL","time":"2021-02-01T15:02:19+0800","loc":"<interactive>:27:1","theadId":606,"content":"..."}\\n@
+-- > {"level":"FATAL","time":"2021-02-01T15:02:19+0800","loc":"<interactive>:27:1","theadId":606,"content":"..."}\n
 defaultJSONFmt :: LogFormatter
 defaultJSONFmt ts level content cstack (ThreadId tid#) = do
     B.curly $ do

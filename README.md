@@ -32,7 +32,7 @@ This package is part of [Z.Haskell](https://z.haskell.world) project, provides b
 >
 > -- call getAddrInfo to perform DNS
 > head <$> getAddrInfo Nothing "www.bing.com" "http"
-AddrInfo {addrFlags = [AI_ADDRCONFIG,AI_V4MAPPED], addrFamily = SocketFamily 2, addrSocketType = SocketType 1, addrProtocol = ProtocolNumber 6, addrAddress = 204.79.197.200:80, addrCanonName = }
+AddrInfo {addrFlags = [AI_ADDRCONFIG,AI_V4MAPPED], addrFamily = SocketFamily 2, addrSocketType = SocketType 1, addrProtocol = ProtocolNumber 6, addrAddress = 204.79.197.200:80, addrCanonName = ""}
 >
 > import qualified Z.Data.Text as T
 > -- send a simple HTTP request

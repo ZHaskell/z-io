@@ -11,20 +11,19 @@ This module provides fs watcher based on libuv's fs_event, we also maintain watc
 support recursive watch(Linux's inotify).
 
 @
--- start watching threads, use returned close function to cleanup watching threads.
-(close, srcf) <- watchDirs ["fold_to_be_watch"]
--- dup a file event source
-src <- srcf
--- print event to stdout
-runBIO $ src >|> sinkToIO printLineStd
+-- start watching threads, cleanup watching threads automatically when finished.
+withResource (initWatchDirs ["fold_to_be_watch"] True) $ \ srcf -> do
+    -- dup a file event source
+    src <- srcf
+    -- print event to stdout
+    runBIO $ src >|> sinkToIO printStd
 @
 -}
 
 module Z.IO.FileSystem.Watch
     ( FileEvent(..)
-    , simpleWatchDirs
     , watchDirs
-    , watchDirsRecursively
+    , initWatchDirs
     ) where
 
 import           Control.Concurrent
@@ -52,44 +51,45 @@ import qualified Z.IO.FileSystem.FilePath as P
 import           Z.IO.LowResTimer
 import           Z.IO.UV.FFI
 import           Z.IO.UV.Manager
+import           Z.IO.Resource
 
 -- | File event with path info.
 data FileEvent = FileAdd CBytes | FileRemove CBytes | FileModify CBytes
-  deriving (Show, Read, Ord, Eq, Generic)
-  deriving anyclass (Print, JSON)
+    deriving (Show, Read, Ord, Eq, Generic)
+    deriving anyclass (Print, JSON)
 
 -- | Watching a list of given directories.
-simpleWatchDirs :: [CBytes]     -- ^ Directories to be watched
-                -> Bool         -- ^ Should recursive?
+watchDirs :: [CBytes]     -- ^ Directories to be watched
+                -> Bool         -- ^ recursively watch?
                 -> (FileEvent -> IO ())  -- ^ Callback function to handle 'FileEvent'
                 -> IO ()
-simpleWatchDirs dirs isRecursive callback = do
-    let watchFunc = if isRecursive == True then watchDirsRecursively else watchDirs
-    srcEvent <- join $ snd <$> watchFunc dirs
-    runBIO $ srcEvent >|> sinkToIO callback
+watchDirs dirs rec callback = do
+    withResource (initWatchDirs dirs rec) $ \ srcf -> do
+        src <- srcf
+        runBIO $ src >|> sinkToIO callback
 
 -- | Start watching a list of given directories, stream version.
-watchDirs :: [CBytes] -> IO (IO (), IO (Source FileEvent))
-watchDirs dirs =  do
-    forM_ dirs $ \ dir -> do
+initWatchDirs :: [CBytes]       -- ^ watching list
+          -> Bool           -- ^ recursively watch?
+          -> Resource (IO (Source FileEvent))
+initWatchDirs dirs False = do
+    liftIO . forM_ dirs $ \ dir -> do
         b <- isDir dir
         unless b (throwUVIfMinus_ (return UV_ENOTDIR))
     watch_ 0 dirs
-
--- | Start watching a list of given directories recursively, stream version.
-watchDirsRecursively :: [CBytes] -> IO (IO (), IO (Source FileEvent))
-watchDirsRecursively dirs = do
+initWatchDirs dirs _ = do
 #if defined(linux_HOST_OS)
     -- inotify doesn't support recursive watch, so we manually maintain watch list
-    subDirs <- forM dirs (\ dir -> scandirRecursively dir (\ _ t -> return (t == DirEntDir)))
+    subDirs <- liftIO . forM dirs $ \ dir ->
+        scandirRecursively dir (\ _ t -> return (t == DirEntDir))
     watch_ UV_FS_EVENT_RECURSIVE (List.concat (dirs:subDirs))
 #else
     watch_ UV_FS_EVENT_RECURSIVE dirs
 #endif
 
 -- Internal function to start watching
-watch_ :: CUInt -> [CBytes] -> IO (IO (), IO (Source FileEvent))
-watch_ flag dirs = do
+watch_ :: CUInt -> [CBytes] -> Resource (IO (Source FileEvent))
+watch_ flag dirs = fst <$> initResource (do
     -- HashMap to store all watchers
     mRef <- newMVar HM.empty
     -- there's only one place to pull the sink, that is cleanUpWatcher
@@ -100,7 +100,8 @@ watch_ flag dirs = do
         tid <- forkIO $ watchThread mRef dir' sink
         modifyMVar_ mRef $ \ m ->
             return $! HM.insert dir' tid m) `onException` cleanUpWatcher mRef sink
-    return (cleanUpWatcher mRef sink, srcf)
+    return (srcf, (sink, mRef)))
+    (\ (_, (sink, mRef)) -> cleanUpWatcher mRef sink)
   where
     eventBufSiz = defaultChunkSize
 
