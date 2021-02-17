@@ -49,9 +49,9 @@ import           Z.IO.Exception
 import           Z.IO.FileSystem.Base
 import qualified Z.IO.FileSystem.FilePath as P
 import           Z.IO.LowResTimer
+import           Z.IO.Resource
 import           Z.IO.UV.FFI
 import           Z.IO.UV.Manager
-import           Z.IO.Resource
 
 -- | File event with path info.
 data FileEvent = FileAdd CBytes | FileRemove CBytes | FileModify CBytes
@@ -60,9 +60,9 @@ data FileEvent = FileAdd CBytes | FileRemove CBytes | FileModify CBytes
 
 -- | Watching a list of given directories.
 watchDirs :: [CBytes]     -- ^ Directories to be watched
-                -> Bool         -- ^ recursively watch?
-                -> (FileEvent -> IO ())  -- ^ Callback function to handle 'FileEvent'
-                -> IO ()
+          -> Bool         -- ^ recursively watch?
+          -> (FileEvent -> IO ())  -- ^ Callback function to handle 'FileEvent'
+          -> IO ()
 watchDirs dirs rec callback = do
     withResource (initWatchDirs dirs rec) $ \ srcf -> do
         src <- srcf
@@ -70,8 +70,8 @@ watchDirs dirs rec callback = do
 
 -- | Start watching a list of given directories, stream version.
 initWatchDirs :: [CBytes]       -- ^ watching list
-          -> Bool           -- ^ recursively watch?
-          -> Resource (IO (Source FileEvent))
+              -> Bool           -- ^ recursively watch?
+              -> Resource (IO (Source FileEvent))
 initWatchDirs dirs False = do
     liftIO . forM_ dirs $ \ dir -> do
         b <- isDir dir
