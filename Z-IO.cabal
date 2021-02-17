@@ -1,422 +1,425 @@
-cabal-version:              2.4
-name:                       Z-IO
-version:                    0.6.1.0
-synopsis:                   Simple and high performance IO toolkit for Haskell
-description:                Simple and high performance IO toolkit for Haskell, including
-                            file system, network, ipc and more!
-license:                    BSD-3-Clause
-license-file:               LICENSE
-author:                     Z.Haskell Contributors
-maintainer:                 winterland1989@gmail.com
-copyright:                  (c) Z.Haskell Contributors
-category:                   Data
-build-type:                 Simple
-homepage:                   https://github.com/ZHaskell/Z-IO
-bug-reports:                https://github.com/ZHaskell/Z-IO/issues
+cabal-version:      2.4
+name:               Z-IO
+version:            0.6.1.0
+synopsis:           Simple and high performance IO toolkit for Haskell
+description:
+  Simple and high performance IO toolkit for Haskell, including
+  file system, network, ipc and more!
 
-flag demos
-    description:     Build benchamrk/demonstration programs
-    default:         False
-
-extra-source-files:         ChangeLog.md
-                            README.md
-                            LICENSE
-
-                            -- shared Haskell soruce
-                            Z/IO/FileSystem/_Shared.hs
-
-                            -- zlib C sources
-                            third_party/zlib/crc32.h
-                            third_party/zlib/inffast.h 
-                            third_party/zlib/inflate.h
-                            third_party/zlib/trees.h 
-                            third_party/zlib/deflate.h 
-                            third_party/zlib/inffixed.h
-                            third_party/zlib/inftrees.h 
-                            third_party/zlib/zutil.h
-                            third_party/zlib/gzguts.h
-
-                            -- cwalk header
-                            third_party/cwalk/include/cwalk.h
-
-                            -- libuv C sources
-                            third_party/libuv/include/uv.h
-                            third_party/libuv/include/uv/aix.h
-                            third_party/libuv/include/uv/android-ifaddrs.h
-                            third_party/libuv/include/uv/bsd.h
-                            third_party/libuv/include/uv/darwin.h
-                            third_party/libuv/include/uv/errno.h
-                            third_party/libuv/include/uv/linux.h
-                            third_party/libuv/include/uv/os390.h
-                            third_party/libuv/include/uv/posix.h
-                            third_party/libuv/include/uv/stdint-msvc2008.h
-                            third_party/libuv/include/uv/sunos.h
-                            third_party/libuv/include/uv/threadpool.h
-                            third_party/libuv/include/uv/tree.h
-                            third_party/libuv/include/uv/unix.h
-                            third_party/libuv/include/uv/version.h
-                            third_party/libuv/include/uv/win.h
-
-                            third_party/libuv/src/heap-inl.h
-                            third_party/libuv/src/idna.h
-                            third_party/libuv/src/queue.h
-                            third_party/libuv/src/strscpy.h
-                            third_party/libuv/src/uv-common.h
-
-                            third_party/libuv/src/win/atomicops-inl.h
-                            third_party/libuv/src/win/fs-fd-hash-inl.h
-                            third_party/libuv/src/win/handle-inl.h
-                            third_party/libuv/src/win/internal.h
-                            third_party/libuv/src/win/req-inl.h
-                            third_party/libuv/src/win/stream-inl.h
-                            third_party/libuv/src/win/winapi.h
-                            third_party/libuv/src/win/winsock.h
-
-                            third_party/libuv/src/unix/atomic-ops.h
-                            third_party/libuv/src/unix/darwin-stub.h
-                            third_party/libuv/src/unix/darwin-stub.h
-                            third_party/libuv/src/unix/internal.h
-                            third_party/libuv/src/unix/linux-syscalls.h
-                            third_party/libuv/src/unix/spinlock.h
-                            third_party/libuv/src/unix/os390-syscalls.h
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Z.Haskell Contributors
+maintainer:         winterland1989@gmail.com
+copyright:          (c) Z.Haskell Contributors
+category:           Data
+build-type:         Simple
+homepage:           https://github.com/ZHaskell/Z-IO
+bug-reports:        https://github.com/ZHaskell/Z-IO/issues
+extra-source-files:
+  ChangeLog.md
+  LICENSE
+  README.md
+  third_party/cwalk/include/cwalk.h
+  third_party/libuv/include/uv/aix.h
+  third_party/libuv/include/uv/android-ifaddrs.h
+  third_party/libuv/include/uv/bsd.h
+  third_party/libuv/include/uv/darwin.h
+  third_party/libuv/include/uv/errno.h
+  third_party/libuv/include/uv/linux.h
+  third_party/libuv/include/uv/os390.h
+  third_party/libuv/include/uv/posix.h
+  third_party/libuv/include/uv/stdint-msvc2008.h
+  third_party/libuv/include/uv/sunos.h
+  third_party/libuv/include/uv/threadpool.h
+  third_party/libuv/include/uv/tree.h
+  third_party/libuv/include/uv/unix.h
+  third_party/libuv/include/uv/version.h
+  third_party/libuv/include/uv/win.h
+  third_party/libuv/include/uv.h
+  third_party/libuv/src/heap-inl.h
+  third_party/libuv/src/idna.h
+  third_party/libuv/src/queue.h
+  third_party/libuv/src/strscpy.h
+  third_party/libuv/src/unix/atomic-ops.h
+  third_party/libuv/src/unix/darwin-stub.h
+  third_party/libuv/src/unix/internal.h
+  third_party/libuv/src/unix/linux-syscalls.h
+  third_party/libuv/src/unix/os390-syscalls.h
+  third_party/libuv/src/unix/spinlock.h
+  third_party/libuv/src/uv-common.h
+  third_party/libuv/src/win/atomicops-inl.h
+  third_party/libuv/src/win/fs-fd-hash-inl.h
+  third_party/libuv/src/win/handle-inl.h
+  third_party/libuv/src/win/internal.h
+  third_party/libuv/src/win/req-inl.h
+  third_party/libuv/src/win/stream-inl.h
+  third_party/libuv/src/win/winapi.h
+  third_party/libuv/src/win/winsock.h
+  third_party/zlib/crc32.h
+  third_party/zlib/deflate.h
+  third_party/zlib/gzguts.h
+  third_party/zlib/inffast.h
+  third_party/zlib/inffixed.h
+  third_party/zlib/inflate.h
+  third_party/zlib/inftrees.h
+  third_party/zlib/trees.h
+  third_party/zlib/zutil.h
+  Z/IO/FileSystem/_Shared.hs
 
 source-repository head
-    type:     git
-    location: git://github.com/ZHaskell/Z-IO.git
+  type:     git
+  location: git://github.com/ZHaskell/z-io.git
+
+flag demos
+  description: Build benchamrk/demonstration programs
+  default:     False
 
 flag no-pkg-config
-    description: Don't use pkg-config to check for library dependences(on platforms other than linux, win and osx)
-    default: False
-    manual: True
+  description:
+    Don't use pkg-config to check for library dependences(on platforms other than linux, win and osx)
+
+  default:     False
+  manual:      True
 
 library
-    exposed-modules:        Z.IO
-                            Z.IO.BIO
-                            Z.IO.BIO.Zlib
-                            Z.IO.BIO.Concurrent
+  exposed-modules:
+    Z.IO
+    Z.IO.BIO
+    Z.IO.BIO.Concurrent
+    Z.IO.BIO.Zlib
+    Z.IO.Buffered
+    Z.IO.Environment
+    Z.IO.Exception
+    Z.IO.FileSystem
+    Z.IO.FileSystem.Base
+    Z.IO.FileSystem.FilePath
+    Z.IO.FileSystem.Threaded
+    Z.IO.FileSystem.Watch
+    Z.IO.Logger
+    Z.IO.LowResTimer
+    Z.IO.Network
+    Z.IO.Network.DNS
+    Z.IO.Network.IPC
+    Z.IO.Network.SocketAddr
+    Z.IO.Network.TCP
+    Z.IO.Network.UDP
+    Z.IO.Process
+    Z.IO.Resource
+    Z.IO.StdStream
+    Z.IO.StdStream.Ansi
+    Z.IO.Time
+    Z.IO.UV.Errno
+    Z.IO.UV.FFI
+    Z.IO.UV.Manager
+    Z.IO.UV.UVStream
+    Z.IO.UV.Win
 
-                            Z.IO.FileSystem
-                            Z.IO.FileSystem.Base
-                            Z.IO.FileSystem.Threaded
-                            Z.IO.FileSystem.FilePath
-                            Z.IO.FileSystem.Watch
+  --Z.Compression.Zlib
 
-                            Z.IO.Network.SocketAddr
-                            Z.IO.Network.DNS
-                            Z.IO.Network.TCP
-                            Z.IO.Network.UDP
-                            Z.IO.Network.IPC
-                            Z.IO.Network
-                            Z.IO.Buffered
-                            Z.IO.Exception
-                            Z.IO.LowResTimer
-                            Z.IO.Logger
-                            Z.IO.Process
-                            Z.IO.Resource
-                            Z.IO.StdStream
-                            Z.IO.StdStream.Ansi
-                            Z.IO.Time
+  build-depends:
+    , base                  >=4.12  && <5.0
+    , containers            ^>=0.6
+    , exceptions            ^>=0.10
+    , primitive             >=0.7.1 && <0.7.2
+    , stm                   ^>=2.5
+    , time                  >=1.9   && <=2.0
+    , unix-time             >=0.4.7 && <=0.5
+    , unordered-containers  ^>=0.2
+    , Z-Data                ^>=0.6
 
-                            Z.IO.UV.Errno
-                            Z.IO.UV.FFI
-                            Z.IO.UV.Manager
-                            Z.IO.UV.UVStream
-                            Z.IO.UV.Win
+  default-language:   Haskell2010
+  default-extensions:
+    BangPatterns
+    BinaryLiterals
+    CApiFFI
+    CPP
+    ConstraintKinds
+    DataKinds
+    DefaultSignatures
+    DeriveAnyClass
+    DeriveGeneric
+    DerivingStrategies
+    ExistentialQuantification
+    FlexibleContexts
+    FlexibleInstances
+    GeneralizedNewtypeDeriving
+    KindSignatures
+    MagicHash
+    MultiParamTypeClasses
+    MultiWayIf
+    OverloadedStrings
+    PartialTypeSignatures
+    PatternSynonyms
+    PolyKinds
+    QuantifiedConstraints
+    QuasiQuotes
+    RankNTypes
+    RecordWildCards
+    ScopedTypeVariables
+    StandaloneDeriving
+    TemplateHaskell
+    TupleSections
+    TypeApplications
+    TypeFamilies
+    TypeFamilyDependencies
+    TypeOperators
+    UnboxedTuples
+    UnliftedFFITypes
+    ViewPatterns
 
-                            Z.IO.Environment
+  build-tool-depends: hsc2hs:hsc2hs -any, hspec-discover:hspec-discover -any
+  ghc-options:        -Wall
+  include-dirs:       include third_party/zlib third_party/cwalk/include
+  includes:
+    hs_cwalk.h
+    hs_uv.h
+    zconf.h
+    zlib.h
 
-                            -- Z.Compression.Zlib
+  install-includes:
+    hs_cwalk.h
+    hs_uv.h
+    zconf.h
+    zlib.h
 
-    build-depends:          base                    >= 4.12 && <5.0
-                          , exceptions              == 0.10.*
-                          , primitive               >= 0.7.1 && < 0.7.2
-                          , stm                     == 2.5.*
-                          , unordered-containers    == 0.2.*
-                          , containers              == 0.6.*
-                          , Z-Data                  == 0.6.* 
-                          , time                    >= 1.9 && <= 2.0
-                          , unix-time               >= 0.4.7 && <= 0.5
+  cc-options:         -march=native -D_FILE_OFFSET_BITS=64
+  c-sources:
+    cbits/hs_cwalk.c
+    cbits/hs_uv_base.c
+    cbits/hs_uv_dns.c
+    cbits/hs_uv_file.c
+    cbits/hs_uv_fs_event.c
+    cbits/hs_uv_process.c
+    cbits/hs_uv_stream.c
+    cbits/hs_uv_udp.c
+    cbits/hs_zlib.c
+    third_party/cwalk/src/cwalk.c
+    third_party/libuv/src/fs-poll.c
+    third_party/libuv/src/idna.c
+    third_party/libuv/src/inet.c
+    third_party/libuv/src/random.c
+    third_party/libuv/src/strscpy.c
+    third_party/libuv/src/threadpool.c
+    third_party/libuv/src/timer.c
+    third_party/libuv/src/uv-common.c
+    third_party/libuv/src/uv-data-getter-setters.c
+    third_party/libuv/src/version.c
+    third_party/zlib/adler32.c
+    third_party/zlib/compress.c
+    third_party/zlib/crc32.c
+    third_party/zlib/deflate.c
+    third_party/zlib/infback.c
+    third_party/zlib/inffast.c
+    third_party/zlib/inflate.c
+    third_party/zlib/inftrees.c
+    third_party/zlib/trees.c
+    third_party/zlib/uncompr.c
+    third_party/zlib/zutil.c
 
-    default-language:       Haskell2010
-    default-extensions:     BangPatterns
-                            BinaryLiterals
-                            CApiFFI
-                            ConstraintKinds
-                            CPP 
-                            DerivingStrategies
-                            DeriveGeneric
-                            DeriveAnyClass
-                            DefaultSignatures
-                            DataKinds
-                            ExistentialQuantification
-                            FlexibleContexts
-                            FlexibleInstances
-                            GeneralizedNewtypeDeriving 
-                            KindSignatures
-                            MagicHash
-                            MultiParamTypeClasses
-                            MultiWayIf
-                            PartialTypeSignatures
-                            PatternSynonyms 
-                            PolyKinds
-                            QuantifiedConstraints
-                            QuasiQuotes
-                            OverloadedStrings
-                            RankNTypes
-                            RecordWildCards
-                            ScopedTypeVariables 
-                            StandaloneDeriving
-                            TemplateHaskell
-                            TypeApplications
-                            TypeFamilyDependencies
-                            TypeFamilies
-                            TypeOperators
-                            TupleSections
-                            UnboxedTuples 
-                            UnliftedFFITypes 
-                            ViewPatterns
-    build-tool-depends:     hsc2hs:hsc2hs, hspec-discover:hspec-discover
-    ghc-options:            -Wall
+  -- Note: The c-sources list is taken from libuv's Makefile.mingw, needs to be
+  -- updated when we bump up libuv's version.
+  -- header files are ignored here, otherwise will confuse linker
+  if os(windows)
+    c-sources:
+      third_party/libuv/src/win/async.c
+      third_party/libuv/src/win/core.c
+      third_party/libuv/src/win/detect-wakeup.c
+      third_party/libuv/src/win/dl.c
+      third_party/libuv/src/win/error.c
+      third_party/libuv/src/win/fs-event.c
+      third_party/libuv/src/win/fs.c
+      third_party/libuv/src/win/getaddrinfo.c
+      third_party/libuv/src/win/getnameinfo.c
+      third_party/libuv/src/win/handle.c
+      third_party/libuv/src/win/loop-watcher.c
+      third_party/libuv/src/win/pipe.c
+      third_party/libuv/src/win/poll.c
+      third_party/libuv/src/win/process-stdio.c
+      third_party/libuv/src/win/process.c
+      third_party/libuv/src/win/signal.c
+      third_party/libuv/src/win/stream.c
+      third_party/libuv/src/win/tcp.c
+      third_party/libuv/src/win/thread.c
+      third_party/libuv/src/win/tty.c
+      third_party/libuv/src/win/udp.c
+      third_party/libuv/src/win/util.c
+      third_party/libuv/src/win/winapi.c
+      third_party/libuv/src/win/winsock.c
 
-    include-dirs:           include
-                            third_party/zlib
-                            third_party/cwalk/include
+    cc-options:
+      -Wall -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600 -march=native
 
-    includes:               hs_uv.h
-                            zlib.h
-                            zconf.h
-                            hs_cwalk.h
+    cpp-options:     -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600
+    include-dirs:    third_party/libuv/include third_party/libuv/src
 
-    install-includes:       hs_uv.h 
-                            zlib.h
-                            zconf.h
-                            hs_cwalk.h
+    -- The C runtime dependencies are imposed by libuv.
+    extra-libraries:
+      psapi
+      Iphlpapi
+      userenv
+      Ws2_32
 
-    cc-options:             -march=native -D_FILE_OFFSET_BITS=64
-    c-sources:              cbits/hs_uv_base.c
-                            cbits/hs_uv_dns.c
-                            cbits/hs_uv_file.c
-                            cbits/hs_uv_fs_event.c
-                            cbits/hs_uv_stream.c
-                            cbits/hs_uv_process.c
-                            cbits/hs_uv_udp.c
-                            cbits/hs_zlib.c
-                            cbits/hs_cwalk.c
-
-                            third_party/cwalk/src/cwalk.c
-
-                            third_party/zlib/adler32.c
-                            third_party/zlib/compress.c
-                            third_party/zlib/crc32.c
-                            third_party/zlib/deflate.c
-                            third_party/zlib/infback.c
-                            third_party/zlib/inffast.c
-                            third_party/zlib/inflate.c
-                            third_party/zlib/inftrees.c
-                            third_party/zlib/trees.c
-                            third_party/zlib/uncompr.c
-                            third_party/zlib/zutil.c
-
-                            third_party/libuv/src/fs-poll.c
-                            third_party/libuv/src/idna.c
-                            third_party/libuv/src/inet.c
-                            third_party/libuv/src/random.c
-                            third_party/libuv/src/strscpy.c
-                            third_party/libuv/src/threadpool.c
-                            third_party/libuv/src/timer.c
-                            third_party/libuv/src/uv-data-getter-setters.c
-                            third_party/libuv/src/uv-common.c
-                            third_party/libuv/src/version.c
-
-    -- Note: The c-sources list is taken from libuv's Makefile.mingw, needs to be
-    -- updated when we bump up libuv's version.
-    -- header files are ignored here, otherwise will confuse linker
-    if os(windows)
-        c-sources:
-                            third_party/libuv/src/win/async.c
-                            third_party/libuv/src/win/core.c
-                            third_party/libuv/src/win/detect-wakeup.c
-                            third_party/libuv/src/win/dl.c
-                            third_party/libuv/src/win/error.c
-                            third_party/libuv/src/win/fs-event.c
-                            third_party/libuv/src/win/fs.c
-                            third_party/libuv/src/win/getaddrinfo.c
-                            third_party/libuv/src/win/getnameinfo.c
-                            third_party/libuv/src/win/handle.c
-                            third_party/libuv/src/win/loop-watcher.c
-                            third_party/libuv/src/win/pipe.c
-                            third_party/libuv/src/win/poll.c
-                            third_party/libuv/src/win/process-stdio.c
-                            third_party/libuv/src/win/process.c
-                            third_party/libuv/src/win/signal.c
-                            third_party/libuv/src/win/stream.c
-                            third_party/libuv/src/win/tcp.c
-                            third_party/libuv/src/win/thread.c
-                            third_party/libuv/src/win/tty.c
-                            third_party/libuv/src/win/udp.c
-                            third_party/libuv/src/win/util.c
-                            third_party/libuv/src/win/winapi.c
-                            third_party/libuv/src/win/winsock.c
-
-        cc-options:         -Wall -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600 -march=native
-        cpp-options:        -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600
-        include-dirs:       third_party/libuv/include
-                            third_party/libuv/src
-        -- The C runtime dependencies are imposed by libuv.
-        extra-libraries:    psapi, Iphlpapi, userenv, Ws2_32
-    else
-        if os(linux)
-            c-sources:          third_party/libuv/src/fs-poll.c
-                                third_party/libuv/src/idna.c
-                                third_party/libuv/src/inet.c
-                                third_party/libuv/src/random.c
-                                third_party/libuv/src/strscpy.c
-                                third_party/libuv/src/threadpool.c
-                                third_party/libuv/src/timer.c
-                                third_party/libuv/src/uv-data-getter-setters.c
-                                third_party/libuv/src/uv-common.c
-                                third_party/libuv/src/version.c
-
-                                third_party/libuv/src/unix/async.c
-                                third_party/libuv/src/unix/core.c
-                                third_party/libuv/src/unix/dl.c
-                                third_party/libuv/src/unix/fs.c
-                                third_party/libuv/src/unix/getaddrinfo.c
-                                third_party/libuv/src/unix/getnameinfo.c
-                                third_party/libuv/src/unix/loop.c
-                                third_party/libuv/src/unix/loop-watcher.c
-                                third_party/libuv/src/unix/pipe.c
-                                third_party/libuv/src/unix/poll.c
-                                third_party/libuv/src/unix/process.c
-                                third_party/libuv/src/unix/random-devurandom.c
-                                third_party/libuv/src/unix/signal.c
-                                third_party/libuv/src/unix/stream.c
-                                third_party/libuv/src/unix/tcp.c
-                                third_party/libuv/src/unix/thread.c
-                                third_party/libuv/src/unix/tty.c
-                                third_party/libuv/src/unix/udp.c
-
-                                third_party/libuv/src/unix/linux-core.c
-                                third_party/libuv/src/unix/linux-inotify.c
-                                third_party/libuv/src/unix/linux-syscalls.c
-                                third_party/libuv/src/unix/procfs-exepath.c
-                                third_party/libuv/src/unix/proctitle.c
-                                third_party/libuv/src/unix/random-getrandom.c
-                                third_party/libuv/src/unix/random-sysctl-linux.c
-
-            include-dirs:       third_party/libuv/include
-                                third_party/libuv/src/unix
-                                third_party/libuv/src
-            cc-options:        -Wall -march=native
-        else
-            if os(osx)
-                c-sources:          third_party/libuv/src/fs-poll.c
-                                    third_party/libuv/src/idna.c
-                                    third_party/libuv/src/inet.c
-                                    third_party/libuv/src/random.c
-                                    third_party/libuv/src/strscpy.c
-                                    third_party/libuv/src/threadpool.c
-                                    third_party/libuv/src/timer.c
-                                    third_party/libuv/src/uv-data-getter-setters.c
-                                    third_party/libuv/src/uv-common.c
-                                    third_party/libuv/src/version.c
-
-                                    third_party/libuv/src/unix/async.c
-                                    third_party/libuv/src/unix/core.c
-                                    third_party/libuv/src/unix/dl.c
-                                    third_party/libuv/src/unix/fs.c
-                                    third_party/libuv/src/unix/getaddrinfo.c
-                                    third_party/libuv/src/unix/getnameinfo.c
-                                    third_party/libuv/src/unix/loop.c
-                                    third_party/libuv/src/unix/loop-watcher.c
-                                    third_party/libuv/src/unix/pipe.c
-                                    third_party/libuv/src/unix/poll.c
-                                    third_party/libuv/src/unix/process.c
-                                    third_party/libuv/src/unix/random-devurandom.c
-                                    third_party/libuv/src/unix/signal.c
-                                    third_party/libuv/src/unix/stream.c
-                                    third_party/libuv/src/unix/tcp.c
-                                    third_party/libuv/src/unix/thread.c
-                                    third_party/libuv/src/unix/tty.c
-                                    third_party/libuv/src/unix/udp.c
-
-                                    third_party/libuv/src/unix/bsd-ifaddrs.c
-                                    third_party/libuv/src/unix/darwin-proctitle.c
-                                    third_party/libuv/src/unix/darwin.c
-                                    third_party/libuv/src/unix/fsevents.c
-                                    third_party/libuv/src/unix/kqueue.c
-                                    third_party/libuv/src/unix/proctitle.c
-                                    third_party/libuv/src/unix/random-getentropy.c
-                                   
-                include-dirs:       third_party/libuv/include
-                                    third_party/libuv/src/unix
-                                    third_party/libuv/src
-                cc-options:         -Wall -march=native
-
-            else
-                if flag(no-pkg-config)
-                    extra-libraries:    uv
-                else
-                    pkgconfig-depends:  libuv >= 1.32
-        
-test-suite Z-IO-Test
-    type:                   exitcode-stdio-1.0
-    main-is:                Spec.hs
-    hs-source-dirs:         test/
-    build-depends:          base
-                          , Z-IO    
-                          , Z-Data
-                          , hspec                   >= 2.5.4
-                          , hashable
-                          , HUnit
-                          , QuickCheck              >= 2.10
-                          , quickcheck-instances
-                          , scientific
-                          , primitive
-                          , zlib
-                          , bytestring
-
-    other-modules:          Z.IO.BIOSpec
-                            Z.IO.BIO.ZlibSpec
-                            Z.IO.BIO.ConcurrentSpec
-                            Z.IO.FileSystem.ThreadedSpec
-                            Z.IO.FileSystemSpec
-                            Z.IO.Network.UDPSpec
-                            Z.IO.Network.TCPSpec
-                            Z.IO.Network.IPCSpec
-                            Z.IO.LowResTimerSpec
-                            Z.IO.ProcessSpec
-                            Z.IO.ResourceSpec
-
-
+  else
     if os(linux)
-        other-modules:          Z.IO.Network.IPCSpec
+      c-sources:
+        third_party/libuv/src/fs-poll.c
+        third_party/libuv/src/idna.c
+        third_party/libuv/src/inet.c
+        third_party/libuv/src/random.c
+        third_party/libuv/src/strscpy.c
+        third_party/libuv/src/threadpool.c
+        third_party/libuv/src/timer.c
+        third_party/libuv/src/unix/async.c
+        third_party/libuv/src/unix/core.c
+        third_party/libuv/src/unix/dl.c
+        third_party/libuv/src/unix/fs.c
+        third_party/libuv/src/unix/getaddrinfo.c
+        third_party/libuv/src/unix/getnameinfo.c
+        third_party/libuv/src/unix/linux-core.c
+        third_party/libuv/src/unix/linux-inotify.c
+        third_party/libuv/src/unix/linux-syscalls.c
+        third_party/libuv/src/unix/loop-watcher.c
+        third_party/libuv/src/unix/loop.c
+        third_party/libuv/src/unix/pipe.c
+        third_party/libuv/src/unix/poll.c
+        third_party/libuv/src/unix/process.c
+        third_party/libuv/src/unix/procfs-exepath.c
+        third_party/libuv/src/unix/proctitle.c
+        third_party/libuv/src/unix/random-devurandom.c
+        third_party/libuv/src/unix/random-getrandom.c
+        third_party/libuv/src/unix/random-sysctl-linux.c
+        third_party/libuv/src/unix/signal.c
+        third_party/libuv/src/unix/stream.c
+        third_party/libuv/src/unix/tcp.c
+        third_party/libuv/src/unix/thread.c
+        third_party/libuv/src/unix/tty.c
+        third_party/libuv/src/unix/udp.c
+        third_party/libuv/src/uv-common.c
+        third_party/libuv/src/uv-data-getter-setters.c
+        third_party/libuv/src/version.c
 
-    ghc-options:            -threaded
-    default-language:       Haskell2010
-    build-tool-depends:     hspec-discover:hspec-discover == 2.*
+      include-dirs:
+        third_party/libuv/include third_party/libuv/src/unix
+        third_party/libuv/src
+
+      cc-options:   -Wall -march=native
+
+    else
+      if os(osx)
+        c-sources:
+          third_party/libuv/src/fs-poll.c
+          third_party/libuv/src/idna.c
+          third_party/libuv/src/inet.c
+          third_party/libuv/src/random.c
+          third_party/libuv/src/strscpy.c
+          third_party/libuv/src/threadpool.c
+          third_party/libuv/src/timer.c
+          third_party/libuv/src/unix/async.c
+          third_party/libuv/src/unix/bsd-ifaddrs.c
+          third_party/libuv/src/unix/core.c
+          third_party/libuv/src/unix/darwin-proctitle.c
+          third_party/libuv/src/unix/darwin.c
+          third_party/libuv/src/unix/dl.c
+          third_party/libuv/src/unix/fs.c
+          third_party/libuv/src/unix/fsevents.c
+          third_party/libuv/src/unix/getaddrinfo.c
+          third_party/libuv/src/unix/getnameinfo.c
+          third_party/libuv/src/unix/kqueue.c
+          third_party/libuv/src/unix/loop-watcher.c
+          third_party/libuv/src/unix/loop.c
+          third_party/libuv/src/unix/pipe.c
+          third_party/libuv/src/unix/poll.c
+          third_party/libuv/src/unix/process.c
+          third_party/libuv/src/unix/proctitle.c
+          third_party/libuv/src/unix/random-devurandom.c
+          third_party/libuv/src/unix/random-getentropy.c
+          third_party/libuv/src/unix/signal.c
+          third_party/libuv/src/unix/stream.c
+          third_party/libuv/src/unix/tcp.c
+          third_party/libuv/src/unix/thread.c
+          third_party/libuv/src/unix/tty.c
+          third_party/libuv/src/unix/udp.c
+          third_party/libuv/src/uv-common.c
+          third_party/libuv/src/uv-data-getter-setters.c
+          third_party/libuv/src/version.c
+
+        include-dirs:
+          third_party/libuv/include third_party/libuv/src/unix
+          third_party/libuv/src
+
+        cc-options:   -Wall -march=native
+
+      else
+        if flag(no-pkg-config)
+          extra-libraries: uv
+
+        else
+          pkgconfig-depends: libuv ==1.32 || >1.32
+
+test-suite Z-IO-Test
+  type:               exitcode-stdio-1.0
+  main-is:            Spec.hs
+  hs-source-dirs:     test/
+  build-depends:
+    , base
+    , bytestring
+    , hashable
+    , hspec                 >=2.5.4
+    , HUnit
+    , primitive
+    , QuickCheck            >=2.10
+    , quickcheck-instances
+    , scientific
+    , Z-Data
+    , Z-IO
+    , zlib
+
+  other-modules:
+    Z.IO.BIO.ConcurrentSpec
+    Z.IO.BIO.ZlibSpec
+    Z.IO.BIOSpec
+    Z.IO.FileSystem.ThreadedSpec
+    Z.IO.FileSystemSpec
+    Z.IO.LowResTimerSpec
+    Z.IO.Network.IPCSpec
+    Z.IO.Network.TCPSpec
+    Z.IO.Network.UDPSpec
+    Z.IO.ProcessSpec
+    Z.IO.ResourceSpec
+
+  if os(linux)
+    other-modules: Z.IO.Network.IPCSpec
+
+  ghc-options:        -threaded
+  default-language:   Haskell2010
+  build-tool-depends: hspec-discover:hspec-discover ==2.*
 
 benchmark z-io-gettime
-    if !flag(demos)
-      buildable: False
-    type:                   exitcode-stdio-1.0
-    main-is:                GetTime.hs
-    hs-source-dirs:         bench/
-    build-depends:          base
-                          , Z-IO
-                          , Z-Data
-                          , criterion ^>= 1.5
-                          , time      ^>= 1.9
-    default-language:       Haskell2010
+  type:             exitcode-stdio-1.0
+  main-is:          GetTime.hs
+  hs-source-dirs:   bench/
+  build-depends:
+    , base
+    , criterion  ^>=1.5
+    , time       ^>=1.9
+    , Z-Data
+    , Z-IO
+
+  default-language: Haskell2010
+
+  if !flag(demos)
+    buildable: False
 
 executable z-io-http-bench
-    if !flag(demos)
-      buildable: False
-    type:                   exitcode-stdio-1.0
-    main-is:                Http.hs
-    hs-source-dirs:         bench/
-    build-depends:          base
-                          , Z-IO
-                          , Z-Data
-    default-language:       Haskell2010
-    ghc-options:            -O2 -threaded -rtsopts -with-rtsopts=-N
+  main-is:          Http.hs
+  hs-source-dirs:   bench/
+  build-depends:
+    , base
+    , Z-Data
+    , Z-IO
+
+  default-language: Haskell2010
+  ghc-options:      -threaded -rtsopts -with-rtsopts=-N
+
+  if !flag(demos)
+    buildable: False
