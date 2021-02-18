@@ -117,11 +117,10 @@ library
                             Z.IO.UV.FFI
                             Z.IO.UV.Manager
                             Z.IO.UV.UVStream
-                            Z.IO.UV.Win
 
                             Z.IO.Environment
 
-                            -- Z.Compression.Zlib
+    other-modules:          Z.IO.UV.Win
 
     build-depends:          base                    >= 4.12 && <5.0
                           , exceptions              == 0.10.*
