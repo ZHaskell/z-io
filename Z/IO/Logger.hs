@@ -37,7 +37,7 @@ main = withDefaultLogger $ do
 
 module Z.IO.Logger
   ( -- * A simple Logger type
-    Logger(..)
+    Logger
   , LoggerConfig(..)
   , defaultLoggerConfig
   , setDefaultLogger
@@ -48,12 +48,11 @@ module Z.IO.Logger
     -- * Create a new logger
     -- ** Base
   , newLogger
+  , newStdLogger
   , newFileLogger
     -- * Helpers
-  , newStdSimpleLogger
   , newStdColoredLogger
   , newStdJSONLogger
-  , newFileSimpleLogger
   , newFileJSONLogger
 
     -- * logging functions
@@ -71,12 +70,10 @@ module Z.IO.Logger
   , fatalTo
   , otherLevelTo
 
-    -- * Helpers to write new logger
-  , defaultTSCache
+    -- * Helpers to write new log formatter
+  , LogFormatter, defaultFmt, defaultColoredFmt, defaultJSONFmt
   , defaultFmtCallStack
   , defaultLevelFmt
-  , LogFormatter, defaultFmt, defaultColoredFmt, defaultJSONFmt
-  , pushLogIORef, flushLogIORef
 
     -- * Constants
     -- ** Level
@@ -113,7 +110,7 @@ import           Z.IO.Time
 
 -------------------------------------------------------------------------------
 
-type LogFormatter = B.Builder ()            -- ^ data\/time string
+type LogFormatter = B.Builder ()            -- ^ data\/time string(second precision)
                   -> Level                  -- ^ log level
                   -> B.Builder ()           -- ^ log content
                   -> CallStack              -- ^ call stack trace
@@ -144,15 +141,18 @@ data LoggerConfig = LoggerConfig
     -- ^ Buffer size to build each log line
     , loggerConfigLevel      :: {-# UNPACK #-} !Level
     -- ^ Config log's filter level
+    , loggerFormatter        :: LogFormatter
+    -- ^ Log formatter
     }
 
 -- | A default logger config with
 --
--- * 0.1s minimal flush interval
+-- * 0.5s minimal flush interval
 -- * line buffer size 240 bytes
 -- * show everything by default
+-- * 'defaultFmt'
 defaultLoggerConfig :: LoggerConfig
-defaultLoggerConfig = LoggerConfig 1 240 NOTSET
+defaultLoggerConfig = LoggerConfig 5 240 NOTSET defaultFmt
 
 -- | A default timestamp cache with format @%Y-%m-%dT%H:%M:%S%Z@('iso8061DateFormat').
 --
@@ -166,52 +166,50 @@ defaultTSCache = unsafePerformIO $ do
 
 -------------------------------------------------------------------------------
 
--- | Make a new logger.
+-- | Make a new logger with given write device.
 newLogger :: LoggerConfig
           -> MVar BufferedOutput
-          -> LogFormatter
           -> IO Logger
-newLogger LoggerConfig{..} oLock fmt = do
+newLogger LoggerConfig{..} oLock = do
     logsRef <- newIORef []
     let flush = flushLogIORef oLock logsRef
     throttledFlush <- throttleTrailing_ loggerMinFlushInterval flush
     return $ Logger (pushLogIORef logsRef loggerLineBufSize)
-                    flush throttledFlush defaultTSCache fmt
+                    flush throttledFlush defaultTSCache loggerFormatter
                     loggerConfigLevel
 
--- | Make a new file based logger.
-newFileLogger :: LoggerConfig
-              -> CB.CBytes
-              -> LogFormatter
-              -> IO Logger
-newFileLogger config path fmt = do
-    let res = ZF.initFile path (ZF.O_CREAT .|. ZF.O_RDWR .|. ZF.O_APPEND) ZF.DEFAULT_FILE_MODE
-    (file, _closeFunc) <- acquire res
-    oLock <- newMVar =<< newBufferedOutput file
-    newLogger config oLock fmt
+-- | Make a new logger write to 'stderrBuf'.
+newStdLogger :: LoggerConfig -> IO Logger
+newStdLogger config = newLogger config stderrBuf
 
--- | Make a new structured JSON logger(connected to stderr),
--- see 'defaultJSONFmt'
-newStdJSONLogger :: LoggerConfig -> IO Logger
-newStdJSONLogger config = newLogger config stderrBuf defaultJSONFmt
-
--- | Make a new colored logger(connected to stderr).
+-- | Make a new colored logger write to 'stderrBuf'.
 --
 -- This logger will output colorized log if stderr is connected to TTY.
 newStdColoredLogger :: LoggerConfig -> IO Logger
 newStdColoredLogger config =
     let fmt = if isStdStreamTTY stderr then defaultColoredFmt else defaultFmt
-     in newLogger config stderrBuf fmt
+    in newLogger config{loggerFormatter = fmt} stderrBuf
 
--- | Make a new simple logger(connected to stderr), see 'defaultFmt'.
-newStdSimpleLogger :: LoggerConfig -> IO Logger
-newStdSimpleLogger config = newLogger config stderrBuf defaultFmt
+-- | Make a new JSON logger write to 'stderrBuf' with 'defaultJSONFmt'.
+newStdJSONLogger :: LoggerConfig -> IO Logger
+newStdJSONLogger config = newLogger config{loggerFormatter = defaultJSONFmt} stderrBuf
 
-newFileSimpleLogger :: LoggerConfig -> CB.CBytes -> IO Logger
-newFileSimpleLogger config path = newFileLogger config path defaultFmt
+-- | Make a new file based logger with 'defaultFmt'.
+--
+-- The file will be opened in append mode.
+newFileLogger :: LoggerConfig -> CB.CBytes -> IO Logger
+newFileLogger config path = do
+    let res = ZF.initFile path (ZF.O_CREAT .|. ZF.O_RDWR .|. ZF.O_APPEND) ZF.DEFAULT_FILE_MODE
+    (file, _closeFunc) <- acquire res
+    oLock <- newMVar =<< newBufferedOutput file
+    newLogger config oLock
 
+-- | Make a new file based JSON logger with 'defaultJSONFmt'.
+--
+-- The file will be opened in append mode.
 newFileJSONLogger :: LoggerConfig -> CB.CBytes -> IO Logger
-newFileJSONLogger config path = newFileLogger config path defaultJSONFmt
+newFileJSONLogger config path =
+    newFileLogger config{loggerFormatter = defaultJSONFmt} path
 
 -------------------------------------------------------------------------------
 

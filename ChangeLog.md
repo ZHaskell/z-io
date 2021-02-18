@@ -1,5 +1,12 @@
 # Revision history for Z-IO
 
+## 0.6.2.0  -- 2020-02-18
+
+* Hide `Logger` constructor from `Z.IO.Logger`, remove implementation details such as `defaultTSCache`, `pushLogIORef`, `flushLogIORef`, add `loggerFormatter` to `LoggerConfig`.
+* Add `newStdLogger/newFileLogger/...` to make new logger easily.
+* Rework `Z.IO.FileSystem.Watch`'s API, change `watchDirs` to accept a recursive param and a callback.
+* Hide `Z.IO.UV.Win` module, which should not be directly used by user.
+
 ## 0.6.1.0  -- 2020-02-09
 
 * Fix a bug in `newMagicSplitter/newLineSplitter` code.
