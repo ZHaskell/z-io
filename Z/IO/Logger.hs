@@ -44,9 +44,18 @@ module Z.IO.Logger
   , getDefaultLogger
   , flushDefaultLogger
   , withDefaultLogger
+
+    -- * Create a new logger
+    -- ** Base
   , newLogger
-  , newColoredLogger
-  , newJSONLogger
+  , newFileLogger
+    -- * Helpers
+  , newStdSimpleLogger
+  , newStdColoredLogger
+  , newStdJSONLogger
+  , newFileSimpleLogger
+  , newFileJSONLogger
+
     -- * logging functions
   , debug
   , info
@@ -54,18 +63,21 @@ module Z.IO.Logger
   , fatal
   , critical
   , otherLevel
+
     -- * logging functions with specific logger
   , debugTo
   , infoTo
   , warningTo
   , fatalTo
   , otherLevelTo
+
     -- * Helpers to write new logger
   , defaultTSCache
   , defaultFmtCallStack
   , defaultLevelFmt
   , LogFormatter, defaultFmt, defaultColoredFmt, defaultJSONFmt
   , pushLogIORef, flushLogIORef
+
     -- * Constants
     -- ** Level
   , Level
@@ -79,22 +91,27 @@ module Z.IO.Logger
 
 import           Control.Concurrent.MVar
 import           Control.Monad
+import           Data.Bits               ((.|.))
 import           Data.IORef
-import           Foreign.C.Types         (CInt(..))
-import           GHC.Conc.Sync           (ThreadId(..), myThreadId)
+import           Foreign.C.Types         (CInt (..))
+import           GHC.Conc.Sync           (ThreadId (..), myThreadId)
 import           GHC.Exts                (ThreadId#)
 import           GHC.Stack
 import           System.IO.Unsafe        (unsafePerformIO)
 import qualified Z.Data.Builder          as B
-import qualified Z.Data.JSON.Builder     as JB
 import qualified Z.Data.CBytes           as CB
+import qualified Z.Data.JSON.Builder     as JB
 import           Z.Data.Vector.Base      as V
 import           Z.IO.Buffered
 import           Z.IO.Exception
+import qualified Z.IO.FileSystem         as ZF
 import           Z.IO.LowResTimer
+import           Z.IO.Resource
 import           Z.IO.StdStream
 import           Z.IO.StdStream.Ansi     (AnsiColor (..), color)
 import           Z.IO.Time
+
+-------------------------------------------------------------------------------
 
 type LogFormatter = B.Builder ()            -- ^ data\/time string
                   -> Level                  -- ^ log level
@@ -147,45 +164,56 @@ defaultTSCache = unsafePerformIO $ do
         t <- getSystemTime'
         CB.toBuilder <$> formatSystemTime iso8061DateFormat t
 
+-------------------------------------------------------------------------------
+
+-- | Make a new logger.
+newLogger :: LoggerConfig
+          -> MVar BufferedOutput
+          -> LogFormatter
+          -> IO Logger
+newLogger LoggerConfig{..} oLock fmt = do
+    logsRef <- newIORef []
+    let flush = flushLogIORef oLock logsRef
+    throttledFlush <- throttleTrailing_ loggerMinFlushInterval flush
+    return $ Logger (pushLogIORef logsRef loggerLineBufSize)
+                    flush throttledFlush defaultTSCache fmt
+                    loggerConfigLevel
+
+-- | Make a new file based logger.
+newFileLogger :: LoggerConfig
+              -> CB.CBytes
+              -> LogFormatter
+              -> IO Logger
+newFileLogger config path fmt = do
+    let res = ZF.initFile path (ZF.O_CREAT .|. ZF.O_RDWR .|. ZF.O_APPEND) ZF.DEFAULT_FILE_MODE
+    (file, _closeFunc) <- acquire res
+    oLock <- newMVar =<< newBufferedOutput file
+    newLogger config oLock fmt
+
+-- | Make a new structured JSON logger(connected to stderr),
+-- see 'defaultJSONFmt'
+newStdJSONLogger :: LoggerConfig -> IO Logger
+newStdJSONLogger config = newLogger config stderrBuf defaultJSONFmt
+
 -- | Make a new colored logger(connected to stderr).
 --
 -- This logger will output colorized log if stderr is connected to TTY.
-newColoredLogger :: LoggerConfig -> IO Logger
-newColoredLogger LoggerConfig{..} = do
-    logsRef <- newIORef []
-    let flush = flushLogIORef stderrBuf logsRef
-    throttledFlush <- throttleTrailing_ loggerMinFlushInterval flush
-    return $ Logger (pushLogIORef logsRef loggerLineBufSize)
-                    flush throttledFlush defaultTSCache
-                    (if isStdStreamTTY stderr then defaultColoredFmt
-                                              else defaultFmt)
-                    loggerConfigLevel
+newStdColoredLogger :: LoggerConfig -> IO Logger
+newStdColoredLogger config =
+    let fmt = if isStdStreamTTY stderr then defaultColoredFmt else defaultFmt
+     in newLogger config stderrBuf fmt
 
--- | Make a new simple logger, see 'defaultFmt'.
---
-newLogger :: LoggerConfig
-          -> MVar BufferedOutput
-          -> IO Logger
-newLogger LoggerConfig{..} oLock = do
-    logsRef <- newIORef []
-    let flush = flushLogIORef oLock logsRef
-    throttledFlush <- throttleTrailing_ loggerMinFlushInterval flush
-    return $ Logger (pushLogIORef logsRef loggerLineBufSize)
-                    flush throttledFlush defaultTSCache defaultFmt
-                    loggerConfigLevel
+-- | Make a new simple logger(connected to stderr), see 'defaultFmt'.
+newStdSimpleLogger :: LoggerConfig -> IO Logger
+newStdSimpleLogger config = newLogger config stderrBuf defaultFmt
 
--- | Make a new structured JSON logger, see 'defaultJSONFmt'
---
-newJSONLogger :: LoggerConfig
-              -> MVar BufferedOutput
-              -> IO Logger
-newJSONLogger LoggerConfig{..} oLock = do
-    logsRef <- newIORef []
-    let flush = flushLogIORef oLock logsRef
-    throttledFlush <- throttleTrailing_ loggerMinFlushInterval flush
-    return $ Logger (pushLogIORef logsRef loggerLineBufSize)
-                    flush throttledFlush defaultTSCache defaultJSONFmt
-                    loggerConfigLevel
+newFileSimpleLogger :: LoggerConfig -> CB.CBytes -> IO Logger
+newFileSimpleLogger config path = newFileLogger config path defaultFmt
+
+newFileJSONLogger :: LoggerConfig -> CB.CBytes -> IO Logger
+newFileJSONLogger config path = newFileLogger config path defaultJSONFmt
+
+-------------------------------------------------------------------------------
 
 -- | Use 'pushLogIORef' and 'pushLogIORef' to implement a simple 'IORef' based concurrent logger.
 --
@@ -275,7 +303,7 @@ defaultFmtCallStack cs =
 globalLogger :: IORef Logger
 {-# NOINLINE globalLogger #-}
 globalLogger = unsafePerformIO $
-    newIORef =<< newColoredLogger defaultLoggerConfig
+    newIORef =<< newStdColoredLogger defaultLoggerConfig
 
 -- | Change the global logger.
 setDefaultLogger :: Logger -> IO ()

@@ -233,7 +233,7 @@ writeFileP uvf buf0 bufSiz0 off0 =
 initFile :: HasCallStack
          => CBytes
          -> FileFlag        -- ^ Opening flags, e.g. 'O_CREAT' @.|.@ 'O_RDWR'
-         -> FileMode      -- ^ Sets the file mode (permission and sticky bits),
+         -> FileMode        -- ^ Sets the file mode (permission and sticky bits),
                             -- but only if the file was created, see 'DEFAULT_FILE_MODE'.
          -> Resource File
 initFile path flags mode =

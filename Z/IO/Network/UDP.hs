@@ -88,10 +88,10 @@ import Z.IO.Resource
 -- Use 'MVar' 'UDP' in multiple threads.
 --
 data UDP = UDP
-    { udpHandle  :: {-# UNPACK #-} !(Ptr UVHandle)
-    , udpSlot    :: {-# UNPACK #-} !UVSlot
-    , udpManager :: UVManager
-    , udpSendBuffer ::  {-# UNPACK #-} !(A.MutablePrimArray RealWorld Word8)
+    { _udpHandle  :: {-# UNPACK #-} !(Ptr UVHandle)
+    , _udpSlot    :: {-# UNPACK #-} !UVSlot
+    , _udpManager :: UVManager
+    , _udpSendBuffer ::  {-# UNPACK #-} !(A.MutablePrimArray RealWorld Word8)
     , udpClosed  :: {-# UNPACK #-} !(IORef Bool)
     }
 
