@@ -79,14 +79,18 @@ import Z.Foreign
 -- For the same reason you shouldn't use stderr directly, use `Z.IO.Logger` module instead.
 
 data StdStream
-    = StdTTY {-# UNPACK #-}!(Ptr UVHandle) {-# UNPACK #-}!UVSlot UVManager -- similar to UVStream
-    | StdFile {-# UNPACK #-}!FD                                          -- similar to UVFile
+    = StdStream Bool {-# UNPACK #-}!(Ptr UVHandle) {-# UNPACK #-}!UVSlot UVManager
+    -- ^ similar to UVStream, first field is is_tty
+    | StdFile {-# UNPACK #-}!FD
+    -- ^ similar to UVFile
 
 instance Show StdStream where show = T.toString
 
 instance T.Print StdStream where
-    toUTF8BuilderP p (StdTTY ptr slot uvm) = T.parenWhen (p > 10) $ do
-        "StdTTY "
+    toUTF8BuilderP p (StdStream istty ptr slot uvm) = T.parenWhen (p > 10) $ do
+        if istty
+        then "StdStream(TTY) "
+        else "StdStream "
         T.toUTF8Builder ptr
         T.char7 ' '
         T.toUTF8Builder slot
@@ -97,16 +101,16 @@ instance T.Print StdStream where
         T.toUTF8Builder fd
 
 isStdStreamTTY :: StdStream -> Bool
-isStdStreamTTY (StdTTY _ _ _) = True
-isStdStreamTTY _              = False
+isStdStreamTTY (StdStream istty _ _ _) = istty
+isStdStreamTTY _                       = False
 
 getStdStreamFD :: StdStream -> IO FD
-getStdStreamFD (StdTTY hdl _ _) = throwUVIfMinus (hs_uv_fileno hdl)
+getStdStreamFD (StdStream _ hdl _ _) = throwUVIfMinus (hs_uv_fileno hdl)
 getStdStreamFD (StdFile fd) = return fd
 
 instance Input StdStream where
     {-# INLINE readInput #-}
-    readInput (StdTTY hdl slot uvm) buf len = mask_ $ do
+    readInput (StdStream _ hdl slot uvm) buf len = mask_ $ do
         pokeBufferTable uvm slot buf len
         m <- getBlockMVar uvm slot
         _ <- tryTakeMVar m
@@ -133,7 +137,7 @@ instance Input StdStream where
 
 instance Output StdStream where
     {-# INLINE writeOutput #-}
-    writeOutput (StdTTY hdl _ uvm) buf len = mask_ $ do
+    writeOutput (StdStream _ hdl _ uvm) buf len = mask_ $ do
         m <- withUVManager' uvm $ do
             reqSlot <- getUVSlot uvm (hs_uv_write hdl buf len)
             m <- getBlockMVar uvm reqSlot
@@ -195,21 +199,39 @@ stderrBuf = unsafePerformIO (newBufferedOutput stderr >>= newMVar)
 makeStdStream :: HasCallStack => FD -> IO StdStream
 makeStdStream fd = do
     typ <- uv_guess_handle fd
-    if typ == UV_TTY
-    then mask_ $ do
+    if typ == UV_FILE
+    then return (StdFile fd)
+    else mask_ $ do
         uvm <- getUVManager
         withUVManager uvm $ \ loop -> do
             hdl <- hs_uv_handle_alloc loop
             slot <- getUVSlot uvm (peekUVHandleData hdl)
             _ <- tryTakeMVar =<< getBlockMVar uvm slot   -- clear the parking spot
-            throwUVIfMinus_ (uv_tty_init loop hdl (fromIntegral fd))
-            return (StdTTY hdl slot uvm)
-    else return (StdFile fd)
+            case typ of
+                UV_TTY -> do
+                    throwUVIfMinus_ (uv_tty_init loop hdl (fromIntegral fd))
+                    return (StdStream True hdl slot uvm)
+                UV_TCP -> do
+                    throwUVIfMinus_ (uv_tcp_init loop hdl)
+                    throwUVIfMinus_ (uv_tcp_open hdl fd)
+                    return (StdStream False hdl slot uvm)
+                UV_UDP ->
+                    throwUVError UV_EXDEV IOEInfo{
+                                  ioeName = "EXDEV"
+                                , ioeDescription = "redirect to UDP is not supported"
+                                , ioeCallStack = callStack
+                                }
+                -- normally this would be UV_NAMED_PIPE,
+                -- but we also give UV_UNKNOWN_HANDLE a try.
+                _ -> do
+                    throwUVIfMinus_ (uv_pipe_init loop hdl 0)
+                    throwUVIfMinus_ (uv_pipe_open hdl fd)
+                    return (StdStream False hdl slot uvm)
 
 -- | Change terminal's mode if stdin is connected to a terminal.
 setStdinTTYMode :: TTYMode -> IO ()
 setStdinTTYMode mode = case stdin of
-    StdTTY hdl _ uvm ->
+    StdStream _ hdl _ uvm ->
         withUVManager' uvm . throwUVIfMinus_ $ uv_tty_set_mode hdl mode
     _ -> return ()
 
@@ -217,7 +239,7 @@ setStdinTTYMode mode = case stdin of
 -- return (-1, -1) if stdout is a file.
 getStdoutWinSize :: HasCallStack => IO (CInt, CInt)
 getStdoutWinSize = case stdout of
-    StdTTY hdl _ uvm ->
+    StdStream _ hdl _ uvm ->
         withUVManager' uvm $ do
             (w, (h, ())) <- allocPrimUnsafe $ \ w ->
                 allocPrimUnsafe $ \ h -> throwUVIfMinus_ $ uv_tty_get_winsize hdl w h
