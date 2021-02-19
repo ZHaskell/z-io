@@ -40,20 +40,16 @@ module Z.IO.Logger
     Logger
   , LoggerConfig(..)
   , defaultLoggerConfig
+  , defaultJSONLoggerConfig
   , setDefaultLogger
   , getDefaultLogger
   , flushDefaultLogger
   , withDefaultLogger
 
     -- * Create a new logger
-    -- ** Base
   , newLogger
   , newStdLogger
   , newFileLogger
-    -- * Helpers
-  , newStdColoredLogger
-  , newStdJSONLogger
-  , newFileJSONLogger
 
     -- * logging functions
   , debug
@@ -147,12 +143,21 @@ data LoggerConfig = LoggerConfig
 
 -- | A default logger config with
 --
--- * 0.5s minimal flush interval
+-- * 0.1s minimal flush interval
 -- * line buffer size 240 bytes
 -- * show everything by default
 -- * 'defaultFmt'
 defaultLoggerConfig :: LoggerConfig
-defaultLoggerConfig = LoggerConfig 5 240 NOTSET defaultFmt
+defaultLoggerConfig = LoggerConfig 1 240 NOTSET defaultFmt
+
+-- | A default logger config with
+--
+-- * 0.5s minimal flush interval
+-- * line buffer size 1000 bytes
+-- * show everything by default
+-- * 'defaultJSONFmt'
+defaultJSONLoggerConfig :: LoggerConfig
+defaultJSONLoggerConfig = LoggerConfig 5 1000 NOTSET defaultJSONFmt
 
 -- | A default timestamp cache with format @%Y-%m-%dT%H:%M:%S%Z@('iso8061DateFormat').
 --
@@ -182,18 +187,6 @@ newLogger LoggerConfig{..} oLock = do
 newStdLogger :: LoggerConfig -> IO Logger
 newStdLogger config = newLogger config stderrBuf
 
--- | Make a new colored logger write to 'stderrBuf'.
---
--- This logger will output colorized log if stderr is connected to TTY.
-newStdColoredLogger :: LoggerConfig -> IO Logger
-newStdColoredLogger config =
-    let fmt = if isStdStreamTTY stderr then defaultColoredFmt else defaultFmt
-    in newLogger config{loggerFormatter = fmt} stderrBuf
-
--- | Make a new JSON logger write to 'stderrBuf' with 'defaultJSONFmt'.
-newStdJSONLogger :: LoggerConfig -> IO Logger
-newStdJSONLogger config = newLogger config{loggerFormatter = defaultJSONFmt} stderrBuf
-
 -- | Make a new file based logger with 'defaultFmt'.
 --
 -- The file will be opened in append mode.
@@ -203,13 +196,6 @@ newFileLogger config path = do
     (file, _closeFunc) <- acquire res
     oLock <- newMVar =<< newBufferedOutput file
     newLogger config oLock
-
--- | Make a new file based JSON logger with 'defaultJSONFmt'.
---
--- The file will be opened in append mode.
-newFileJSONLogger :: LoggerConfig -> CB.CBytes -> IO Logger
-newFileJSONLogger config path =
-    newFileLogger config{loggerFormatter = defaultJSONFmt} path
 
 -------------------------------------------------------------------------------
 
@@ -301,13 +287,18 @@ defaultFmtCallStack cs =
 globalLogger :: IORef Logger
 {-# NOINLINE globalLogger #-}
 globalLogger = unsafePerformIO $
-    newIORef =<< newStdColoredLogger defaultLoggerConfig
+    newIORef =<< newStdLogger defaultLoggerConfig{
+        loggerFormatter = (if isStdStreamTTY stderr then defaultColoredFmt else defaultFmt)
+    }
 
 -- | Change the global logger.
 setDefaultLogger :: Logger -> IO ()
 setDefaultLogger !logger = atomicWriteIORef globalLogger logger
 
 -- | Get the global logger.
+--
+-- This is a logger connected to stderr, if stderr is connect to TTY,
+-- then use 'defaultColoredFmt', otherwise use 'defaultFmt'.
 getDefaultLogger :: IO Logger
 getDefaultLogger = readIORef globalLogger
 
