@@ -38,8 +38,8 @@ main = do
 module Z.IO.StdStream
   ( -- * Standard input & output streams
     StdStream
-  , isStdStreamTTY
   , getStdStreamFD
+  , isStdStreamTTY
   , setStdinTTYMode
   , getStdoutWinSize
   , stdin, stdout, stderr
@@ -87,6 +87,7 @@ data StdStream
 instance Show StdStream where show = T.toString
 
 instance T.Print StdStream where
+    {-# INLINE toUTF8BuilderP #-}
     toUTF8BuilderP p (StdStream istty ptr slot uvm) = T.parenWhen (p > 10) $ do
         if istty
         then "StdStream(TTY) "
@@ -100,10 +101,13 @@ instance T.Print StdStream where
         "StdFile "
         T.toUTF8Builder fd
 
+
+-- | Is this standard stream connected to a TTY device?
 isStdStreamTTY :: StdStream -> Bool
 isStdStreamTTY (StdStream istty _ _ _) = istty
 isStdStreamTTY _                       = False
 
+-- | Get the standard stream's OS file descriptor.
 getStdStreamFD :: StdStream -> IO FD
 getStdStreamFD (StdStream _ hdl _ _) = throwUVIfMinus (hs_uv_fileno hdl)
 getStdStreamFD (StdFile fd) = return fd
@@ -165,33 +169,37 @@ stdin = unsafePerformIO (makeStdStream 0)
 
 -- | The global stdout stream.
 --
--- | If you want to write logs, don't use 'stdout' directly, use 'Z.IO.Logger' instead.
+-- If you want a buffered device, consider use the 'stdoutBuf' first.
+-- If you want to write logs, don't use 'stdout' directly, use 'Z.IO.Logger' instead.
 stdout :: StdStream
 {-# NOINLINE stdout #-}
 stdout = unsafePerformIO (makeStdStream 1)
 
 -- | The global stderr stream.
 --
+-- If you want a buffered device, consider use the 'stderrBuf' first.
 -- | If you want to write logs, don't use 'stderr' directly, use 'Z.IO.Logger' instead.
 stderr :: StdStream
 {-# NOINLINE stderr #-}
 stderr = unsafePerformIO (makeStdStream 2)
 
 -- |  A global buffered stdin stream protected by 'MVar'.
+--
+-- If you want a buffered device, consider use the 'stdinBuf' first.
 stdinBuf :: MVar BufferedInput
 {-# NOINLINE stdinBuf #-}
 stdinBuf = unsafePerformIO (newBufferedInput stdin >>= newMVar)
 
--- |  A global buffered stdout stream protected by 'MVar'.
+-- | A global buffered stdout stream protected by 'MVar'.
 --
--- | If you want to write logs, don't use 'stdoutBuf' directly, use 'Z.IO.Logger' instead.
+-- If you want to write logs, don't use 'stdoutBuf' directly, use 'Z.IO.Logger' instead.
 stdoutBuf :: MVar BufferedOutput
 {-# NOINLINE stdoutBuf #-}
 stdoutBuf = unsafePerformIO (newBufferedOutput stdout >>= newMVar)
 
--- |  A global buffered stderr stream protected by 'MVar'.
+-- | A global buffered stderr stream protected by 'MVar'.
 --
--- | If you want to write logs, don't use 'stderrBuf' directly, use 'Z.IO.Logger' instead.
+-- If you want to write logs, don't use 'stderrBuf' directly, use 'Z.IO.Logger' instead.
 stderrBuf :: MVar BufferedOutput
 {-# NOINLINE stderrBuf #-}
 stderrBuf = unsafePerformIO (newBufferedOutput stderr >>= newMVar)
@@ -228,18 +236,19 @@ makeStdStream fd = do
                     throwUVIfMinus_ (uv_pipe_open hdl fd)
                     return (StdStream False hdl slot uvm)
 
--- | Change terminal's mode if stdin is connected to a terminal.
+-- | Change terminal's mode if stdin is connected to a terminal,
+-- do nothing if stdout is not connected to TTY.
 setStdinTTYMode :: TTYMode -> IO ()
 setStdinTTYMode mode = case stdin of
-    StdStream _ hdl _ uvm ->
+    StdStream True hdl _ uvm ->
         withUVManager' uvm . throwUVIfMinus_ $ uv_tty_set_mode hdl mode
     _ -> return ()
 
 -- | Get terminal's output window size in (width, height) format,
--- return (-1, -1) if stdout is a file.
+-- return (-1, -1) if stdout is not connected to TTY.
 getStdoutWinSize :: HasCallStack => IO (CInt, CInt)
 getStdoutWinSize = case stdout of
-    StdStream _ hdl _ uvm ->
+    StdStream True hdl _ uvm ->
         withUVManager' uvm $ do
             (w, (h, ())) <- allocPrimUnsafe $ \ w ->
                 allocPrimUnsafe $ \ h -> throwUVIfMinus_ $ uv_tty_get_winsize hdl w h

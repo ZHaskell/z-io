@@ -6,6 +6,7 @@
 * Add `newStdLogger/newFileLogger` to make new logger easily.
 * Rework `Z.IO.FileSystem.Watch`'s API, change `watchDirs` to accept a recursive param and a callback.
 * Hide `Z.IO.UV.Win` module, which should not be directly used by user.
+* Fix a bug when stdio is redirected to pipes: https://github.com/ZHaskell/z-io/pull/16
 
 ## 0.6.1.0  -- 2020-02-09
 
