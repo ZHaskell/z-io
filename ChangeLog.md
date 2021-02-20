@@ -4,6 +4,7 @@
 
 * Split `Z.IO.UV.FFI` to `Z.IO.UV.FFI` and `Z.IO.UV.FFI_Env`, to make the module buildable when memory is constrained. 
 * Make functions works on TTY in `Z.IO.StdStream` correctly ignore redirected streams.
+* Move `pathSeparator` to `pathSeparators`, now `pathSeparator` return the default path separator.
 
 ## 0.6.2.0  -- 2020-02-18
 

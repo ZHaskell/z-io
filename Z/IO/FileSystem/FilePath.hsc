@@ -31,7 +31,8 @@ module Z.IO.FileSystem.FilePath
   , PathStyle(..)
   , pathStyle
   , getPathStyle, setPathStyle
-  , pathSeparator, searchPathSeparator, extensionSeparator
+  , pathSeparator, pathSeparators
+  , searchPathSeparator, extensionSeparator
   -- * Search path
   , getSearchPath
  ) where
@@ -109,9 +110,16 @@ getPathStyle = enumToPathStyle_ <$> cwk_path_get_style
 setPathStyle :: PathStyle -> IO ()
 setPathStyle = cwk_path_set_style . pathStyleToEnum_
 
--- | Get the character that separates directories. 
-pathSeparator :: IO [Word8]
+-- | Get the default character that separates directories. 
+pathSeparator :: IO Word8
 pathSeparator = do
+    s <- getPathStyle
+    case s of UnixStyle -> return (#const SLASH)
+              _         -> return (#const BACKSLASH)
+
+-- | Get characters that separates directories. 
+pathSeparators :: IO [Word8]
+pathSeparators = do
     s <- getPathStyle
     case s of UnixStyle -> return [(#const SLASH)]
               _         -> return [(#const SLASH), (#const BACKSLASH)]

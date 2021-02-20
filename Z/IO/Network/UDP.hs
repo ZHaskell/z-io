@@ -159,7 +159,15 @@ getSockName udp@(UDP hdl _ _ _ _) = do
             throwUVIfMinus_ (uv_udp_getsockname hdl paddr plen)
 
 -- | Wrapper for a connected 'UDP'.
-newtype ConnectedUDP = ConnectedUDP UDP deriving Show
+newtype ConnectedUDP = ConnectedUDP UDP
+
+instance Show ConnectedUDP where show = T.toString
+instance T.Print ConnectedUDP where
+    toUTF8BuilderP _ (ConnectedUDP (UDP hdl slot uvm _ _)) = do
+        "ConnectedUDP{udpHandle="    >> T.toUTF8Builder hdl
+        ",udpSlot="         >> T.toUTF8Builder slot
+        ",udpManager="      >> T.toUTF8Builder uvm
+        T.char7 '}'
 
 -- | Associate the UDP handle to a remote address and port,
 -- so every message sent by this handle is automatically sent to that destination
