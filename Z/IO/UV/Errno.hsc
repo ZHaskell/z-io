@@ -3,7 +3,7 @@ Module      : Z.IO.UVErrno
 Description : Errno provided by libuv
 Copyright   : (c) Winterland, 2017-2018
 License     : BSD
-Maintainer  : drkoster@qq.com
+Maintainer  : winterland1989@gmail.com
 Stability   : experimental
 Portability : non-portable
 

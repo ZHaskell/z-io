@@ -3,7 +3,7 @@ Module      : Z.IO.Network.DNS
 Description : DNS and reverse DNS
 Copyright   : (c) Winterland, 2018
 License     : BSD
-Maintainer  : drkoster@qq.com
+Maintainer  : winterland1989@gmail.com
 Stability   : experimental
 Portability : non-portable
 

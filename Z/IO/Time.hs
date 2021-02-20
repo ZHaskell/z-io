@@ -29,7 +29,7 @@ import Data.Int
 import Foreign.C.Types
 import Z.Foreign
 import Z.Data.CBytes
-import Z.IO.UV.FFI
+import Z.IO.UV.FFI_Env
 import Z.IO.Exception
 import System.IO.Unsafe (unsafePerformIO)
 

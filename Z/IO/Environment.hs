@@ -43,6 +43,7 @@ import Z.IO.Exception
 import Z.IO.UV.Manager
 import Foreign.Storable
 import Z.IO.UV.FFI
+import Z.IO.UV.FFI_Env
 
 -- | Computation 'getArgs' returns a list of the program's command
 -- line arguments (including the program path).

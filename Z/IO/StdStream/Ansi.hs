@@ -3,7 +3,7 @@ Module      : Z.IO.StdStream.Ansi
 Description : Ansi control code sequences
 Copyright   : (c) Winterland, 2017-2020
 License     : BSD
-Maintainer  : drkoster@qq.com
+Maintainer  : winterland1989@gmail.com
 Stability   : experimental
 Portability : non-portable
 

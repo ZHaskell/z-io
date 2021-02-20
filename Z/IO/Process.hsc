@@ -79,6 +79,7 @@ import Z.IO.Exception
 import Z.IO.Network.IPC
 import Z.IO.Resource
 import Z.IO.UV.FFI
+import Z.IO.UV.FFI_Env
 import Z.IO.UV.Manager
 import Z.IO.UV.UVStream
 

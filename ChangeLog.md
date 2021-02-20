@@ -1,5 +1,10 @@
 # Revision history for Z-IO
 
+## 0.6.3.0  -- 2020-02-20
+
+* Split `Z.IO.UV.FFI` to `Z.IO.UV.FFI` and `Z.IO.UV.FFI_Env`, to make the module buildable when memory is constrained. 
+* Make functions works on TTY in `Z.IO.StdStream` correctly ignore redirected streams.
+
 ## 0.6.2.0  -- 2020-02-18
 
 * Hide `Logger` constructor from `Z.IO.Logger`, remove implementation details such as `defaultTSCache`, `pushLogIORef`, `flushLogIORef`, add `loggerFormatter` to `LoggerConfig`.

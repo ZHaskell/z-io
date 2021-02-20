@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               Z-IO
-version:            0.6.2.0
+version:            0.6.3.0
 synopsis:           Simple and high performance IO toolkit for Haskell
 description:
   Simple and high performance IO toolkit for Haskell, including
@@ -110,6 +110,7 @@ library
     Z.IO.Time
     Z.IO.UV.Errno
     Z.IO.UV.FFI
+    Z.IO.UV.FFI_Env
     Z.IO.UV.Manager
     Z.IO.UV.UVStream
   other-modules:
@@ -125,7 +126,6 @@ library
     , unix-time             >=0.4.7 && <=0.5
     , unordered-containers  ^>=0.2
     , Z-Data                ^>=0.6
-    , microlens
 
   default-language:   Haskell2010
   default-extensions:

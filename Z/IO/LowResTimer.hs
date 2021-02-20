@@ -51,7 +51,7 @@ import           GHC.Conc
 import           System.IO.Unsafe
 import           Z.Data.PrimRef.PrimIORef
 import           Z.IO.Exception
-import           Z.IO.UV.FFI    (uv_hrtime)
+import           Z.IO.UV.FFI_Env    (uv_hrtime)
 
 --
 queueSize :: Int

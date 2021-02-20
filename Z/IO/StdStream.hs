@@ -277,4 +277,3 @@ readStd = withMVar stdinBuf $ \ s -> do
     case line of Just line' -> return line'
                  Nothing    -> throwIO (ResourceVanished
                     (IOEInfo "ECLOSED" "stdin is closed" callStack))
-
