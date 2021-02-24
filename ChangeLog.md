@@ -1,8 +1,12 @@
 # Revision history for Z-IO
 
+## 0.6.4.0  -- 2020-02-20
+
+* Add `initProcess'` to kill process while finish using the process resource by default.
+
 ## 0.6.3.0  -- 2020-02-20
 
-* Split `Z.IO.UV.FFI` to `Z.IO.UV.FFI` and `Z.IO.UV.FFI_Env`, to make the module buildable when memory is constrained. 
+* Split `Z.IO.UV.FFI` to `Z.IO.UV.FFI` and `Z.IO.UV.FFI_Env`, to make the module buildable when memory is constrained.
 * Make functions works on TTY in `Z.IO.StdStream` correctly ignore redirected streams.
 * Move `pathSeparator` to `pathSeparators`, now `pathSeparator` return the default path separator.
 
