@@ -19,8 +19,9 @@ import Z.IO.Process
 
 -}
 
-module Z.IO.Process (
-    initProcess
+module Z.IO.Process
+  ( initProcess
+  , initProcess'
   , readProcess
   , readProcessText
   , ProcessOptions(..)
@@ -130,14 +131,16 @@ pattern SIGINT  = #const SIGINT
 pattern SIGKILL = 9  -- on windows this is absent
 pattern SIGHUP  = #const SIGHUP
 
--- | Resource spawn processes.
+-- | Resourced spawn processes.
 --
--- Return a resource spawn processes, when initiated return the @(stdin, stdout, stderr, pstate)@ tuple,
--- std streams are created when pass 'ProcessCreate' option, otherwise will be 'Nothing',
--- @pstate@ will be updated to `ProcessExited` automatically when the process exits.
+-- Return a resource spawn processes, when initiated return the
+-- @(stdin, stdout, stderr, pstate)@ tuple, std streams are created when pass
+-- 'ProcessCreate' option, otherwise will be 'Nothing', @pstate@ will be updated
+-- to 'ProcessExited' automatically when the process exits.
 --
--- A cleanup thread will be started when you finish using the process resource, to close any std stream
--- created during spawn.
+-- When you finish using the process resource, a cleanup action will be called
+-- to wait process exit and close any std stream created during spawn. If you
+-- also need to kill the process, see 'initProcess'' instead.
 --
 -- @
 -- initProcess defaultProcessOptions{
@@ -148,11 +151,26 @@ pattern SIGHUP  = #const SIGHUP
 --   waitProcessExit pstate  -- wait for process exit on current thread.
 -- @
 initProcess :: ProcessOptions -> Resource (Maybe UVStream, Maybe UVStream, Maybe UVStream, TVar ProcessState)
-initProcess opt = initResource (spawn opt) $ \ (s0,s1,s2, pstate) -> void . forkIO $ do
-    _ <- waitProcessExit pstate
-    forM_ s0 closeUVStream
-    forM_ s1 closeUVStream
-    forM_ s2 closeUVStream
+initProcess opt = initResource (spawn opt) $
+    \ (s0,s1,s2, pstate) -> do
+        _ <- waitProcessExit pstate
+        forM_ s0 closeUVStream
+        forM_ s1 closeUVStream
+        forM_ s2 closeUVStream
+
+-- | Resourced spawn processes.
+--
+-- The same as 'initProcess', but the clean action will try to send 'SIGTERM'
+-- to the process first.
+initProcess' :: ProcessOptions -> Resource (Maybe UVStream, Maybe UVStream, Maybe UVStream, TVar ProcessState)
+initProcess' opt = initResource (spawn opt) $
+    \ (s0, s1, s2, pstate) -> do
+        m_pid <- getProcessPID pstate
+        maybe (return ()) (flip killPID SIGTERM) m_pid
+        _ <- waitProcessExit pstate
+        forM_ s0 closeUVStream
+        forM_ s1 closeUVStream
+        forM_ s2 closeUVStream
 
 -- | Spawn a processe with given input.
 --
@@ -188,7 +206,7 @@ readProcessText opts inp = do
     (out, err, e) <- readProcess opts (T.getUTF8Bytes inp)
     return (T.validate out, T.validate err, e)
 
--- | Spawn a new thread
+-- | Spawn a new process.
 --
 -- Please manually close child process's std stream(if any) after process exits.
 spawn :: HasCallStack => ProcessOptions -> IO (Maybe UVStream, Maybe UVStream, Maybe UVStream, TVar ProcessState)
