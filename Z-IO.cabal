@@ -107,6 +107,7 @@ library
     Z.IO.Resource
     Z.IO.StdStream
     Z.IO.StdStream.Ansi
+    Z.IO.StdStream.ReadLine
     Z.IO.Time
     Z.IO.UV.Errno
     Z.IO.UV.FFI
