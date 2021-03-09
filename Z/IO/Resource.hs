@@ -24,19 +24,25 @@ module Z.IO.Resource (
   , withResource'
     -- * Resource pool
   , Pool
-  , PoolState(..)
   , initPool
-  , withResourceInPool
-  , poolStat, poolInUse
+  , withPool
+  , SimplePool
+  , initSimplePool
+  , withSimplePool
+  , statPool
   -- * Re-export
   , liftIO
 ) where
 
-import           Control.Concurrent.STM
+import           Control.Concurrent
 import           Control.Monad
-import qualified Control.Monad.Catch as MonadCatch
+import qualified Control.Monad.Catch        as MonadCatch
 import           Control.Monad.IO.Class
+import qualified Data.Map.Strict            as M
 import           Z.Data.PrimRef.PrimIORef
+import           Z.Data.Array
+import qualified Z.Data.Vector              as  V
+import           Data.IORef
 import           Z.IO.LowResTimer
 import           Z.IO.Exception
 
@@ -159,143 +165,144 @@ withResource' resource k = do
 
 --------------------------------------------------------------------------------
 
--- | A single resource pool entry.
-data Entry a = Entry
-    (a, IO ())             -- the resource and clean up action
-    {-# UNPACK #-} !Int    -- the life remaining
-
-data PoolState = PoolClosed | PoolScanning | PoolEmpty deriving (Eq, Show)
+-- | A entry linked-list annotated with size.
+data Entry res
+    = EntryNil
+    | EntryCons
+        (res, IO ())            -- the resource and clean up action
+        {-# UNPACK #-} !Int     -- size from this point on
+        {-# UNPACK #-} !Int     -- the life remaining
+        (Entry res)             -- next entry
 
 -- | A high performance resource pool based on STM.
 --
--- We choose to not divide pool into strips due to the difficults in resource balancing. If there
--- is a high contention on resource (see 'statPool'), just increase the maximum number of resources
--- can be opened.
---
-data Pool a = Pool
-    { _poolResource :: Resource a
-    , _poolLimit :: Int
-    , _poolIdleTime :: Int
-    , _poolEntries :: TVar [Entry a]
-    , _poolInUse :: TVar Int
-    , _poolState :: TVar PoolState
+data Pool key res = Pool
+    { _poolResource     :: key -> Resource res      -- ^ how to get a resource
+    , _poolLimitPerKey  :: {-# UNPACK #-} !Int      -- ^ max number for resource we keep alive after used
+    , _poolIdleTime     :: {-# UNPACK #-} !Int      -- ^ max idle time for resource we keep alive
+    , _poolArray        :: {-# UNPACK #-} !(UnliftedArray (IORef (Maybe (M.Map key (Entry res)))))
     }
+
+-- | Dump the status of pool.
+statPool :: Pool key res -> IO (SmallArray (M.Map key Int))
+statPool (Pool _ _ _ arr) = (`V.traverseVec` arr) $ \ resMapRef -> do
+    mResMap <- readIORef resMapRef
+    case mResMap of
+        Just resMap -> return $ (`fmap` resMap) ( \ es ->
+                case es of EntryCons _ siz _ _ -> siz
+                           _                   -> 0)
+        _ -> throwECLOSED
 
 -- | Initialize a resource pool with given 'Resource'
 --
 -- Like other initXXX functions, this function won't open a resource pool until you use 'withResource'.
--- And this resource pool follow the same resource management pattern like other resources.
---
-initPool :: Resource a
-         -> Int     -- ^ maximum number of resources can be opened
+initPool :: (key -> Resource res)
+         -> Int     -- ^ maximum number of resources per local pool per key can be opened
          -> Int     -- ^ amount of time after which an unused resource can be released (in seconds).
-         -> Resource (Pool a)
-initPool res limit itime = initResource createPool closePool
+         -> Resource (Pool key res)
+initPool resf limit itime = initResource createPool closePool
   where
     createPool = do
-        entries <- newTVarIO []
-        inuse <- newTVarIO 0
-        state <- newTVarIO PoolEmpty
-        return (Pool res limit itime entries inuse state)
+        numCaps <- getNumCapabilities
+        marr <- newArr numCaps
+        forM_ [0..numCaps-1] $ \ i -> do
+            writeArr marr i =<< newIORef (Just M.empty)
+        arr <- unsafeFreezeArr marr
+        return (Pool resf limit itime arr)
 
-    closePool (Pool _ _ _ entries _ state) = join . atomically $ do
-        c <- readTVar state
-        if c == PoolClosed
-        then return (return ())
-        else do
-            writeTVar state PoolClosed
-            return (do
-                es <- readTVarIO entries
-                forM_ es $ \ (Entry (_, close) _) ->
-                    MonadCatch.handleAll (\ _ -> return ()) close)
+    closePool (Pool _ _ _ localPoolArr) = do
+        -- close all existed resource
+        (`V.traverseVec_` localPoolArr) $ \ resMapRef ->
+            atomicModifyIORef resMapRef $ \ mResMap ->
+                case mResMap of
+                    Just resMap -> (Nothing, mapM_ closeEntry resMap)
+                    _ -> (Nothing, return ())
 
--- | Get a resource pool's 'PoolState'
---
--- This function is useful when debug, under load lots of 'PoolEmpty' may indicate
--- contention on resources, i.e. the limit on maximum number of resources can be opened
--- should be adjusted to a higher number. On the otherhand, lots of 'PoolScanning'
--- may indicate there're too much free resources.
---
-poolStat :: Pool a -> IO PoolState
-poolStat pool = readTVarIO (_poolState pool)
-
--- | Get how many resource is being used within a resource pool.
---
--- This function is useful when debug, under load in use number alway reaches limit may indicate
--- contention on resources, i.e. the limit on maximum number of resources can be opened
--- should be adjusted to a higher number.
---
-poolInUse :: Pool a -> IO Int
-poolInUse pool = readTVarIO (_poolInUse pool)
+    closeEntry (EntryCons (_, close) _ _ _) =
+        MonadCatch.handleAll (\ _ -> return ()) close
+    closeEntry EntryNil = return ()
 
 -- | Open resource inside a given resource pool and do some computation.
 --
 -- This function is thread safe, concurrently usage will be guaranteed
 -- to get different resource. If exception happens,
 -- resource will be closed(not return to pool).
-withResourceInPool :: (MonadCatch.MonadMask m, MonadIO m, HasCallStack)
-                   => Pool a -> (a -> m b) -> m b
-withResourceInPool (Pool res limit itime entries inuse state) k =
+withPool :: (MonadCatch.MonadMask m, MonadIO m, Ord key, HasCallStack)
+                   => Pool key res -> key -> (res -> m a) -> m a
+withPool (Pool resf limitPerKey itime arr) key f = do
+    !resMapRef <- indexArr arr . fst <$> liftIO (threadCapability =<< myThreadId)
     fst <$> MonadCatch.generalBracket
-        (liftIO takeFromPool)
+        (liftIO $ takeFromPool resMapRef)
         (\ r@(_, close) exit ->
             case exit of
-                MonadCatch.ExitCaseSuccess _ -> liftIO (returnToPool r)
-                _ -> liftIO $ do
-                    atomically $ modifyTVar' inuse (subtract 1)
-                    close)
-        (\ (a, _) -> k a)
+                MonadCatch.ExitCaseSuccess _ -> liftIO (returnToPool resMapRef r)
+                _ -> liftIO close)
+        (\ (a, _) -> f a)
   where
-    takeFromPool = join . atomically $ do
-        c <- readTVar state
-        if c == PoolClosed
-        then throwECLOSEDSTM
-        else do
-            es <- readTVar entries
-            case es of
-                ((Entry a _):es') -> do
-                    writeTVar entries es'
-                    return (return a)
-                _ -> do
-                    i <- readTVar inuse
-                    when (i == limit) retry
-                    modifyTVar' inuse (+1)
-                    return (acquire res `onException`
-                         atomically (modifyTVar' inuse (subtract 1)))
+    takeFromPool resMapRef =
+        join . atomicModifyIORef' resMapRef $ \ mResMap ->
+            case mResMap of
+                Just resMap ->
+                    case M.lookup key resMap of
+                        Just (EntryCons a _ _ es') ->
+                            (Just $! M.adjust (const es') key resMap, return a)
+                        Just EntryNil ->
+                            (Just $! M.delete key resMap, acquire (resf key))
+                        _ ->  (Just resMap, acquire (resf key))
 
-    returnToPool a = join . atomically $ do
-        c <- readTVar state
-        case c of
-            PoolClosed -> return (snd a)
-            PoolEmpty -> do
-                modifyTVar' entries (Entry a itime:)
-                writeTVar state PoolScanning
-                return (void $ registerLowResTimer 10 scanPool)
-            _ -> do
-                modifyTVar' entries (Entry a itime:)
-                return (return ())
+                _ -> (Nothing, throwECLOSED)
 
-    scanPool = do
-         join . atomically $ do
-            c <- readTVar state
-            if c == PoolClosed
-            then return (return ())
-            else do
-                es <- readTVar entries
-                if (null es)
-                then do
-                    writeTVar state PoolEmpty
-                    return (return ())
-                else do
-                    let (deadNum, dead, living) = age es 0 [] []
-                    writeTVar entries living
-                    modifyTVar' inuse (subtract deadNum)
-                    return (do
-                        forM_ dead $ \ (_, close) ->
-                            MonadCatch.handleAll (\ _ -> return ()) close
-                        void $ registerLowResTimer 10 scanPool)
+    returnToPool resMapRef r = do
+        join . atomicModifyIORef' resMapRef $ \ mResMap ->
+            case mResMap of
+                Just resMap ->
+                    case M.lookup key resMap of
+                        Just (EntryCons _ siz _ _) ->
+                            if siz < limitPerKey
+                            -- if entries under given key do not exceed limit, we prepend res back to entries
+                            then (Just $! M.adjust (EntryCons r (siz+1) itime) key resMap, return ())
+                            -- otherwise we close it
+                            else (Just resMap, snd r)
+                        _ -> (Just $! M.insert key (EntryCons r 1 itime EntryNil) resMap,
+                                scanLocalPool resMapRef)
+                _ -> (Nothing, snd r)
 
-    age ((Entry a life):es) !deadNum dead living
-        | life > 1  = age es deadNum     dead     (Entry a (life-1):living)
-        | otherwise = age es (deadNum+1) (a:dead) living
-    age _ !deadNum dead living = (deadNum, dead, living)
+    scanLocalPool resMapRef = do
+        join . atomicModifyIORef' resMapRef $ \ mResMap ->
+            case mResMap of
+                Just resMap ->
+                    case M.lookup key resMap of
+                        Just es -> do
+                            let (dead, living) = age es 0 [] EntryNil
+                            case living of
+                                -- no living resources any more, stop scanning
+                                EntryNil -> (Just $! M.delete key resMap,
+                                    forM_ dead (\ (_, close) -> ignoreSync close))
+                                _ ->  (Just $! M.adjust (const living) key resMap,
+                                    (do forM_ dead (\ (_, close) -> ignoreSync close)
+                                        void $ registerLowResTimer 10 (scanLocalPool resMapRef)))
+                        -- no living resources under given key, stop scanning
+                        _ -> (Just resMap, return ())
+                _ -> (Nothing, return ())
+
+    age (EntryCons a _ life es) !livingNum dead living
+        | life > 1  = let !livingNum' = (livingNum+1)
+                      in age es livingNum' dead (EntryCons a livingNum' (life-1) living)
+        | otherwise = age es livingNum (a:dead) living
+    age _ _ dead living = (dead, living)
+
+-- | Simple resource pool where lookup via key is not needed.
+type SimplePool res = Pool () res
+
+-- | Initialize a 'SimplePool'.
+initSimplePool :: Resource res
+               -> Int     -- ^ maximum number of resources per local pool can be opened
+               -> Int     -- ^ amount of time after which an unused resource can be released (in seconds).
+               -> Resource (SimplePool res)
+initSimplePool f = initPool (const f)
+
+-- | Open resource with 'SimplePool', see 'withPool'
+--
+withSimplePool :: (MonadCatch.MonadMask m, MonadIO m, HasCallStack)
+                   => SimplePool res -> (res -> m a) -> m a
+withSimplePool pool = withPool pool ()

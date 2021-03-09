@@ -85,7 +85,7 @@ instance T.Print UVManager where
     toUTF8BuilderP p uvm = T.parenWhen (p > 10) $
         "UVManager on capability " >> T.int (uvmCap uvm)
 
-uvManagerArray :: IORef (Array UVManager)
+uvManagerArray :: IORef (SmallArray UVManager)
 {-# NOINLINE uvManagerArray #-}
 uvManagerArray = unsafePerformIO $ do
     numCaps <- getNumCapabilities

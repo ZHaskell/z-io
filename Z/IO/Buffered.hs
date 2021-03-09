@@ -21,6 +21,7 @@ module Z.IO.Buffered
   , newBufferedInput'
   , readBuffer, readBufferText
   , unReadBuffer
+  , clearInputBuffer
   , readParser
   , readParseChunks
   , readExactly
@@ -34,6 +35,7 @@ module Z.IO.Buffered
   , writeBuffer
   , writeBuilder
   , flushBuffer
+  , clearOutputBuffer
     -- * common buffer size
   , V.defaultChunkSize
   , V.smallChunkSize
@@ -228,6 +230,10 @@ readBufferText BufferedInput{..} = do
                     writeIORef bufPushBack (V.fromArr arr (s+i) (l-i))
                     return (T.validate (V.fromArr arr s i))
                 else return (T.validate bs)
+
+-- | Clear already buffered input.
+clearInputBuffer :: BufferedInput -> IO ()
+clearInputBuffer BufferedInput{..} = writeIORef bufPushBack V.empty
 
 -- | Read exactly N bytes.
 --
@@ -449,3 +455,6 @@ flushBuffer BufferedOutput{..} = do
         withMutablePrimArrayContents outputBuffer $ \ ptr -> bufOutput ptr i
         writePrimIORef bufIndex 0
 
+-- | Clear already buffered output.
+clearOutputBuffer :: BufferedOutput -> IO ()
+clearOutputBuffer BufferedOutput{..} = writePrimIORef bufIndex 0

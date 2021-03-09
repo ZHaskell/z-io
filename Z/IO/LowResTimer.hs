@@ -229,7 +229,7 @@ timeoutLowRes timeo io = do
   where
     timeoutAThread tid = void . forkIO $ throwTo tid (TimeOutException tid undefined)
 
--- | Similar to 'timeoutLowRes', but raise a 'TimeOutException' to current thread
+-- | Similar to 'timeoutLowRes', but throw an async 'TimeOutException' to current thread
 -- instead of return 'Nothing' if timeout.
 timeoutLowResEx :: HasCallStack
                 => Int    -- ^ timeout in unit of 0.1s
@@ -245,9 +245,14 @@ timeoutLowResEx timeo io = do
   where
     timeoutAThread tid = void . forkIO $ throwTo tid (TimeOutException tid callStack)
 
--- | see 'timeoutLowResEx' on 'TimeOutException', this exception is not a sub-exception type of 'SomeIOException'.
+-- | see 'timeoutLowResEx' on 'TimeOutException'.
+--
+-- This exception is not a sub-exception type of 'SomeIOException',
+-- but a sub-exception type of 'TimeOutException'.
 data TimeOutException = TimeOutException ThreadId CallStack deriving Show
-instance Exception TimeOutException
+instance Exception TimeOutException where
+    toException = asyncExceptionToException
+    fromException = asyncExceptionFromException
 
 
 -- | Similiar to 'threadDelay', suspends the current thread for a given number of deciseconds.
@@ -323,7 +328,7 @@ fireLowResTimerQueue (LowResTimerManager queue indexLock regCounter _) = do
                 go nextList tListRef counter
             EQ -> do                                     -- if round number is equal to 0, fire it
                 atomicSubCounter_ counter 1
-                catch action ( \ (_ :: SomeException) -> return () )  -- well, we really don't want timers break our loop
+                catchSync action ( \ (_ :: SomeException) -> return () )  -- well, we really don't want timers break our loop
                 go nextList tListRef counter
             GT -> do                                     -- if round number is larger than 0, put it back for another round
                 atomicModifyIORef' tListRef $ \ tlist -> (TimerItem roundCounter action tlist, ())

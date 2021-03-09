@@ -106,6 +106,7 @@ import           Z.IO.Time
 
 -------------------------------------------------------------------------------
 
+-- | Formatter used by `Logger`.
 type LogFormatter = B.Builder ()            -- ^ data\/time string(second precision)
                   -> Level                  -- ^ log level
                   -> B.Builder ()           -- ^ log content
@@ -113,21 +114,16 @@ type LogFormatter = B.Builder ()            -- ^ data\/time string(second precis
                   -> ThreadId               -- ^ logging thread id
                   -> B.Builder ()
 
--- | Extensible logger type.
+-- | The `Logger` type.
 data Logger = Logger
-    { loggerPushBuilder    :: B.Builder () -> IO ()
-    -- ^ Push log into buffer
-    , flushLogger          :: IO ()
-    -- ^ Flush logger's buffer to output device
-    , flushLoggerThrottled :: IO ()
-    -- ^ Throttled flush, e.g. use 'throttleTrailing_' from "Z.IO.LowResTimer"
-    , loggerTSCache        :: IO (B.Builder ())
-    -- ^ An IO action return a formatted date\/time string
-    , loggerFmt            :: LogFormatter
-    -- ^ Log formatter
-    , loggerLevel          :: {-# UNPACK #-} !Level
-    -- ^ Output logs if level is equal or higher than this value.
-    }
+    (Level -> Bool ->  CallStack -> B.Builder () -> IO ())  -- ^ logging function
+    (IO ())                                                 -- ^ manually flush
+
+-- | For composing different loggers
+instance Semigroup Logger where
+    Logger log1 flush1 <> Logger log2 flush2 = Logger
+        (\ l b cs bu -> log1 l b cs bu >> log2 l b cs bu)
+        (flush1 >> flush2)
 
 -- | Logger config type used in this module.
 data LoggerConfig = LoggerConfig
@@ -135,7 +131,7 @@ data LoggerConfig = LoggerConfig
     -- ^ Minimal flush interval, see Notes on 'debug'
     , loggerLineBufSize      :: {-# UNPACK #-} !Int
     -- ^ Buffer size to build each log line
-    , loggerConfigLevel      :: {-# UNPACK #-} !Level
+    , loggerLevel            :: {-# UNPACK #-} !Level
     -- ^ Config log's filter level
     , loggerFormatter        :: LogFormatter
     -- ^ Log formatter
@@ -179,9 +175,14 @@ newLogger LoggerConfig{..} oLock = do
     logsRef <- newIORef []
     let flush = flushLogIORef oLock logsRef
     throttledFlush <- throttleTrailing_ loggerMinFlushInterval flush
-    return $ Logger (pushLogIORef logsRef loggerLineBufSize)
-                    flush throttledFlush defaultTSCache loggerFormatter
-                    loggerConfigLevel
+    return $ Logger (\ level flushNow cstack bu ->
+            when (level >= loggerLevel) $ do
+                ts <- defaultTSCache
+                tid <- myThreadId
+                (pushLogIORef logsRef loggerLineBufSize) $ loggerFormatter ts level bu cstack tid
+                if flushNow then flush else throttledFlush
+        ) flush
+
 
 -- | Make a new logger write to 'stderrBuf'.
 newStdLogger :: LoggerConfig -> IO Logger
@@ -304,7 +305,9 @@ getDefaultLogger = readIORef globalLogger
 
 -- | Manually flush global logger.
 flushDefaultLogger :: IO ()
-flushDefaultLogger = getDefaultLogger >>= flushLogger
+flushDefaultLogger = do
+    (Logger _ flush) <- getDefaultLogger
+    flush
 
 -- | Flush global logger when program exits.
 withDefaultLogger :: IO () -> IO ()
@@ -358,6 +361,7 @@ pattern NOTSET = 0
 -- Level other than built-in ones, are formatted in decimal numeric format, i.e.
 -- @defaultLevelFmt 60 == "LEVEL60"@
 defaultLevelFmt :: Level -> B.Builder ()
+{-# INLINE defaultLevelFmt #-}
 defaultLevelFmt level = case level of
     CRITICAL -> "CRITICAL"
     FATAL    -> "FATAL"
@@ -368,18 +372,23 @@ defaultLevelFmt level = case level of
     level'   -> "LEVEL" >> B.int level'
 
 debug :: HasCallStack => B.Builder () -> IO ()
+{-# INLINE debug #-}
 debug = otherLevel_ DEBUG False callStack
 
 info :: HasCallStack => B.Builder () -> IO ()
+{-# INLINE info #-}
 info = otherLevel_ INFO False callStack
 
 warning :: HasCallStack => B.Builder () -> IO ()
+{-# INLINE warning #-}
 warning = otherLevel_ WARNING False callStack
 
 fatal :: HasCallStack => B.Builder () -> IO ()
+{-# INLINE fatal #-}
 fatal = otherLevel_ FATAL True callStack
 
 critical :: HasCallStack => B.Builder () -> IO ()
+{-# INLINE critical #-}
 critical = otherLevel_ CRITICAL True callStack
 
 otherLevel :: HasCallStack
@@ -387,25 +396,31 @@ otherLevel :: HasCallStack
            -> Bool              -- ^ flush immediately?
            -> B.Builder ()      -- ^ log content
            -> IO ()
+{-# INLINE otherLevel #-}
 otherLevel level flushNow bu = otherLevel_ level flushNow callStack bu
 
 otherLevel_ :: Level -> Bool -> CallStack -> B.Builder () -> IO ()
+{-# INLINE otherLevel_ #-}
 otherLevel_ level flushNow cstack bu = do
-    logger <- getDefaultLogger
-    otherLevelTo_ level flushNow cstack logger bu
+    (Logger f _) <- getDefaultLogger
+    f level flushNow cstack bu
 
 --------------------------------------------------------------------------------
 
 debugTo :: HasCallStack => Logger -> B.Builder () -> IO ()
+{-# INLINE debugTo #-}
 debugTo = otherLevelTo_ DEBUG False callStack
 
 infoTo :: HasCallStack => Logger -> B.Builder () -> IO ()
+{-# INLINE infoTo #-}
 infoTo = otherLevelTo_ INFO False callStack
 
 warningTo :: HasCallStack => Logger -> B.Builder () -> IO ()
+{-# INLINE warningTo #-}
 warningTo = otherLevelTo_ WARNING False callStack
 
 fatalTo :: HasCallStack => Logger -> B.Builder () -> IO ()
+{-# INLINE fatalTo #-}
 fatalTo = otherLevelTo_ FATAL True callStack
 
 otherLevelTo :: HasCallStack
@@ -414,16 +429,11 @@ otherLevelTo :: HasCallStack
              -> Bool              -- ^ flush immediately?
              -> B.Builder ()      -- ^ log content
              -> IO ()
-otherLevelTo logger level flushNow =
-    otherLevelTo_ level flushNow callStack logger
+{-# INLINE otherLevelTo #-}
+otherLevelTo logger level flushNow = otherLevelTo_ level flushNow callStack logger
 
 otherLevelTo_ :: Level -> Bool -> CallStack -> Logger -> B.Builder () -> IO ()
-otherLevelTo_ level flushNow cstack logger bu = when (level >= loggerLevel logger) $ do
-    ts <- loggerTSCache logger
-    tid <- myThreadId
-    (loggerPushBuilder logger) $ (loggerFmt logger) ts level bu cstack tid
-    if flushNow
-    then flushLogger logger
-    else flushLoggerThrottled logger
+{-# INLINE otherLevelTo_ #-}
+otherLevelTo_ level flushNow cs (Logger f _) = f level flushNow cs
 
 foreign import ccall unsafe "rts_getThreadId" getThreadId :: ThreadId# -> CInt

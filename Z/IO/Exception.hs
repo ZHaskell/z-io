@@ -70,6 +70,9 @@ module Z.IO.Exception
   , throwOtherError
   , unwrap
   , unwrap'
+    -- * Sync exception tools
+  , catchSync
+  , ignoreSync
     -- * Re-exports
   , module Control.Exception
   , HasCallStack
@@ -204,6 +207,25 @@ unwrap' :: HasCallStack => T.Text -> T.Text -> Maybe a -> IO a
 {-# INLINABLE unwrap' #-}
 unwrap' _ _ (Just x) = return x
 unwrap' n d Nothing  = throwOtherError n d
+
+-- | Check if the given exception is synchronous
+--
+isSyncException :: Exception e => e -> Bool
+isSyncException e =
+    case fromException (toException e) of
+        Just (SomeAsyncException _) -> False
+        Nothing -> True
+
+-- | Same as upstream 'C.catch', but will not catch asynchronous exceptions
+--
+catchSync :: Exception e => IO a -> (e -> IO a) -> IO a
+catchSync f g = f `catch` \ e ->
+    if isSyncException e then g e else throwIO e
+
+-- | Ingore all synchronous exceptions.
+--
+ignoreSync :: IO a -> IO ()
+ignoreSync f = catchSync (void f) (\ (_ :: SomeException) -> return ())
 
 --------------------------------------------------------------------------------
 

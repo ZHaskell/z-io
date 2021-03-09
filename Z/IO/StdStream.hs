@@ -25,7 +25,7 @@ main = do
     putStd "hello world!"
 
     -- Raw mode
-    setStdinTTYMode UV_TTY_MODE_RAW
+    setStdinTTYMode TTY_MODE_RAW
     forever $ do
         withMVar stdinBuf $ \ i -> withMVar stdoutBuf $ \ o -> do
             bs <- readBuffer i
@@ -41,11 +41,12 @@ module Z.IO.StdStream
   , getStdStreamFD
   , isStdStreamTTY
   , setStdinTTYMode
+  , withRawStdin
   , getStdoutWinSize
   , stdin, stdout, stderr
   , stdinBuf, stdoutBuf, stderrBuf
     -- * utils
-  , readStd, printStd, putStd
+  , readStd, printStd, putStd, printStdLn, putStdLn
     -- * re-export
   , withMVar
   -- * Constant
@@ -238,11 +239,16 @@ makeStdStream fd = do
 
 -- | Change terminal's mode if stdin is connected to a terminal,
 -- do nothing if stdout is not connected to TTY.
+--
 setStdinTTYMode :: TTYMode -> IO ()
 setStdinTTYMode mode = case stdin of
     StdStream True hdl _ uvm ->
         withUVManager' uvm . throwUVIfMinus_ $ uv_tty_set_mode hdl mode
     _ -> return ()
+
+-- | Set stdin to raw mode before run IO, set back to normal after.
+withRawStdin :: IO a -> IO a
+withRawStdin = bracket_ (setStdinTTYMode TTY_MODE_RAW) (setStdinTTYMode TTY_MODE_NORMAL)
 
 -- | Get terminal's output window size in (width, height) format,
 -- return (-1, -1) if stdout is not connected to TTY.
@@ -257,17 +263,27 @@ getStdoutWinSize = case stdout of
 
 --------------------------------------------------------------------------------
 
--- | Print a 'Print' and flush to stdout, with a linefeed.
+-- | Print a 'Print' and flush to stdout, without linefeed.
 printStd :: (HasCallStack, T.Print a) => a -> IO ()
 printStd s = putStd (T.toUTF8Builder s)
 
--- | Print a 'Builder' and flush to stdout, with a linefeed.
+-- | Print a 'Builder' and flush to stdout, without linefeed.
 putStd :: HasCallStack => B.Builder a -> IO ()
 putStd b = withMVar stdoutBuf $ \ o -> do
+    writeBuilder o b
+    flushBuffer o
+
+-- | Print a 'Print' and flush to stdout, with a linefeed.
+printStdLn :: (HasCallStack, T.Print a) => a -> IO ()
+printStdLn s = putStdLn (T.toUTF8Builder s)
+
+-- | Print a 'Builder' and flush to stdout, with a linefeed.
+putStdLn :: HasCallStack => B.Builder a -> IO ()
+putStdLn b = withMVar stdoutBuf $ \ o -> do
     writeBuilder o (b >> B.char8 '\n')
     flushBuffer o
 
--- | Read a line from stdin
+-- | Read a line from stdin(in normal mode).
 --
 -- This function will throw 'ECLOSED' when meet EOF, which may cause trouble if stdin is connected
 -- to a file, use 'readLine' instead.

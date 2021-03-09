@@ -1,5 +1,13 @@
 # Revision history for Z-IO
 
+## 0.7.0.0  -- 2020-03-09
+
+* Change resource `Pool` to keyed by default, add `SimplePool`.
+* Add `Semigroup` instance to `Logger`.
+* Add `clearInputBuffer/clearOutputBuffer` to `Z.IO.Buffered`.
+* Add `catchSync/ingoreSync` to `Z.IO.Exception`.
+* Add `putStdLn/printStdLn` back.
+
 ## 0.6.4.0  -- 2020-02-20
 
 * Add `initProcess'` to kill process while finish using the process resource by default.

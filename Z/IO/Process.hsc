@@ -166,7 +166,7 @@ initProcess' :: ProcessOptions -> Resource (Maybe UVStream, Maybe UVStream, Mayb
 initProcess' opt = initResource (spawn opt) $
     \ (s0, s1, s2, pstate) -> do
         m_pid <- getProcessPID pstate
-        maybe (return ()) (flip killPID SIGTERM) m_pid
+        forM_ m_pid (`killPID` SIGTERM)
         _ <- waitProcessExit pstate
         forM_ s0 closeUVStream
         forM_ s1 closeUVStream

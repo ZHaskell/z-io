@@ -23,7 +23,7 @@ module Z.IO.StdStream.Ansi
     -- * Control codes
     cursorUp, cursorDown, cursorForward, cursorBackward,
     cursorDownLine, cursorUpLine ,
-    setCursorColumn, setCursorPosition, saveCursor, restoreCursor,
+    setCursorColumn, setCursorPosition, saveCursor, restoreCursor, getCursorPosition,
     clearFromCursorToScreenEnd, clearFromCursorToScreenBeginning, clearScreen,
     clearFromCursorToLineEnd, clearFromCursorToLineBeginning, clearLine,
     scrollPageUp, scrollPageDown,
@@ -47,9 +47,13 @@ module Z.IO.StdStream.Ansi
   ) where
 
 import qualified Z.Data.Builder as B
+import qualified Z.Data.Parser as P
 import qualified Z.Data.Text    as T
+import Z.Data.ASCII
 import Data.Word
 import GHC.Generics
+import Z.IO.StdStream
+import Z.IO.Buffered
 
 csi :: [Int]  -- ^ List of parameters for the control sequence
     -> B.Builder () -- ^ Character(s) that identify the control function
@@ -72,6 +76,20 @@ cursorBackward n = csi [n] (B.char8 'D')
 cursorDownLine n = csi [n] (B.char8 'E')
 cursorUpLine n   = csi [n] (B.char8 'F')
 
+getCursorPosition :: IO (Int, Int)
+getCursorPosition = do
+    withRawStdin . withMVar stdinBuf $ \ i -> do
+        clearInputBuffer i
+        putStd (csi [] "6n")
+        readParser (do
+            P.word8 ESC
+            P.word8 BRACKET_LEFT
+            !n <- P.int
+            P.word8 SEMICOLON
+            !m <- P.int
+            P.word8 LETTER_R
+            return (m, n)) i
+
 -- | Code to move the cursor to the specified column. The column numbering is
 -- 1-based (that is, the left-most column is numbered 1).
 setCursorColumn :: Int -- ^ 1-based column to move to
@@ -88,7 +106,6 @@ setCursorPosition n m = csi [n, m] (B.char8 'G')
 saveCursor, restoreCursor :: B.Builder ()
 saveCursor    = B.char8 '\ESC' >> B.char8 '7'
 restoreCursor = B.char8 '\ESC' >> B.char8 '8'
-
 
 clearFromCursorToScreenEnd, clearFromCursorToScreenBeginning, clearScreen :: B.Builder ()
 clearFromCursorToLineEnd, clearFromCursorToLineBeginning, clearLine :: B.Builder ()
