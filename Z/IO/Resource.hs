@@ -11,7 +11,7 @@ This module also implements Gabriel Gonzalez'd idea on 'Resource' applicative:
 <http://www.haskellforall.com/2013/06/the-resource-applicative.html>. The 'Applicative' and 'Monad' instance is
 especially useful when you want safely combine multiple resources.
 
-A high performance resource pool based on STM is also provided.
+A high performance resource pool is also provided.
 
 -}
 
@@ -174,7 +174,10 @@ data Entry res
         {-# UNPACK #-} !Int     -- the life remaining
         (Entry res)             -- next entry
 
--- | A high performance resource pool based on STM.
+-- | A high performance resource pool.
+--
+-- The Pool is first divided by GHC runtime capabilities, each capability maintains a map from key to living
+-- resource list. Resource are fetched from living list first, create on demand if there's no living resource.
 --
 data Pool key res = Pool
     { _poolResource     :: key -> Resource res      -- ^ how to get a resource
@@ -197,7 +200,7 @@ statPool (Pool _ _ _ arr) = (`V.traverseVec` arr) $ \ resMapRef -> do
 --
 -- Like other initXXX functions, this function won't open a resource pool until you use 'withResource'.
 initPool :: (key -> Resource res)
-         -> Int     -- ^ maximum number of resources per local pool per key can be opened
+         -> Int     -- ^ maximum number of resources per local pool per key to be maintained.
          -> Int     -- ^ amount of time after which an unused resource can be released (in seconds).
          -> Resource (Pool key res)
 initPool resf limit itime = initResource createPool closePool
@@ -224,7 +227,7 @@ initPool resf limit itime = initResource createPool closePool
 -- | Open resource inside a given resource pool and do some computation.
 --
 -- This function is thread safe, concurrently usage will be guaranteed
--- to get different resource. If exception happens,
+-- to get different resource. If exception happens during computation,
 -- resource will be closed(not return to pool).
 withPool :: (MonadCatch.MonadMask m, MonadIO m, Ord key, HasCallStack)
                    => Pool key res -> key -> (res -> m a) -> m a
@@ -245,10 +248,7 @@ withPool (Pool resf limitPerKey itime arr) key f = do
                     case M.lookup key resMap of
                         Just (EntryCons a _ _ es') ->
                             (Just $! M.adjust (const es') key resMap, return a)
-                        Just EntryNil ->
-                            (Just $! M.delete key resMap, acquire (resf key))
                         _ ->  (Just resMap, acquire (resf key))
-
                 _ -> (Nothing, throwECLOSED)
 
     returnToPool resMapRef r = do
@@ -271,6 +271,8 @@ withPool (Pool resf limitPerKey itime arr) key f = do
             case mResMap of
                 Just resMap ->
                     case M.lookup key resMap of
+                        -- this is where we clean up empty keys
+                        Just EntryNil -> (Just $! M.delete key resMap, return ())
                         Just es -> do
                             let (dead, living) = age es 0 [] EntryNil
                             case living of
@@ -295,7 +297,7 @@ type SimplePool res = Pool () res
 
 -- | Initialize a 'SimplePool'.
 initSimplePool :: Resource res
-               -> Int     -- ^ maximum number of resources per local pool can be opened
+               -> Int     -- ^ maximum number of resources per local pool to be maintained.
                -> Int     -- ^ amount of time after which an unused resource can be released (in seconds).
                -> Resource (SimplePool res)
 initSimplePool f = initPool (const f)
@@ -303,5 +305,5 @@ initSimplePool f = initPool (const f)
 -- | Open resource with 'SimplePool', see 'withPool'
 --
 withSimplePool :: (MonadCatch.MonadMask m, MonadIO m, HasCallStack)
-                   => SimplePool res -> (res -> m a) -> m a
+               => SimplePool res -> (res -> m a) -> m a
 withSimplePool pool = withPool pool ()
