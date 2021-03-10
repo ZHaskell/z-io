@@ -218,8 +218,7 @@ initPool resf limit itime = initResource createPool closePool
                     Just resMap -> (Nothing, mapM_ closeEntry resMap)
                     _ -> (Nothing, return ())
 
-    closeEntry (EntryCons (_, close) _ _ _) =
-        MonadCatch.handleAll (\ _ -> return ()) close
+    closeEntry (EntryCons (_, close) _ _ _) = ignoreSync close
     closeEntry EntryNil = return ()
 
 -- | Open resource inside a given resource pool and do some computation.
@@ -268,7 +267,7 @@ withPool (Pool resf limitPerKey itime arr) key f = do
                 _ -> (Nothing, snd r)
 
     scanLocalPool resMapRef = do
-        join . atomicModifyIORef' resMapRef $ \ mResMap ->
+        registerLowResTimer_ 10 . join . atomicModifyIORef' resMapRef $ \ mResMap ->
             case mResMap of
                 Just resMap ->
                     case M.lookup key resMap of
@@ -277,10 +276,10 @@ withPool (Pool resf limitPerKey itime arr) key f = do
                             case living of
                                 -- no living resources any more, stop scanning
                                 EntryNil -> (Just $! M.delete key resMap,
-                                    forM_ dead (\ (_, close) -> ignoreSync close))
+                                    forM_ dead (ignoreSync . snd))
                                 _ ->  (Just $! M.adjust (const living) key resMap,
-                                    (do forM_ dead (\ (_, close) -> ignoreSync close)
-                                        void $ registerLowResTimer 10 (scanLocalPool resMapRef)))
+                                    (do forM_ dead (ignoreSync . snd)
+                                        scanLocalPool resMapRef))
                         -- no living resources under given key, stop scanning
                         _ -> (Just resMap, return ())
                 _ -> (Nothing, return ())

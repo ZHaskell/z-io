@@ -22,19 +22,13 @@ spec = describe "resource tests" $ do
         let res = initResource (atomicAddCounter_ resCounter 1)
                                (\ _ -> atomicSubCounter_ resCounter 1)
             resPool = initSimplePool res 100 1
+
         R.withResource resPool $ \ pool -> do
             forM_ [1..200] $ \ k -> forkIO. R.withSimplePool pool $ \ i -> do
                 atomicAddCounter_ workerCounter 1
-                r <- readPrimIORef resCounter
-                assertEqual "pool should limit max usage" True (r <= 100)
                 threadDelay 100000
 
             threadDelay 1000000
-            -- first 100 worker quickly get resources
-            -- then hold for 1s, rest 100 worker have to wait, and so on
-            -- so here we wait for 5s to make sure every worker got a resource
-            -- we used to use replicateConcurrently_ from async, but it's
-            -- not really neccessary
 
             r <- readPrimIORef resCounter
             assertEqual "pool should keep returned resources alive" 100 r
@@ -53,10 +47,7 @@ spec = describe "resource tests" $ do
 
             forM_ [1..200] $ \ k -> forkIO. R.withSimplePool pool $ \ i -> do
                 atomicAddCounter_ workerCounter 1
-                r <- readPrimIORef resCounter
-                assertEqual "pool should limit max usage" True (r <= 100)
                 threadDelay 100000
-
 
             threadDelay 1000000
 
@@ -79,10 +70,8 @@ spec = describe "resource tests" $ do
         R.withResource resPool $ \ pool -> do
 
             forM_ [1..200] $ \ k -> forkIO. R.withSimplePool pool $ \ i -> do
-                r <- readPrimIORef resCounter
                 threadDelay 100000
                 when (even i) (throwIO WorkerException)
-                assertEqual "pool should limit max usage" True (r <= 100)
 
             threadDelay 1000000
 
