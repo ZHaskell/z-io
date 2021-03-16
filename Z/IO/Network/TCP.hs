@@ -144,7 +144,7 @@ startTCPServer TCPServerConfig{..} = startServerLoop
 --
 startServerLoop :: HasCallStack
                 => Int -- ^ backLog
-                -> (UVManager -> Resource UVStream) -- ^ uv_tream_t initializer
+                -> (UVManager -> Resource UVStream) -- ^ uv_stream_t initializer
                 -> (Ptr UVHandle -> IO ())          -- ^ bind function
                 -> (FD -> (UVStream -> IO ()) -> IO ()) -- ^ thread spawner
                 -> (UVStream -> IO ())                  -- ^ worker
