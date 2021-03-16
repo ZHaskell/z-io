@@ -32,8 +32,9 @@
 #include <stdlib.h>
 #include <HsFFI.h>
 
-z_stream * create_z_stream(void){
-    z_stream *stream = malloc(sizeof(z_stream));
+z_stream* create_z_stream(z_stream** streamp){
+    z_stream* stream = malloc(sizeof(z_stream));
+    *streamp = stream;
     if (stream) {
         stream->zalloc = Z_NULL;
         stream->zfree = Z_NULL;

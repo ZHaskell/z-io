@@ -65,6 +65,7 @@ import           Z.Data.JSON        (JSON)
 import           Z.Data.Text.Print  (Print)
 import           Z.Data.Vector.Base as V
 import           Z.Foreign
+import           Z.Foreign.CPtr
 import           Z.IO.BIO
 import           Z.IO.Exception
 
@@ -125,7 +126,9 @@ defaultCompressConfig =
         defaultMemLevel V.empty Z_DEFAULT_STRATEGY V.defaultChunkSize
 
 -- | A foreign pointer to a zlib\'s @z_stream_s@ struct.
-data ZStream = ZStream (ForeignPtr ZStream) (IORef Bool)
+data ZStream = ZStream 
+    {-# UNPACK #-} !(CPtr ZStream) 
+    {-# UNPACK #-} !(IORef Bool)
 
 -- | Make a new compress node.
 --
@@ -134,17 +137,19 @@ newCompress :: HasCallStack
             => CompressConfig
             -> IO (ZStream, BIO V.Bytes V.Bytes)
 newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
-    zs <- mask_ (newForeignPtr free_z_stream_deflate =<< create_z_stream)
+    (zs, _) <- newCPtrUnsafe 
+        (\ mba## -> do
+            ps <- throwOOMIfNull (create_z_stream mba##)
+            throwZlibIfMinus_ $ deflate_init2 ps level windowBits memLevel strategy)
+        free_z_stream_deflate
+
+    unless (V.null dict) .  withCPtr zs $ \ ps -> do
+        throwZlibIfMinus_ . withPrimVectorUnsafe dict $ \ pdict off len ->
+            deflate_set_dictionary ps pdict off (fromIntegral $ len)
+
     buf <- A.newPinnedPrimArray bufSiz
     set_avail_out zs buf bufSiz
     bufRef <- newIORef buf
-
-    withForeignPtr zs $ \ ps -> do
-        throwZlibIfMinus_ $ deflate_init2 ps level windowBits memLevel strategy
-        unless (V.null dict) $
-            throwZlibIfMinus_ . withPrimVectorUnsafe dict $ \ pdict off len ->
-            deflate_set_dictionary ps pdict off (fromIntegral $ len)
-
     finRef <- newIORef False
     return (ZStream zs finRef, BIO (zwrite zs bufRef) (zflush finRef zs bufRef []))
   where
@@ -153,7 +158,7 @@ newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
         zloop zs bufRef []
 
     zloop zs bufRef acc = do
-        oavail :: CUInt <- withForeignPtr zs $ \ ps -> do
+        oavail :: CUInt <- withCPtr zs $ \ ps -> do
             throwZlibIfMinus_ (deflate ps (#const Z_NO_FLUSH))
             (#peek struct z_stream_s, avail_out) ps
         if oavail == 0
@@ -174,7 +179,7 @@ newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
         then return Nothing
         else do
             buf <- readIORef bufRef
-            (r, osiz) <- withForeignPtr zs $ \ ps -> do
+            (r, osiz) <- withCPtr zs $ \ ps -> do
                 r <- throwZlibIfMinus (deflate ps (#const Z_FINISH))
                 oavail :: CUInt <- (#peek struct z_stream_s, avail_out) ps
                 return (r, bufSiz - fromIntegral oavail)
@@ -195,7 +200,7 @@ newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
 -- | Reset compressor's state so that related 'BIO' can be reused.
 compressReset :: ZStream -> IO ()
 compressReset (ZStream fp finRef) = do
-    throwZlibIfMinus_ (withForeignPtr fp deflateReset)
+    throwZlibIfMinus_ (withCPtr fp deflateReset)
     writeIORef finRef False
 
 -- | Compress some bytes.
@@ -221,12 +226,15 @@ defaultDecompressConfig = DecompressConfig defaultWindowBits V.empty V.defaultCh
 -- The returned 'BIO' node can be reused only if you call 'decompressReset' on the 'ZStream'.
 newDecompress :: DecompressConfig -> IO (ZStream, BIO V.Bytes V.Bytes)
 newDecompress (DecompressConfig windowBits dict bufSiz) = do
-    zs <- newForeignPtr free_z_stream_inflate =<< create_z_stream
+    (zs, _) <- newCPtrUnsafe 
+        (\ mba## -> do
+            ps <- throwOOMIfNull (create_z_stream mba##)
+            throwZlibIfMinus_ $ inflate_init2 ps windowBits)
+        free_z_stream_inflate
+
     buf <- A.newPinnedPrimArray bufSiz
     set_avail_out zs buf bufSiz
     bufRef <- newIORef buf
-    withForeignPtr zs $ \ ps -> do
-        throwZlibIfMinus_ $ inflate_init2 ps windowBits
     finRef <- newIORef False
     return (ZStream zs finRef, BIO (zwrite zs bufRef) (zflush finRef zs bufRef []))
   where
@@ -235,7 +243,7 @@ newDecompress (DecompressConfig windowBits dict bufSiz) = do
         zloop zs bufRef []
 
     zloop zs bufRef acc = do
-        oavail :: CUInt <- withForeignPtr zs $ \ ps -> do
+        oavail :: CUInt <- withCPtr zs $ \ ps -> do
             r <- throwZlibIfMinus (inflate ps (#const Z_NO_FLUSH))
             when (r == (#const Z_NEED_DICT)) $
                 if V.null dict
@@ -263,7 +271,7 @@ newDecompress (DecompressConfig windowBits dict bufSiz) = do
         then return Nothing
         else do
             buf <- readIORef bufRef
-            (r, osiz) <- withForeignPtr zs $ \ ps -> do
+            (r, osiz) <- withCPtr zs $ \ ps -> do
                 r <- throwZlibIfMinus (inflate ps (#const Z_FINISH))
                 r' <- if r == (#const Z_NEED_DICT)
                 then if V.null dict
@@ -292,7 +300,7 @@ newDecompress (DecompressConfig windowBits dict bufSiz) = do
 -- | Reset decompressor's state so that related 'BIO' can be reused.
 decompressReset :: ZStream -> IO ()
 decompressReset (ZStream fp finRef) = do
-    throwZlibIfMinus_ (withForeignPtr fp inflateReset)
+    throwZlibIfMinus_ (withCPtr fp inflateReset)
     writeIORef finRef False
 
 -- | Decompress some bytes.
@@ -334,7 +342,7 @@ throwZlibIfMinus_ :: HasCallStack => IO CInt -> IO ()
 throwZlibIfMinus_ = void . throwZlibIfMinus
 
 foreign import ccall unsafe
-    create_z_stream :: IO (Ptr ZStream)
+    create_z_stream :: MBA## (Ptr ZStream) -> IO (Ptr ZStream)
 
 foreign import ccall unsafe "hs_zlib.c &free_z_stream_inflate"
     free_z_stream_inflate :: FunPtr (Ptr ZStream -> IO ())
@@ -366,16 +374,16 @@ foreign import ccall unsafe
 foreign import ccall unsafe
     inflateReset :: Ptr ZStream -> IO CInt
 
-set_avail_in :: ForeignPtr ZStream -> V.Bytes -> Int -> IO ()
+set_avail_in :: CPtr ZStream -> V.Bytes -> Int -> IO ()
 set_avail_in zs buf buflen = do
     withPrimVectorSafe buf $ \ pbuf _ ->
-        withForeignPtr zs $ \ ps -> do
+        withCPtr zs $ \ ps -> do
             (#poke struct z_stream_s, next_in) ps pbuf
             (#poke struct z_stream_s, avail_in) ps (fromIntegral buflen :: CUInt)
 
-set_avail_out :: ForeignPtr ZStream -> MutablePrimArray RealWorld Word8 -> Int -> IO ()
+set_avail_out :: CPtr ZStream -> MutablePrimArray RealWorld Word8 -> Int -> IO ()
 set_avail_out zs buf bufSiz = do
     withMutablePrimArrayContents buf $ \ pbuf ->
-        withForeignPtr zs $ \ ps -> do
+        withCPtr zs $ \ ps -> do
             (#poke struct z_stream_s, next_out) ps pbuf
             (#poke struct z_stream_s, avail_out) ps (fromIntegral bufSiz :: CUInt)

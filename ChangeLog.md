@@ -1,5 +1,9 @@
 # Revision history for Z-IO
 
+## 0.7.1.0  -- 2020-03-16
+
+* Use `CPtr` from Z-Data instead of `ForeignPtr`.
+
 ## 0.7.0.0  -- 2020-03-09
 
 * Change resource `Pool` to keyed by default, add `SimplePool`.

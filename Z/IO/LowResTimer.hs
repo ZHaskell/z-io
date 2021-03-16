@@ -62,7 +62,7 @@ queueSize = 128
 data TimerList = TimerItem {-# UNPACK #-} !Counter (IO ()) TimerList | TimerNil
 
 data LowResTimerManager = LowResTimerManager
-    (Array (IORef TimerList))
+    (SmallArray (IORef TimerList))
     -- timer queue
     (MVar Int)
     -- current time wheel's index
@@ -82,7 +82,7 @@ newLowResTimerManager = do
     iqueue <- unsafeFreezeArr queue
     return (LowResTimerManager iqueue indexLock regCounter runningLock)
 
-lowResTimerManager :: IORef (Array LowResTimerManager)
+lowResTimerManager :: IORef (SmallArray LowResTimerManager)
 {-# NOINLINE lowResTimerManager #-}
 lowResTimerManager = unsafePerformIO $ do
     numCaps <- getNumCapabilities
