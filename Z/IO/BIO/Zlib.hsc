@@ -137,10 +137,10 @@ newCompress :: HasCallStack
             => CompressConfig
             -> IO (ZStream, BIO V.Bytes V.Bytes)
 newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
-    (zs, _) <- newCPtrUnsafe 
-        (\ mba## -> do
-            ps <- throwOOMIfNull (create_z_stream mba##)
-            throwZlibIfMinus_ $ deflate_init2 ps level windowBits memLevel strategy)
+    zs <- newCPtr'
+        (do ps <- throwOOMIfNull create_z_stream
+            throwZlibIfMinus_ $ deflate_init2 ps level windowBits memLevel strategy
+            return ps)
         free_z_stream_deflate
 
     unless (V.null dict) .  withCPtr zs $ \ ps -> do
@@ -226,10 +226,10 @@ defaultDecompressConfig = DecompressConfig defaultWindowBits V.empty V.defaultCh
 -- The returned 'BIO' node can be reused only if you call 'decompressReset' on the 'ZStream'.
 newDecompress :: DecompressConfig -> IO (ZStream, BIO V.Bytes V.Bytes)
 newDecompress (DecompressConfig windowBits dict bufSiz) = do
-    (zs, _) <- newCPtrUnsafe 
-        (\ mba## -> do
-            ps <- throwOOMIfNull (create_z_stream mba##)
-            throwZlibIfMinus_ $ inflate_init2 ps windowBits)
+    zs <- newCPtr'
+        (do ps <- throwOOMIfNull create_z_stream
+            throwZlibIfMinus_ $ inflate_init2 ps windowBits
+            return ps)
         free_z_stream_inflate
 
     buf <- A.newPinnedPrimArray bufSiz
@@ -342,7 +342,7 @@ throwZlibIfMinus_ :: HasCallStack => IO CInt -> IO ()
 throwZlibIfMinus_ = void . throwZlibIfMinus
 
 foreign import ccall unsafe
-    create_z_stream :: MBA## (Ptr ZStream) -> IO (Ptr ZStream)
+    create_z_stream :: IO (Ptr ZStream)
 
 foreign import ccall unsafe "hs_zlib.c &free_z_stream_inflate"
     free_z_stream_inflate :: FunPtr (Ptr ZStream -> IO ())

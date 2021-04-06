@@ -31,7 +31,9 @@ import           Control.Monad
 import           Data.Bits
 import qualified Data.HashMap.Strict      as HM
 import           Data.IORef
+#if defined(linux_HOST_OS)
 import qualified Data.List                as List
+#endif
 import           Data.Primitive.PrimArray
 import           Data.Word
 import           GHC.Generics
