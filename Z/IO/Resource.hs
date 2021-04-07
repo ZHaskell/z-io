@@ -129,8 +129,8 @@ instance MonadIO Resource where
 -- | Create a new resource and run some computation, resource is guarantee to
 -- be closed.
 --
--- Be care don't leak the resource through computation return value, because
--- after the computation finishes, the resource is closed already.
+-- Be careful, don't leak the resource through the computation return value
+-- because after the computation finishes, the resource is already closed.
 --
 withResource :: (MonadCatch.MonadMask m, MonadIO m, HasCallStack)
              => Resource a -> (a -> m b) -> m b
