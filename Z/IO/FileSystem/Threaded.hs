@@ -145,7 +145,7 @@ import           Z.IO.Resource
 import           Z.IO.UV.FFI
 import           Z.IO.UV.Manager
 
-#include "_Shared.hs"
+#include "fs_shared.hs"
 
 --------------------------------------------------------------------------------
 -- File
@@ -444,8 +444,8 @@ stat' path = do
             uvm <- getUVManager
             withUVRequest' uvm (hs_uv_fs_stat_threaded p s) $ \ r ->
                 if  | r == fromIntegral UV_ENOENT -> pure Nothing
-                    | r < 0           -> throwUV r
-                    | otherwise       -> Just <$> peekUVStat s
+                    | r < 0                       -> throwUV r
+                    | otherwise                   -> Just <$> peekUVStat s
 
 -- | Equivalent to <http://linux.die.net/man/2/lstat lstat(2)>
 --
@@ -457,8 +457,8 @@ lstat' path =
             uvm <- getUVManager
             withUVRequest' uvm (hs_uv_fs_lstat_threaded p s) $ \ r ->
                 if  | r == fromIntegral UV_ENOENT -> pure Nothing
-                    | r < 0           -> throwUV r
-                    | otherwise       -> Just <$> peekUVStat s
+                    | r < 0                       -> throwUV r
+                    | otherwise                   -> Just <$> peekUVStat s
 
 -- | Equivalent to <http://linux.die.net/man/2/fstat fstat(2)>
 fstat :: HasCallStack => File -> IO FStat
