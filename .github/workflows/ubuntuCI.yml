@@ -15,12 +15,20 @@ jobs:
             cabal: 2.4
           - ghc: 8.10
             cabal: 2.4
-    env:
-        CONFIG: "--enable-tests --enable-benchmarks"
     steps:
       - uses: actions/checkout@v2
         with:
           submodules: 'recursive'
+
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cabal/packages
+            ~/.cabal/store
+            dist-newstyle
+          key: ${{ runner.os }}-${{ matrix.ghc }}-${{ matrix.cabal }}-v1-${{ hashFiles('**/*.cabal') }}-${{ hashFiles('**/cabal.project') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.ghc }}-${{ matrix.cabal }}-v1-
 
       - name: Setup Haskell
         uses: haskell/actions/setup@v1
@@ -29,10 +37,19 @@ jobs:
           cabal-version: ${{ matrix.cabal }}
 
       - run: cabal v2-update
-      - run: cabal v2-freeze $CONFIG && cat cabal.project.freeze
 
-      - run: "cabal update && cabal v2-build $CONFIG"
-      - run: cabal v2-configure --enable-test
+      - name: sdist
+        run: |
+          mkdir -p $HOME/sdist
+          cabal v2-sdist --output-dir $HOME/sdist
+
+      - name: unpack
+        run: |
+          rm -rf $GITHUB_WORKSPACE/*
+          find $HOME/sdist -maxdepth 1 -type f -name '*.tar.gz' -exec tar -C $GITHUB_WORKSPACE -xzvf {} --strip 1 \;
+
+      - name: build
+        run: cabal v2-build --upgrade-dependencies --enable-tests --enable-benchmarks
 
       - if: "matrix.cabal < '3'"
         run: cabal v2-test
@@ -41,4 +58,3 @@ jobs:
 
       - run: cabal check
       - run: cabal v2-haddock
-      - run: cabal v2-sdist
