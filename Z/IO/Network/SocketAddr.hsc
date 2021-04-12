@@ -90,7 +90,7 @@ import qualified Z.Data.Vector.Extra    as V
 import           Z.IO.Exception
 import           Z.Foreign
 
-#include "hs_uv.h" 
+#include "hs_uv.h"
 
 #if defined(i386_HOST_ARCH) && defined(mingw32_HOST_OS)
 #let CALLCONV = "stdcall"
@@ -109,7 +109,7 @@ type CSaFamily = (#type sa_family_t)
 #endif
 
 -- | IPv4 or IPv6 socket address, i.e. the `sockaddr_in` or `sockaddr_in6` struct.
--- 
+--
 -- Example on JSON instance:
 --
 -- @
@@ -118,7 +118,7 @@ type CSaFamily = (#type sa_family_t)
 -- > JSON.encodeText  $ ipv4 "128.14.32.1" 9090
 -- "{\"addr\":[128,14,32,1],\"port\":9090}"
 -- @
-data SocketAddr 
+data SocketAddr
     = SocketAddrIPv4
         {-# UNPACK #-} !IPv4    -- sin_addr  (ditto)
         {-# UNPACK #-} !PortNumber  -- sin_port  (network byte order)
@@ -129,7 +129,7 @@ data SocketAddr
         {-# UNPACK #-} !ScopeID     -- sin6_scope_id (ditto)
     deriving (Eq, Ord, Generic)
 
-instance JSON SocketAddr where 
+instance JSON SocketAddr where
     {-# INLINE encodeJSON #-}
     encodeJSON (SocketAddrIPv4 addr port) = T.curly $ do
         "addr" `B.kv` encodeJSON addr
@@ -145,11 +145,11 @@ instance JSON SocketAddr where
         "scope" `B.kv` encodeJSON scope
 
     {-# INLINE toValue #-}
-    toValue (SocketAddrIPv4 addr port) = JSON.Object . V.pack $ 
+    toValue (SocketAddrIPv4 addr port) = JSON.Object . V.pack $
         [ ("addr", toValue addr)
         , ("number", toValue port)
         ]
-    toValue (SocketAddrIPv6 addr port flow scope) = JSON.Object . V.pack $ 
+    toValue (SocketAddrIPv6 addr port flow scope) = JSON.Object . V.pack $
         [ ("addr", toValue addr)
         , ("number", toValue port)
         , ("flow", toValue flow)
@@ -189,7 +189,7 @@ instance Print SocketAddr where
        = T.toUTF8Builder addr >> T.char7 ':' >> T.toUTF8Builder port
     toUTF8BuilderP _ (SocketAddrIPv6 addr port _ _) = do
         T.square (T.toUTF8Builder addr)
-        T.char7 ':' 
+        T.char7 ':'
         T.toUTF8Builder port
 
 sockAddrFamily :: SocketAddr -> SocketFamily
@@ -222,7 +222,7 @@ ipv6 str (PortNumber port) = unsafeDupablePerformIO . withSocketAddrStorageUnsaf
 -- JSON instance encode ipv4 address into an array with 4 'Word8' octets.
 newtype IPv4 = IPv4 { getIPv4Addr :: Word32 }
     deriving (Eq, Ord, Generic)
-    
+
 instance JSON IPv4 where
     {-# INLINE encodeJSON #-}
     encodeJSON = encodeJSON . ipv4AddrToTuple
@@ -235,13 +235,13 @@ instance Show IPv4 where show = T.toString
 instance Print IPv4 where
     toUTF8BuilderP _ ia = do
         let (a,b,c,d) = ipv4AddrToTuple ia
-        T.int a 
-        T.char7 '.' 
-        T.int b  
-        T.char7 '.' 
+        T.int a
+        T.char7 '.'
+        T.int b
+        T.char7 '.'
         T.int c
-        T.char7 '.' 
-        T.int d  
+        T.char7 '.'
+        T.int d
 
 -- | @0.0.0.0@
 ipv4Any             :: IPv4
@@ -273,7 +273,7 @@ ipv4MaxLocalGroup    = tupleToIPv4Addr (224,  0,  0,255)
 
 instance Storable IPv4 where
     sizeOf _ = 4
-    alignment _ = alignment (undefined :: Word32) 
+    alignment _ = alignment (undefined :: Word32)
     peek p = (IPv4 . ntohl) `fmap` peekByteOff p 0
     poke p (IPv4 ia) = pokeByteOff p 0 (htonl ia)
 
@@ -282,7 +282,7 @@ instance Unaligned IPv4 where
     pokeMBA p off x = pokeMBA p off (htonl (getIPv4Addr x))
     peekMBA p off = IPv4 . ntohl <$> peekMBA p off
     indexBA p off = IPv4 (ntohl (indexBA p off))
-    
+
 -- | Converts 'IPv4' to representation-independent IPv4 quadruple.
 -- For example for @127.0.0.1@ the function will return @(127, 0, 0, 1)@
 -- regardless of host endianness.
@@ -307,7 +307,7 @@ tupleToIPv4Addr (b3, b2, b1, b0) =
 data IPv6 = IPv6 {-# UNPACK #-}!Word32
                  {-# UNPACK #-}!Word32
                  {-# UNPACK #-}!Word32
-                 {-# UNPACK #-}!Word32 
+                 {-# UNPACK #-}!Word32
     deriving (Eq, Ord, Generic)
 
 instance JSON IPv6 where
@@ -415,7 +415,7 @@ poke32 p i0 a = do
 instance Unaligned IPv6 where
     unalignedSize = (#size struct in6_addr)
 
-    indexBA p off = 
+    indexBA p off =
         let a = indexBA p (off + s6_addr_offset + 0)
             b = indexBA p  (off + s6_addr_offset + 4)
             c = indexBA p  (off + s6_addr_offset + 8)
@@ -489,8 +489,8 @@ withSocketAddr sa@(SocketAddrIPv4 _ _) f = do
         (#size struct sockaddr_in)
         (#alignment struct sockaddr_in) $ \ p -> pokeSocketAddr p sa >> f p
 withSocketAddr sa@(SocketAddrIPv6 _ _ _ _) f = do
-    allocaBytesAligned 
-        (#size struct sockaddr_in6) 
+    allocaBytesAligned
+        (#size struct sockaddr_in6)
         (#alignment struct sockaddr_in6) $ \ p -> pokeSocketAddr p sa >> f p
 
 -- | Pass 'SocketAddr' to FFI as pointer.
@@ -499,12 +499,12 @@ withSocketAddr sa@(SocketAddrIPv6 _ _ _ _) f = do
 --
 withSocketAddrUnsafe :: SocketAddr -> (MBA## SocketAddr -> IO a) -> IO a
 withSocketAddrUnsafe sa@(SocketAddrIPv4 _ _) f = do
-    (MutableByteArray p) <- newByteArray (#size struct sockaddr_in) 
-    pokeSocketAddrMBA p sa 
+    (MutableByteArray p) <- newByteArray (#size struct sockaddr_in)
+    pokeSocketAddrMBA p sa
     f p
 withSocketAddrUnsafe sa@(SocketAddrIPv6 _ _ _ _) f = do
-    (MutableByteArray p) <- newByteArray (#size struct sockaddr_in6) 
-    pokeSocketAddrMBA p sa 
+    (MutableByteArray p) <- newByteArray (#size struct sockaddr_in6)
+    pokeSocketAddrMBA p sa
     f p
 
 sizeOfSocketAddr :: SocketAddr -> CSize
@@ -524,7 +524,7 @@ withSocketAddrStorage f = do
 --
 withSocketAddrStorageUnsafe :: (MBA## SocketAddr -> IO ()) -> IO SocketAddr
 withSocketAddrStorageUnsafe f = do
-    (MutableByteArray p) <- newByteArray (#size struct sockaddr_storage) 
+    (MutableByteArray p) <- newByteArray (#size struct sockaddr_storage)
     f p
     peekSocketAddrMBA p
 
@@ -536,14 +536,14 @@ peekSocketAddrMBA p = do
     family <- peekMBA p (#offset struct sockaddr, sa_family)
     case family :: CSaFamily of
         (#const AF_INET) -> do
-            addr <- peekMBA p (#offset struct sockaddr_in, sin_addr) 
-            port <- peekMBA p (#offset struct sockaddr_in, sin_port) 
+            addr <- peekMBA p (#offset struct sockaddr_in, sin_addr)
+            port <- peekMBA p (#offset struct sockaddr_in, sin_port)
             return (SocketAddrIPv4 addr port)
         (#const AF_INET6) -> do
-            port <- peekMBA p (#offset struct sockaddr_in6, sin6_port) 
-            flow <- peekMBA p (#offset struct sockaddr_in6, sin6_flowinfo) 
-            addr <- peekMBA p (#offset struct sockaddr_in6, sin6_addr) 
-            scope <- peekMBA p (#offset struct sockaddr_in6, sin6_scope_id) 
+            port <- peekMBA p (#offset struct sockaddr_in6, sin6_port)
+            flow <- peekMBA p (#offset struct sockaddr_in6, sin6_flowinfo)
+            addr <- peekMBA p (#offset struct sockaddr_in6, sin6_addr)
+            scope <- peekMBA p (#offset struct sockaddr_in6, sin6_scope_id)
             return (SocketAddrIPv6 addr port flow scope)
         _ -> do let errno = UV_EAI_ADDRFAMILY
                 name <- uvErrName errno
@@ -578,7 +578,7 @@ pokeSocketAddrMBA p (SocketAddrIPv6 addr port flow scope) =  do
 -- Port Numbers
 
 -- | Port number.
--- 
+--
 -- Use the @Num@ instance (i.e. use a literal) to create a --   @PortNumber@ value.
 --
 -- >>> 1 :: PortNumber
@@ -593,13 +593,31 @@ pokeSocketAddrMBA p (SocketAddrIPv6 addr port flow scope) =  do
 -- True
 -- >>> 50000 + (10000 :: PortNumber)
 -- 60000
-newtype PortNumber = PortNumber Word16 
+newtype PortNumber = PortNumber Word16
     deriving (Eq, Ord, Enum, Generic)
     deriving newtype (Show, Print, Read, Num, Bounded, Real, Integral, JSON)
 
 -- | @:0@
 portAny :: PortNumber
 portAny = PortNumber 0
+
+defaultPortNumberHTTP :: PortNumber
+defaultPortNumberHTTP = 80
+
+defaultPortNumberHTTPS :: PortNumber
+defaultPortNumberHTTPS = 443
+
+defaultPortNumberSMTP :: PortNumber
+defaultPortNumberSMTP = 25
+
+defaultPortNumberPOP3 :: PortNumber
+defaultPortNumberPOP3 = 110
+
+defaultPortNumberIMAP :: PortNumber
+defaultPortNumberIMAP = 143
+
+defaultPortNumberIRC :: PortNumber
+defaultPortNumberIRC = 194
 
 instance Storable PortNumber where
    sizeOf    _ = sizeOf    (0 :: Word16)
@@ -612,7 +630,7 @@ instance Unaligned PortNumber where
    indexBA p off = PortNumber . ntohs $ indexBA p off
    pokeMBA p off (PortNumber po) = pokeMBA p off (htons po)
    peekMBA p off = PortNumber . ntohs <$> peekMBA p off
-    
+
 --------------------------------------------------------------------------------
 
 type SocketFamily = CInt

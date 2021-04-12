@@ -14,7 +14,7 @@ This module provides low level buffered IO interface, it's recommended to check 
 
 module Z.IO.Buffered
   ( -- * Input & Output device
-    Input(..), Output(..)
+    Input(..), Output(..), IODev
     -- * Buffered Input
   , BufferedInput, bufInput
   , newBufferedInput
@@ -32,10 +32,13 @@ module Z.IO.Buffered
   , BufferedOutput, bufOutput
   , newBufferedOutput
   , newBufferedOutput'
-  , writeBuffer
+  , writeBuffer, writeBuffer'
   , writeBuilder
   , flushBuffer
   , clearOutputBuffer
+    -- * Buffered Input and Output
+  , newBufferedIO
+  , newBufferedIO'
     -- * common buffer size
   , V.defaultChunkSize
   , V.smallChunkSize
@@ -73,6 +76,15 @@ class Input i where
 --
 class Output o where
     writeOutput :: o -> Ptr Word8 -> Int -> IO ()
+
+-- | Input and Output device
+--
+-- 'readInput' should return 0 on EOF.
+--
+-- 'writeOutput' should not return until all data are written (may not
+-- necessarily flushed to hardware, that should be done in device specific way).
+--
+type IODev io = (Input io, Output io)
 
 -- | Input device with buffer, NOT THREAD SAFE!
 --
@@ -135,6 +147,18 @@ newBufferedInput' bufSiz i = do
     inputBuffer <- newIORef buf
     return (BufferedInput (readInput i) pb inputBuffer)
 
+-- | Open a new buffered input and output with 'V.defaultChunkSize' as buffer size.
+newBufferedIO :: IODev dev => dev -> IO (BufferedInput, BufferedOutput)
+{-# INLINE newBufferedIO #-}
+newBufferedIO dev = newBufferedIO' dev V.defaultChunkSize V.defaultChunkSize
+
+-- | Open a new buffered input and output with given buffer size, e.g. 'V.defaultChunkSize'.
+newBufferedIO' :: IODev dev => dev -> Int -> Int -> IO (BufferedInput, BufferedOutput)
+{-# INLINE newBufferedIO' #-}
+newBufferedIO' dev inSize outSize = do
+    i <- newBufferedInput' inSize dev
+    o <- newBufferedOutput' outSize dev
+    pure (i, o)
 
 -- | Request bytes chunk from 'BufferedInput'.
 --
@@ -397,6 +421,17 @@ writeBuffer o@BufferedOutput{..} v@(V.PrimVector ba s l) = do
             copyPrimArray outputBuffer i ba s l   -- copy to buffer
             writePrimIORef bufIndex l             -- update index
 
+-- | Write 'V.Bytes' into buffered handle then flush the buffer into output device (if buffer is not empty).
+--
+-- * If buffer is empty and bytes are larger than half of buffer, directly write bytes,
+--   otherwise copy bytes to buffer.
+--
+-- * If buffer is not empty, then copy bytes to buffer if it can hold, otherwise
+--   write buffer first, then try again.
+--
+writeBuffer' :: HasCallStack => BufferedOutput -> V.Bytes -> IO ()
+{-# INLINE writeBuffer' #-}
+writeBuffer' bo o = writeBuffer bo o >> flushBuffer bo
 
 -- | Directly write 'B.Builder' into buffered handle.
 --

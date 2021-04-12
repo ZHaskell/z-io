@@ -30,8 +30,8 @@ This package is part of [Z.Haskell](https://z.haskell.world) project, provides b
 > import Z.IO.Resource
 > import Z.IO.Buffered
 >
-> -- call getAddrInfo to perform DNS
-> head <$> getAddrInfo Nothing "www.bing.com" "http"
+> -- call resolveDNS or getAddrInfo to perform DNS
+> resolveDNS ("www.bing.com", 80) Nothing
 AddrInfo {addrFlags = [AI_ADDRCONFIG,AI_V4MAPPED], addrFamily = SocketFamily 2, addrSocketType = SocketType 1, addrProtocol = ProtocolNumber 6, addrAddress = 204.79.197.200:80, addrCanonName = ""}
 >
 > import qualified Z.Data.Text as T
@@ -39,10 +39,8 @@ AddrInfo {addrFlags = [AI_ADDRCONFIG,AI_V4MAPPED], addrFamily = SocketFamily 2, 
 > :{
 let addr = ipv4 "13.107.21.200" 80
 in withResource (initTCPClient defaultTCPClientConfig{ tcpRemoteAddr = addr}) $ \ tcp -> do
-    i <- newBufferedInput tcp
-    o <- newBufferedOutput tcp
-    writeBuffer o "GET http://www.bing.com HTTP/1.1\r\nHost: www.bing.com\r\n\r\n"
-    flushBuffer o
+    (i, o) <- newBufferedIO tcp
+    writeBuffer' o "GET http://www.bing.com HTTP/1.1\r\nHost: www.bing.com\r\n\r\n"
     readBuffer i >>= pure . T.validate
 :}
 "HTTP/1.1 200 OK\r\nDate: Sat, 19 Sep 2020 06:11:08 GMT\r\nContent-Length: 0\r\n\r\n"
