@@ -12,7 +12,7 @@ This module provides 'getAddrInfo' and 'getNameInfo'. <https://www.man7.org/linu
 -}
 module Z.IO.Network.DNS (
   -- * name to ip
-    getAddrInfo
+    getAddrInfo, resolveDNS
   , HostName
   , ServiceName
   , AddrInfoFlag(..), addrInfoFlagImplemented, addrInfoFlagMapping
@@ -28,8 +28,9 @@ import           Data.Word
 import           Foreign.C.Types
 import           Foreign.Marshal.Utils
 import           Foreign.Ptr
-import           Foreign.Storable 
+import           Foreign.Storable
 import           GHC.Generics
+import qualified Z.Data.Builder             as B
 import           Z.Data.CBytes              as CBytes
 import           Z.Data.Text.Print          (Print(..))
 import           Z.Data.JSON                (JSON)
@@ -283,6 +284,15 @@ getAddrInfo hints host service = withUVInitDo $
     filteredHints = hints
 #endif
 
+-- | Resolve DNS of a pair of given HostName and PortNumber.
+resolveDNS
+    :: (HostName, PortNumber) -- ^ host name and port number to look up
+    -> Maybe AddrInfo -- ^ hints for address lookup with 'getAddrInfo'
+    -> IO AddrInfo -- ^ resolved addresses, with "best" first
+resolveDNS (hostName, portNumber) hints = head <$> getAddrInfo hints hostName (cast portNumber)
+    where
+      cast :: PortNumber -> CBytes = buildCBytes . B.int
+
 -- | Peek @addrinfo@ linked list.
 --
 followAddrInfo :: Ptr AddrInfo -> IO [AddrInfo]
@@ -321,7 +331,7 @@ getNameInfo
 getNameInfo flags doHost doService addr = withUVInitDo $ do
     (host, (service, _)) <- allocCBytes (fromIntegral h_len) $ \ ptr_h ->
         allocCBytes (fromIntegral s_len) $ \ ptr_s ->
-        withSocketAddr addr $ \ ptr_addr -> 
+        withSocketAddr addr $ \ ptr_addr ->
             throwUVIfMinus_ $ hs_getnameinfo ptr_addr addr_len ptr_h h_len ptr_s s_len cflag
     return (host, service)
   where
@@ -357,7 +367,7 @@ unpackBits ((k,v):xs) r
 
 -----------------------------------------------------------------------------
 foreign import ccall safe "hs_getaddrinfo"
-    hs_getaddrinfo :: Ptr Word8 -- ^ host 
+    hs_getaddrinfo :: Ptr Word8 -- ^ host
                    -> Ptr Word8 -- ^ service
                    -> Ptr AddrInfo   -- ^ hints
                    -> Ptr (Ptr AddrInfo) -- ^ output addrinfo linked list
@@ -368,7 +378,7 @@ foreign import ccall unsafe "freeaddrinfo" freeaddrinfo :: Ptr AddrInfo -> IO ()
 foreign import ccall safe "hs_getnameinfo"
     hs_getnameinfo :: Ptr SocketAddr
                       -> CSize
-                      -> CString -- ^ output host 
+                      -> CString -- ^ output host
                       -> CSize
                       -> CString -- ^ output service
                       -> CSize
