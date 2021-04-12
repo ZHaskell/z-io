@@ -30,8 +30,8 @@ This package is part of [Z.Haskell](https://z.haskell.world) project, provides b
 > import Z.IO.Resource
 > import Z.IO.Buffered
 >
-> -- call resolveDNS or getAddrInfo to perform DNS
-> resolveDNS ("www.bing.com", 80) Nothing
+> -- call getAddrInfo to perform DNS
+> head <$> getAddrInfo Nothing "www.bing.com" "http"
 AddrInfo {addrFlags = [AI_ADDRCONFIG,AI_V4MAPPED], addrFamily = SocketFamily 2, addrSocketType = SocketType 1, addrProtocol = ProtocolNumber 6, addrAddress = 204.79.197.200:80, addrCanonName = ""}
 >
 > import qualified Z.Data.Text as T

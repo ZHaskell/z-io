@@ -12,7 +12,7 @@ This module provides 'getAddrInfo' and 'getNameInfo'. <https://www.man7.org/linu
 -}
 module Z.IO.Network.DNS (
   -- * name to ip
-    getAddrInfo, resolveDNS
+    getAddrInfo
   , HostName
   , ServiceName
   , AddrInfoFlag(..), addrInfoFlagImplemented, addrInfoFlagMapping
@@ -30,7 +30,6 @@ import           Foreign.Marshal.Utils
 import           Foreign.Ptr
 import           Foreign.Storable
 import           GHC.Generics
-import qualified Z.Data.Builder             as B
 import           Z.Data.CBytes              as CBytes
 import           Z.Data.Text.Print          (Print(..))
 import           Z.Data.JSON                (JSON)
@@ -283,15 +282,6 @@ getAddrInfo hints host service = withUVInitDo $
 #else
     filteredHints = hints
 #endif
-
--- | Resolve DNS of a pair of given HostName and PortNumber.
-resolveDNS
-    :: (HostName, PortNumber) -- ^ host name and port number to look up
-    -> Maybe AddrInfo -- ^ hints for address lookup with 'getAddrInfo'
-    -> IO AddrInfo -- ^ resolved addresses, with "best" first
-resolveDNS (hostName, portNumber) hints = head <$> getAddrInfo hints hostName (cast portNumber)
-    where
-      cast :: PortNumber -> CBytes = buildCBytes . B.int
 
 -- | Peek @addrinfo@ linked list.
 --

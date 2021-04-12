@@ -44,6 +44,12 @@ module Z.IO.Network.SocketAddr
   -- * port numbber
   , PortNumber(..)
   , portAny
+  , defaultPortNumberHTTP
+  , defaultPortNumberHTTPS
+  , defaultPortNumberSMTP
+  , defaultPortNumberPOP3
+  , defaultPortNumberIMAP
+  , defaultPortNumberIRC
   -- * family, type, protocol
   -- ** SocketFamily
   , SocketFamily
