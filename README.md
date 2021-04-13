@@ -5,6 +5,7 @@
 [![MacOS Build Status](https://github.com/ZHaskell/z-io/workflows/osx-ci/badge.svg)](https://github.com/ZHaskell/z-io/actions)
 [![Windows Build Status](https://github.com/ZHaskell/z-io/workflows/win-ci/badge.svg)](https://github.com/ZHaskell/z-io/actions)
 [![Docker Build Status](https://github.com/ZHaskell/z-io/workflows/docker-ci/badge.svg)](https://github.com/ZHaskell/z-io/actions)
+[![Gitter chat](https://badges.gitter.im/gitterHQ/gitter.png)](https://gitter.im/Z-Haskell/community)
 
 This package is part of [Z.Haskell](https://z.haskell.world) project, provides basic IO operations:
 
