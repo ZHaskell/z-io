@@ -81,6 +81,7 @@ module Z.IO.BIO (
   , newCounterNode
   , newSeqNumNode
   , newGroupingNode
+  , newUngroupingNode
   ) where
 
 import           Control.Monad
@@ -103,6 +104,7 @@ import qualified Z.Data.Text            as T
 import qualified Z.Data.Text.UTF8Codec  as T
 import qualified Z.Data.Vector          as V
 import qualified Z.Data.Vector.Base     as V
+import qualified Z.Data.Vector.Extra    as V
 import           Z.Data.Vector.Base64
 import           Z.Data.Vector.Hex
 import           Z.IO.Buffered
@@ -817,3 +819,33 @@ newGroupingNode n
             arr <- A.unsafeFreezeArr marr
             return . Just $! V.fromArr arr 0 i
         else return Nothing
+
+-- | Make a BIO node flatten items.
+--
+newUngroupingNode :: IO (BIO (V.Vector a) a)
+{-# INLINABLE newUngroupingNode #-}
+newUngroupingNode = do
+    c <- newCounter 0
+    seqRef <- newIORef Seq.Empty
+    return (BIO (push_ c seqRef) (pull_ c seqRef))
+  where
+    push_ c seqRef x = do
+        unless (V.null x) (modifyIORef' seqRef (:|> x))
+        index_ c seqRef
+    pull_ c seqRef = do
+        index_ c seqRef
+
+    index_ c seqRef = do
+        s <- readIORef seqRef
+        case s of
+            v :<| rest -> do
+                i <- readPrimIORef c
+                if i <= V.length v -1
+                then do
+                    writePrimIORef c (i+1)
+                    return . Just $! V.unsafeIndex v i
+                else do
+                    writePrimIORef c 0
+                    writeIORef seqRef rest
+                    index_ c seqRef
+            _ -> return Nothing
