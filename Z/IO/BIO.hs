@@ -782,7 +782,8 @@ newSeqNumNode = do
 
 -- | Make a BIO node grouping items into fixed size arrays.
 --
-newGroupingNode :: Int -> IO (BIO a (A.SmallArray a))
+-- Trailing items are directly returned.
+newGroupingNode :: Int -> IO (BIO a (V.Vector a))
 {-# INLINABLE newGroupingNode #-}
 newGroupingNode n
     | n < 1 =  newGroupingNode 1
@@ -799,7 +800,8 @@ newGroupingNode n
             A.writeArr marr i x
             writePrimIORef c 0
             writeIORef arrRef =<< A.newArr n
-            return . Just =<< A.unsafeFreezeArr marr
+            arr <- A.unsafeFreezeArr marr
+            return . Just $! V.fromArr arr 0 n
         else do
             marr <- readIORef arrRef
             A.writeArr marr i x
@@ -809,12 +811,9 @@ newGroupingNode n
         i <- readPrimIORef c
         if i /= 0
         then do
+            writePrimIORef c 0
             marr <- readIORef arrRef
-#if MIN_VERSION_base(4,14,0)
             A.shrinkMutableArr marr i
-            return . Just =<< A.unsafeFreezeArr marr
-#else
-            marr' <- A.resizeMutableArr marr i
-            return . Just =<< A.unsafeFreezeArr marr'
-#endif
+            arr <- A.unsafeFreezeArr marr
+            return . Just $! V.fromArr arr 0 i
         else return Nothing
