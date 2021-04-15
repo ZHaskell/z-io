@@ -49,8 +49,9 @@ module Z.IO.BIO (
     BIO(..), Source, Sink
   -- ** Basic combinators
   , (>|>), (>~>), (>!>), appendSource
-  , concatSource, zipSource, zipBIO
+  , concatSource, concatSource', zipSource
   , joinSink, fuseSink
+  , zipBIO
   -- * Run BIO chain
   , runBIO
   , runSource, runSource_
@@ -229,7 +230,7 @@ fuseSink :: HasCallStack => [Sink out] -> Sink out
 {-# INLINABLE fuseSink #-}
 fuseSink ss = BIO push_ pull_
   where
-    push_ inp = forM_ ss (\ b -> push b inp) >> return Nothing
+    push_ inp = forM_ ss (`push` inp) >> return Nothing
     pull_ = mapM_ pull ss >> return Nothing
 
 -- | Connect list of 'BIO' sources, after one reach EOF, draw element from next.
@@ -246,6 +247,18 @@ concatSource ss0 = newIORef ss0 >>= \ ref -> return (BIO{ pull = loop ref})
                 case r of
                     Just _ -> return r
                     _      -> writeIORef ref rest >> loop ref
+
+concatSource' :: HasCallStack => Source [a] -> IO (Source a)
+concatSource' sxs = newIORef [] >>= \ref -> return (BIO{ pull = loop ref })
+  where
+    loop ref = do
+        rs' <- readIORef ref
+        case rs' of
+          [] -> do m_xs <- pull sxs
+                   case m_xs of
+                     Just xs -> writeIORef ref xs >> loop ref
+                     Nothing -> return Nothing
+          (a:rest) -> writeIORef ref rest >> return (Just a)
 
 -- | Zip two 'BIO' source into one, reach EOF when either one reached EOF.
 zipSource :: HasCallStack => Source a -> Source b -> IO (Source (a,b))
@@ -315,7 +328,7 @@ zipBIO (BIO pushA pullA) (BIO pushB pullB) = do
 -- | Run a 'BIO' loop (source >|> ... >|> sink).
 runBIO :: HasCallStack => BIO Void Void -> IO ()
 {-# INLINABLE runBIO #-}
-runBIO BIO{..} = pull >> return ()
+runBIO BIO{..} = void pull
 
 -- | Drain a 'BIO' source into a List in memory.
 runSource :: HasCallStack => Source x -> IO [x]
