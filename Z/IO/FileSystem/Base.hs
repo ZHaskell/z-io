@@ -132,7 +132,7 @@ import qualified Z.IO.FileSystem.FilePath as P
 import           Z.IO.Resource
 import           Z.IO.UV.FFI
 
-#include "_Shared.hs"
+#include "fs_shared.hs"
 
 --------------------------------------------------------------------------------
 -- File
@@ -405,8 +405,8 @@ stat' path = withCBytesUnsafe path $ \ p ->
      allocaBytes uvStatSize $ \ s -> do
         r <- fromIntegral <$> hs_uv_fs_stat p s
         if  | r == UV_ENOENT -> return Nothing
-            | r < 0 -> throwUV r
-            | otherwise -> Just <$> peekUVStat s
+            | r < 0          -> throwUV r
+            | otherwise      -> Just <$> peekUVStat s
 
 -- | Equivalent to <http://linux.die.net/man/2/lstat lstat(2)>
 --
@@ -416,8 +416,8 @@ lstat' path = withCBytesUnsafe path $ \ p ->
      allocaBytes uvStatSize $ \ s -> do
         r <- fromIntegral <$> hs_uv_fs_lstat p s
         if  | r == UV_ENOENT -> return Nothing
-            | r < 0 -> throwUV r
-            | otherwise -> Just <$> peekUVStat s
+            | r < 0          -> throwUV r
+            | otherwise      -> Just <$> peekUVStat s
 
 -- | Equivalent to <http://linux.die.net/man/2/fstat fstat(2)>
 fstat :: HasCallStack => File -> IO FStat

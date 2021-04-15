@@ -5,6 +5,7 @@
 [![MacOS Build Status](https://github.com/ZHaskell/z-io/workflows/osx-ci/badge.svg)](https://github.com/ZHaskell/z-io/actions)
 [![Windows Build Status](https://github.com/ZHaskell/z-io/workflows/win-ci/badge.svg)](https://github.com/ZHaskell/z-io/actions)
 [![Docker Build Status](https://github.com/ZHaskell/z-io/workflows/docker-ci/badge.svg)](https://github.com/ZHaskell/z-io/actions)
+[![Gitter chat](https://badges.gitter.im/gitterHQ/gitter.svg)](https://gitter.im/Z-Haskell/community)
 
 This package is part of [Z.Haskell](https://z.haskell.world) project, provides basic IO operations:
 
@@ -39,10 +40,8 @@ AddrInfo {addrFlags = [AI_ADDRCONFIG,AI_V4MAPPED], addrFamily = SocketFamily 2, 
 > :{
 let addr = ipv4 "13.107.21.200" 80
 in withResource (initTCPClient defaultTCPClientConfig{ tcpRemoteAddr = addr}) $ \ tcp -> do
-    i <- newBufferedInput tcp
-    o <- newBufferedOutput tcp
-    writeBuffer o "GET http://www.bing.com HTTP/1.1\r\nHost: www.bing.com\r\n\r\n"
-    flushBuffer o
+    (i, o) <- newBufferedIO tcp
+    writeBuffer' o "GET http://www.bing.com HTTP/1.1\r\nHost: www.bing.com\r\n\r\n"
     readBuffer i >>= pure . T.validate
 :}
 "HTTP/1.1 200 OK\r\nDate: Sat, 19 Sep 2020 06:11:08 GMT\r\nContent-Length: 0\r\n\r\n"
