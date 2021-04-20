@@ -453,7 +453,7 @@ sinkToIO' f flush = \ ma k ->
 
 -- | Sink to a list in memory.
 --
--- The 'MVar' will be empty during sinking, and will be filled after a flush.
+-- The 'MVar' will be empty during sinking, and will be filled after sink receives an EOF.
 sinkToList :: IO (MVar [a], Sink a)
 sinkToList = do
     xsRef <- newIORef []
@@ -505,11 +505,10 @@ newReChunk n = do
                 else writeIORef trailingRef chunk
             _ -> do
                 trailing <- readIORef trailingRef
-                if V.null trailing
-                then k Nothing
-                else do
+                unless (V.null trailing) $ do
                     writeIORef trailingRef V.empty
                     k (Just trailing)
+                k Nothing
 
 -- | Read buffer and parse with 'Parser'.
 --
@@ -540,7 +539,6 @@ newParserNode p = do
                 case lastResult of
                     Just f -> loop f V.empty
                     _ -> k Nothing
-
 
 -- | Make a new UTF8 decoder, which decode bytes streams into text streams.
 --
@@ -575,8 +573,7 @@ newUTF8Decoder = do
                         else do
                             writeIORef trailingRef V.empty
                             k (Just (T.validate chunk))
-                else do
-                    writeIORef trailingRef chunk
+                else writeIORef trailingRef chunk
 
             _ -> do
                 trailing <- readIORef trailingRef
@@ -595,26 +592,20 @@ newMagicSplitter magic = do
             Just bs -> do
                 trailing <- readIORef trailingRef
                 let chunk =  trailing `V.append` bs
-                case V.elemIndex magic chunk of
-                    Just i -> do
-                        -- TODO: looping
-                        let (line, rest) = V.splitAt (i+1) chunk
-                        writeIORef trailingRef rest
-                        k (Just line)
-                    _ -> writeIORef trailingRef chunk
-
+                    loop bs = case V.elemIndex magic bs of
+                        Just i -> do
+                            -- TODO: looping
+                            let (line, rest) = V.splitAt (i+1) bs
+                            k (Just line)
+                            loop rest
+                        _ -> writeIORef trailingRef bs
+                loop
             _ -> do
                 chunk <- readIORef trailingRef
-                if V.null chunk
-                then k Nothing
-                else case V.elemIndex magic chunk of
-                    Just i -> do
-                        let (line, rest) = V.splitAt (i+1) chunk
-                        writeIORef trailingRef rest
-                        k (Just line)
-                    _ -> do
-                        writeIORef trailingRef V.empty
-                        k (Just chunk)
+                unless (V.null chunk) $ do
+                    writeIORef trailingRef V.empty
+                    k (Just chunk)
+                k Nothing
 
 -- | Make a new stream splitter based on linefeed(@\r\n@ or @\n@).
 --
