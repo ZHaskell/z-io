@@ -46,7 +46,7 @@ forkIO $ do
     ...
     r <- pull src           -- consumer using pull
     case r of Just r' -> ...
-              _ -> ...      -- Nothing indicate all producers reached EOF
+              _ -> ...      -- EOF indicate all producers reached EOF
 
 forkIO $ do
     ...
@@ -76,15 +76,15 @@ newTQueueNode n = do
                 _ -> do
                     i <- atomicAddCounter' ec 1
                     when (i == n) $ do
-                        atomically (writeTQueue q Nothing)
-                        k Nothing
+                        atomically (writeTQueue q EOF)
+                        k EOF
 
         , \ _ k ->
             let loop = uninterruptibleMask $ \ restore -> do
                     x <- restore $ atomically (readTQueue q)
                     case x of Just _ -> k x >> loop
-                              _ -> do atomically (unGetTQueue q Nothing)
-                                      k Nothing
+                              _ -> do atomically (unGetTQueue q EOF)
+                                      k EOF
             in loop)
 
 -- | Make an bounded queue and a pair of sink and souce connected to it.
@@ -100,15 +100,15 @@ newTBQueueNode n bound = do
                 _ -> do
                     i <- atomicAddCounter' ec 1
                     when (i == n) $ do
-                        atomically (writeTBQueue q Nothing)
-                        k Nothing
+                        atomically (writeTBQueue q EOF)
+                        k EOF
 
         , \ _ k ->
             let loop = uninterruptibleMask $ \ restore -> do
                     x <- restore $ atomically (readTBQueue q)
                     case x of Just _ -> k x >> loop
-                              _ -> do atomically (unGetTBQueue q Nothing)
-                                      k Nothing
+                              _ -> do atomically (unGetTBQueue q EOF)
+                                      k EOF
             in loop)
 
 -- | Make a broadcast chan and a sink connected to it, and a function return sources to receive broadcast message.
@@ -123,13 +123,13 @@ newBroadcastTChanNode n = do
                 let loop = do
                         x <- atomically (readTChan c)
                         case x of Just _ -> k x >> loop
-                                  _ -> k Nothing
+                                  _ -> k EOF
                 in loop
 
     return
         (\ mx k -> case mx of
             Just _ -> atomically (writeTChan b mx)
             _ -> do i <- atomicAddCounter' ec 1
-                    when (i == n) (atomically (writeTChan b Nothing))
-                    k Nothing
+                    when (i == n) (atomically (writeTChan b EOF))
+                    k EOF
        , dupSrc)

@@ -43,7 +43,7 @@ module Z.IO.Exception
   , NoSuchThing(..)
   , ResourceBusy(..)
   , ResourceExhausted(..)
-  , EOF(..)
+  , UnexpectedEOF(..)
   , IllegalOperation(..)
   , PermissionDenied(..)
   , UnsatisfiedConstraints(..)
@@ -119,7 +119,7 @@ IOE(AlreadyExists)
 IOE(NoSuchThing)
 IOE(ResourceBusy)
 IOE(ResourceExhausted)
-IOE(EOF)
+IOE(UnexpectedEOF)
 IOE(IllegalOperation)
 IOE(PermissionDenied)
 IOE(UnsatisfiedConstraints)
@@ -261,7 +261,7 @@ throwUV e = do
 throwUVError :: CInt -> IOEInfo -> IO a
 {-# INLINABLE throwUVError #-}
 throwUVError e info = case e of
-    UV_EOF             -> throwIO (EOF                     info)
+    UV_EOF             -> throwIO (UnexpectedEOF           info)
     UV_E2BIG           -> throwIO (ResourceExhausted       info)
     UV_EACCES          -> throwIO (PermissionDenied        info)
     UV_EADDRINUSE      -> throwIO (ResourceBusy            info)

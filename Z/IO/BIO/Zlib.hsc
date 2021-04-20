@@ -184,7 +184,7 @@ newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
                         when (osiz /= 0) $ do
                             oarr <- A.unsafeFreezeArr =<< readIORef bufRef
                             k (Just (V.PrimVector oarr 0 osiz))
-                        k Nothing
+                        k EOF
             in loop)
 
 -- | Reset compressor's state so that related 'BIO' can be reused.
@@ -278,7 +278,7 @@ newDecompress (DecompressConfig windowBits dict bufSiz) = do
                         when (osiz /= 0) $ do
                             oarr <- A.unsafeFreezeArr =<< readIORef bufRef
                             k (Just (V.PrimVector oarr 0 osiz))
-                        k Nothing
+                        k EOF
             in loop)
 
 -- | Reset decompressor's state so that related 'BIO' can be reused.

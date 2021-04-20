@@ -37,7 +37,7 @@ base64AndCompressFile origin target = do
 
     withResource (initSourceFromFile origin) $ \ src ->
         withResource (initSinkToFile target) $ \ sink ->
-            runBIO $ src >|> base64Enc >|> zlibCompressor >|> sink
+            runBIO_ $ src >|> base64Enc >|> zlibCompressor >|> sink
 
 > base64AndCompressFile "test" "test.gz"
 -- run 'zcat "test.gz" | base64 -d' will give you original file
@@ -46,7 +46,7 @@ base64AndCompressFile origin target = do
 -}
 module Z.IO.BIO (
   -- * The BIO type
-    BIO, Source, Sink
+    BIO, pattern EOF, Source, Sink
   -- ** Basic combinators
   , (>|>), (>~>), (>!>), appendSource, concatSource, concatSource'
   , joinSink, fuseSink
@@ -144,9 +144,13 @@ import           Z.IO.Resource
 -- 'BIO' is simply a convenient way to construct single-thread streaming computation, to use 'BIO'
 -- in multiple threads, check "Z.IO.BIO.Concurrent" module.
 --
-type BIO inp out = Maybe inp                -- ^ 'Nothing' indicates upstream reaches EOF
-                -> (Maybe out -> IO ())     -- ^ Pass 'Nothing' to indicate current node reaches EOF
+type BIO inp out = Maybe inp                -- ^ 'EOF' indicates upstream reaches EOF
+                -> (Maybe out -> IO ())     -- ^ Pass 'EOF' to indicate current node reaches EOF
                 -> IO ()
+
+-- | Patterns for more meaningful pattern matching.
+pattern EOF :: Maybe a
+pattern EOF = Nothing
 
 -- | Connect two 'BIO' nodes, feed left one's output to right one's input.
 (>|>) :: BIO a b -> BIO b c -> BIO a c
@@ -163,29 +167,29 @@ f >~> g =  \ x k -> f x (\ y -> k (g <$> y))
 {-# INLINE (>!>) #-}
 f >!> g = \ x k -> f x (\ y -> do
     case y of Just y' -> k . Just =<< g y'
-              _ -> k Nothing)
+              _ -> k EOF)
 
 -- | Type alias for 'BIO' node which never takes input.
 --
--- Note when implement a 'Source', you should assume 'Nothing' argument is supplied only once, and you
--- should loop to call downstream continuation with all available chunks, then write a final 'Nothing'
+-- Note when implement a 'Source', you should assume 'EOF' argument is supplied only once, and you
+-- should loop to call downstream continuation with all available chunks, then write a final 'EOF'
 -- to indicate EOF.
 type Source x = BIO Void x
 
 -- | Type alias for 'BIO' node which only takes input and perform effects.
 --
--- Note when implement a 'Sink', you should assume 'Nothing' argument is supplied only once(when upstream
+-- Note when implement a 'Sink', you should assume 'EOF' argument is supplied only once(when upstream
 -- reaches EOF), you do not need to call downstream continuation before EOF, and
--- do a flush(also write a final 'Nothing') when upstream reach EOF.
+-- do a flush(also write a final 'EOF') when upstream reach EOF.
 type Sink x = BIO x Void
 
 -- | Connect two 'BIO' source, after first reach EOF, draw element from second.
 appendSource :: HasCallStack => Source a -> Source a -> Source a
 {-# INLINE appendSource #-}
 b1 `appendSource` b2 = \ _ k -> do
-    b1 Nothing $ \ y -> do
+    b1 EOF $ \ y -> do
         case y of Just _ -> k y
-                  _      -> b2 Nothing k
+                  _      -> b2 EOF k
 
 -- | Fuse two 'BIO' sinks, i.e. everything written to the fused sink will be written to left and right sink.
 --
@@ -204,7 +208,7 @@ fuseSink ss = \ mx k ->
         Just _ -> mapM_ (\ s -> s mx discard) ss
         _ -> do
             mapM_ (\ s -> s mx discard) ss
-            k Nothing
+            k EOF
 
 -- | Connect list of 'BIO' sources, after one reach EOF, draw element from next.
 concatSource :: HasCallStack => [Source a] -> Source a
@@ -214,18 +218,18 @@ concatSource = List.foldl' appendSource emptySource
 -- | A 'Source' directly write EOF to downstream.
 emptySource :: Source a
 {-# INLINABLE emptySource #-}
-emptySource = \ _ k -> k Nothing
+emptySource = \ _ k -> k EOF
 
 -- | Connect list of 'BIO' sources, after one reach EOF, draw element from next.
 concatSource' :: HasCallStack => Source (Source a) -> Source a
 {-# INLINABLE concatSource' #-}
-concatSource' ssrc = \ _ k -> ssrc Nothing $ \ msrc ->
+concatSource' ssrc = \ _ k -> ssrc EOF $ \ msrc ->
     case msrc of
-        Just src -> src Nothing $ \ ma ->
+        Just src -> src EOF $ \ ma ->
             case ma of
                 Just _ -> k ma
                 _ -> return ()
-        _ -> k Nothing
+        _ -> k EOF
 
 -------------------------------------------------------------------------------
 -- Run BIO
@@ -254,7 +258,7 @@ stepBIO_ bio inp = bio (Just inp) discard
 -- When used on 'Sink', it performs a flush.
 runBIO_ :: HasCallStack => BIO inp out -> IO ()
 {-# INLINABLE runBIO_ #-}
-runBIO_ bio = bio Nothing discard
+runBIO_ bio = bio EOF discard
 
 -- | Run a 'BIO' loop without providing input, and collect result.
 --
@@ -263,7 +267,7 @@ runBIO :: HasCallStack => BIO inp out -> IO [out]
 {-# INLINABLE runBIO #-}
 runBIO bio = do
     accRef <- newIORef []
-    bio Nothing (mapM_  $ \ x -> modifyIORef' accRef (x:))
+    bio EOF (mapM_  $ \ x -> modifyIORef' accRef (x:))
     reverse <$> readIORef accRef
 
 -- | Run a 'BIO' loop with a single chunk of input and EOF, and collect result.
@@ -273,7 +277,7 @@ runBlock :: HasCallStack => BIO inp out -> inp -> IO [out]
 runBlock bio inp = do
     accRef <- newIORef []
     bio (Just inp) (mapM_  $ \ x -> modifyIORef' accRef (x:))
-    bio Nothing (mapM_  $ \ x -> modifyIORef' accRef (x:))
+    bio EOF (mapM_  $ \ x -> modifyIORef' accRef (x:))
     reverse <$> readIORef accRef
 
 -- | Run a 'BIO' loop with a single chunk of input and EOF, without collecting result.
@@ -282,7 +286,7 @@ runBlock_ :: HasCallStack => BIO inp out -> inp -> IO ()
 {-# INLINABLE runBlock_ #-}
 runBlock_ bio inp = do
     bio (Just inp) discard
-    bio Nothing discard
+    bio EOF discard
 
 -- | Wrap 'runBlock' into a pure interface.
 --
@@ -301,7 +305,7 @@ runBlocks bio inps = do
     accRef <- newIORef []
     forM_ inps $ \ inp ->
         bio (Just inp) (mapM_  $ \ x -> modifyIORef' accRef (x:))
-    bio Nothing (mapM_  $ \ x -> modifyIORef' accRef (x:))
+    bio EOF (mapM_  $ \ x -> modifyIORef' accRef (x:))
     reverse <$> readIORef accRef
 
 -- | Supply blocks of input and EOF to a 'BIO', without collecting results.
@@ -312,7 +316,7 @@ runBlocks_ :: HasCallStack => BIO inp out -> [inp] -> IO ()
 runBlocks_ bio inps = do
     forM_ inps $ \ inp ->
         bio (Just inp) discard
-    bio Nothing discard
+    bio EOF discard
 
 -- | Wrap 'runBlocks' into a pure interface.
 --
@@ -329,15 +333,15 @@ unsafeRunBlocks new inps = unsafePerformIO (new >>= \ bio -> runBlocks bio inps)
 sourceFromList :: Foldable f => f a -> Source a
 sourceFromList xs0 = \ _ k -> do
     mapM_ (k . Just) xs0
-    k Nothing
+    k EOF
 
--- | Turn a 'BufferedInput' into 'BIO' source, map EOF to Nothing.
+-- | Turn a 'BufferedInput' into 'BIO' source, map EOF to EOF.
 --
 sourceFromBuffered :: HasCallStack => BufferedInput -> Source V.Bytes
 {-# INLINABLE sourceFromBuffered #-}
 sourceFromBuffered i = \ _ k ->
     let loop = readBuffer i >>= \ x ->
-            if V.null x then k Nothing else k (Just x) >> loop
+            if V.null x then k EOF else k (Just x) >> loop
     in loop
 
 -- | Turn a `IO` action into 'Source'
@@ -347,21 +351,22 @@ sourceFromIO io = \ _ k ->
     let loop = io >>= \ x ->
             case x of
                 Just _ -> k x >> loop
-                _      -> k Nothing
+                _      -> k EOF
     in loop
 
--- | Turn a UTF8 encoded 'BufferedInput' into 'BIO' source, map EOF to Nothing.
+-- | Turn a UTF8 encoded 'BufferedInput' into 'BIO' source, map EOF to EOF.
 --
 sourceTextFromBuffered :: HasCallStack => BufferedInput -> Source T.Text
 {-# INLINABLE sourceTextFromBuffered #-}
 sourceTextFromBuffered i = \ _ k ->
     let loop = readBufferText i >>= \ x ->
-            if T.null x then k Nothing else k (Just x) >> loop
+            if T.null x then k EOF else k (Just x) >> loop
     in loop
 
 -- | Turn a 'JSON' encoded 'BufferedInput' into 'BIO' source, ignoring any
--- whitespaces bewteen JSON objects. If EOF reached, then return Nothing.
+-- whitespaces bewteen JSON objects. If EOF reached, then return 'EOF'.
 -- Throw 'OtherError' with name "EJSON" if JSON value is not parsed or converted.
+--
 sourceJSONFromBuffered :: forall a. (JSON.JSON a, HasCallStack) => BufferedInput -> Source a
 {-# INLINABLE sourceJSONFromBuffered #-}
 sourceJSONFromBuffered = sourceParseChunksFromBuffered JSON.decodeChunks
@@ -378,7 +383,7 @@ sourceParseChunksFromBuffered cp bi = \ _ k ->
     let loopA = do
             bs <- readBuffer bi
             if V.null bs
-            then k Nothing
+            then k EOF
             else loopB bs
         loopB bs = do
             (rest, r) <- cp (readBuffer bi) bs
@@ -412,7 +417,7 @@ sinkToBuffered :: HasCallStack => BufferedOutput -> Sink V.Bytes
 sinkToBuffered bo = \ mbs k ->
     case mbs of
         Just bs -> writeBuffer bo bs
-        _       -> flushBuffer bo >> k Nothing
+        _       -> flushBuffer bo >> k EOF
 
 -- | Turn a 'BufferedOutput' into a 'B.Builder' sink.
 --
@@ -421,7 +426,7 @@ sinkBuilderToBuffered :: HasCallStack => BufferedOutput -> Sink (B.Builder a)
 sinkBuilderToBuffered bo = \ mbs k ->
     case mbs of
         Just bs -> writeBuilder bo bs
-        _       -> flushBuffer bo >> k Nothing
+        _       -> flushBuffer bo >> k EOF
 
 -- | Turn a file into a 'V.Bytes' sink.
 --
@@ -440,7 +445,7 @@ sinkToIO :: HasCallStack => (a -> IO ()) -> Sink a
 sinkToIO f = \ ma k ->
     case ma of
         Just a -> f a
-        _ -> k Nothing
+        _ -> k EOF
 
 -- | Turn an `IO` action(and a flush action), into 'BIO' sink.
 --
@@ -449,7 +454,7 @@ sinkToIO' :: HasCallStack => (a -> IO ()) -> IO () -> Sink a
 sinkToIO' f flush = \ ma k ->
     case ma of
         Just a -> f a
-        _ -> flush >> k Nothing
+        _ -> flush >> k EOF
 
 -- | Sink to a list in memory.
 --
@@ -479,7 +484,7 @@ pureBIO f = \ x k -> k (f <$> x)
 ioBIO :: HasCallStack => (a -> IO b) -> BIO a b
 ioBIO f = \ x k ->
     case x of Just x' -> f x' >>= k . Just
-              _ -> k Nothing
+              _ -> k EOF
 
 -- | Make a chunk size divider.
 --
@@ -508,7 +513,7 @@ newReChunk n = do
                 unless (V.null trailing) $ do
                     writeIORef trailingRef V.empty
                     k (Just trailing)
-                k Nothing
+                k EOF
 
 -- | Read buffer and parse with 'Parser'.
 --
@@ -518,7 +523,7 @@ newParserNode :: HasCallStack => P.Parser a -> IO (BIO V.Bytes a)
 {-# INLINABLE newParserNode #-}
 newParserNode p = do
     -- type LastParseState = Maybe (V.Bytes -> P.Result)
-    resultRef <- newIORef Nothing
+    resultRef <- newIORef EOF
     return $ \ minp k -> do
         let loop f chunk = case f chunk of
                 P.Success a trailing -> do
@@ -538,7 +543,7 @@ newParserNode p = do
             _ ->
                 case lastResult of
                     Just f -> loop f V.empty
-                    _ -> k Nothing
+                    _ -> k EOF
 
 -- | Make a new UTF8 decoder, which decode bytes streams into text streams.
 --
@@ -578,7 +583,7 @@ newUTF8Decoder = do
             _ -> do
                 trailing <- readIORef trailingRef
                 if V.null trailing
-                then k Nothing
+                then k EOF
                 else throwOtherError "EINVALIDUTF8" "invalid UTF8 bytes"
 
 -- | Make a new stream splitter based on magic byte.
@@ -604,7 +609,7 @@ newMagicSplitter magic = do
                 unless (V.null chunk) $ do
                     writeIORef trailingRef V.empty
                     k (Just chunk)
-                k Nothing
+                k EOF
 
 -- | Make a new stream splitter based on linefeed(@\r\n@ or @\n@).
 --
@@ -708,7 +713,7 @@ newGroupingNode n
                         A.shrinkMutableArr marr i
                         arr <- A.unsafeFreezeArr marr
                         k . Just $! V.fromArr arr 0 i
-                    else k Nothing
+                    else k EOF
 
 -- | A BIO node flatten items.
 --
@@ -718,4 +723,4 @@ ungroupingNode = \ mx k ->
     case mx of
         Just x -> do
             V.traverseVec_ (k . Just) x
-        _ -> k Nothing
+        _ -> k EOF
