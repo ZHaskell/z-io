@@ -591,15 +591,14 @@ newMagicSplitter magic = do
         case mx of
             Just bs -> do
                 trailing <- readIORef trailingRef
-                let chunk =  trailing `V.append` bs
-                    loop bs = case V.elemIndex magic bs of
+                let loop chunk = case V.elemIndex magic chunk of
                         Just i -> do
                             -- TODO: looping
-                            let (line, rest) = V.splitAt (i+1) bs
+                            let (line, rest) = V.splitAt (i+1) chunk
                             k (Just line)
                             loop rest
-                        _ -> writeIORef trailingRef bs
-                loop
+                        _ -> writeIORef trailingRef chunk
+                loop (trailing `V.append` bs)
             _ -> do
                 chunk <- readIORef trailingRef
                 unless (V.null chunk) $ do
