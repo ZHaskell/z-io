@@ -54,7 +54,6 @@ module Z.IO.BIO.Zlib(
 
 import           Control.Monad
 import           Data.IORef
-import qualified Data.List          as List
 import           Data.Word
 import           Foreign            hiding (void)
 import           Foreign.C
@@ -126,9 +125,8 @@ defaultCompressConfig =
         defaultMemLevel V.empty Z_DEFAULT_STRATEGY V.defaultChunkSize
 
 -- | A foreign pointer to a zlib\'s @z_stream_s@ struct.
-data ZStream = ZStream 
-    {-# UNPACK #-} !(CPtr ZStream) 
-    {-# UNPACK #-} !(IORef Bool)
+newtype ZStream = ZStream (CPtr ZStream) deriving (Eq, Ord, Show)
+                                         deriving newtype Print
 
 -- | Make a new compress node.
 --
@@ -148,60 +146,51 @@ newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
             deflate_set_dictionary ps pdict off (fromIntegral $ len)
 
     buf <- A.newPinnedPrimArray bufSiz
-    set_avail_out zs buf bufSiz
     bufRef <- newIORef buf
-    finRef <- newIORef False
-    return (ZStream zs finRef, BIO (zwrite zs bufRef) (zflush finRef zs bufRef []))
-  where
-    zwrite zs bufRef input = do
-        set_avail_in zs input (V.length input)
-        zloop zs bufRef []
+    set_avail_out zs buf bufSiz
 
-    zloop zs bufRef acc = do
-        oavail :: CUInt <- withCPtr zs $ \ ps -> do
-            throwZlibIfMinus_ (deflate ps (#const Z_NO_FLUSH))
-            (#peek struct z_stream_s, avail_out) ps
-        if oavail == 0
-        then do
-            oarr <- A.unsafeFreezeArr =<< readIORef bufRef
+    let newOutBuffer = do
             buf' <- A.newPinnedPrimArray bufSiz
-            set_avail_out zs buf' bufSiz
             writeIORef bufRef buf'
-            zloop zs bufRef (V.PrimVector oarr 0 bufSiz : acc)
-        else do
-            let output = V.concat (List.reverse acc)
-            if V.null output then return Nothing
-                             else return (Just output)
+            set_avail_out zs buf' bufSiz
 
-    zflush finRef zs bufRef acc = do
-        fin <- readIORef finRef
-        if fin
-        then return Nothing
-        else do
-            buf <- readIORef bufRef
-            (r, osiz) <- withCPtr zs $ \ ps -> do
-                r <- throwZlibIfMinus (deflate ps (#const Z_FINISH))
-                oavail :: CUInt <- (#peek struct z_stream_s, avail_out) ps
-                return (r, bufSiz - fromIntegral oavail)
-            if (r /= (#const Z_STREAM_END) && osiz /= 0)
-            then do
-                oarr <- A.unsafeFreezeArr buf
-                buf' <- A.newPinnedPrimArray bufSiz
-                set_avail_out zs buf' bufSiz
-                writeIORef bufRef buf'
-                zflush finRef zs bufRef (V.PrimVector oarr 0 osiz : acc)
-            else do
-                oarr <- A.unsafeFreezeArr buf
-                let trailing = V.concat . List.reverse $ V.PrimVector oarr 0 osiz : acc
-                -- stream ends
-                writeIORef finRef True
-                if V.null trailing then return Nothing else return (Just trailing)
+    return (ZStream zs, \ mbs k -> case mbs of
+        Just bs -> do
+            set_avail_in zs bs (V.length bs)
+            let loop = do
+                    oavail :: CUInt <- withCPtr zs $ \ ps -> do
+                        throwZlibIfMinus_ (deflate ps (#const Z_NO_FLUSH))
+                        (#peek struct z_stream_s, avail_out) ps
+                    when (oavail == 0) $ do
+                        oarr <- A.unsafeFreezeArr =<< readIORef bufRef
+                        k (Just (V.PrimVector oarr 0 bufSiz))
+                        newOutBuffer           
+                        loop
+            loop
+        _ -> 
+            let loop = do
+                    (r, osiz) <- withCPtr zs $ \ ps -> do
+                        r <- throwZlibIfMinus (deflate ps (#const Z_FINISH))
+                        oavail :: CUInt <- (#peek struct z_stream_s, avail_out) ps
+                        return (r, bufSiz - fromIntegral oavail)
+                    if (r /= (#const Z_STREAM_END) && osiz /= 0)
+                    then do
+                        oarr <- A.unsafeFreezeArr =<< readIORef bufRef
+                        k (Just (V.PrimVector oarr 0 osiz))
+                        newOutBuffer
+                        loop
+                    else do
+                        -- stream ends
+                        when (osiz /= 0) $ do
+                            oarr <- A.unsafeFreezeArr =<< readIORef bufRef
+                            k (Just (V.PrimVector oarr 0 osiz))
+                        k Nothing
+            in loop)
 
 -- | Reset compressor's state so that related 'BIO' can be reused.
 compressReset :: ZStream -> IO ()
-compressReset (ZStream fp finRef) = do
+compressReset (ZStream fp) = do
     throwZlibIfMinus_ (withCPtr fp deflateReset)
-    writeIORef finRef False
 
 -- | Compress some bytes.
 compress :: HasCallStack => CompressConfig -> V.Bytes -> V.Bytes
@@ -233,75 +222,69 @@ newDecompress (DecompressConfig windowBits dict bufSiz) = do
         free_z_stream_inflate
 
     buf <- A.newPinnedPrimArray bufSiz
-    set_avail_out zs buf bufSiz
     bufRef <- newIORef buf
-    finRef <- newIORef False
-    return (ZStream zs finRef, BIO (zwrite zs bufRef) (zflush finRef zs bufRef []))
-  where
-    zwrite zs bufRef input = do
-        set_avail_in zs input (V.length input)
-        zloop zs bufRef []
+    set_avail_out zs buf bufSiz
 
-    zloop zs bufRef acc = do
-        oavail :: CUInt <- withCPtr zs $ \ ps -> do
-            r <- throwZlibIfMinus (inflate ps (#const Z_NO_FLUSH))
-            when (r == (#const Z_NEED_DICT)) $
-                if V.null dict
-                then throwIO (ZlibException "Z_NEED_DICT" callStack)
-                else do
-                    throwZlibIfMinus_ . withPrimVectorUnsafe dict $ \ pdict off len ->
-                        inflate_set_dictionary ps pdict off (fromIntegral len)
-                    throwZlibIfMinus_ (inflate ps (#const Z_NO_FLUSH))
-            (#peek struct z_stream_s, avail_out) ps
-        if oavail == 0
-        then do
-            oarr <- A.unsafeFreezeArr =<< readIORef bufRef
+    let newOutBuffer = do
             buf' <- A.newPinnedPrimArray bufSiz
-            set_avail_out zs buf' bufSiz
             writeIORef bufRef buf'
-            zloop zs bufRef (V.PrimVector oarr 0 bufSiz : acc)
-        else do
-            let output = V.concat (List.reverse acc)
-            if V.null output then return Nothing
-                             else return (Just output)
+            set_avail_out zs buf' bufSiz
 
-    zflush finRef zs bufRef acc = do
-        fin <- readIORef finRef
-        if fin
-        then return Nothing
-        else do
-            buf <- readIORef bufRef
-            (r, osiz) <- withCPtr zs $ \ ps -> do
-                r <- throwZlibIfMinus (inflate ps (#const Z_FINISH))
-                r' <- if r == (#const Z_NEED_DICT)
-                then if V.null dict
-                    then throwIO (ZlibException "Z_NEED_DICT" callStack)
+    return (ZStream zs, \ mbs k -> case mbs of
+        Just bs -> do
+            set_avail_in zs bs (V.length bs)
+
+            let loop = do
+                    oavail :: CUInt <- withCPtr zs $ \ ps -> do
+                        r <- throwZlibIfMinus (inflate ps (#const Z_NO_FLUSH))
+                        when (r == (#const Z_NEED_DICT)) $
+                            if V.null dict
+                            then throwIO (ZlibException "Z_NEED_DICT" callStack)
+                            else do
+                                throwZlibIfMinus_ . withPrimVectorUnsafe dict $ \ pdict off len ->
+                                    inflate_set_dictionary ps pdict off (fromIntegral len)
+                                throwZlibIfMinus_ (inflate ps (#const Z_NO_FLUSH))
+                        (#peek struct z_stream_s, avail_out) ps
+
+                    when (oavail == 0) $ do
+                        oarr <- A.unsafeFreezeArr =<< readIORef bufRef
+                        k (Just (V.PrimVector oarr 0 bufSiz))
+                        newOutBuffer
+                        loop
+            loop
+
+        _ -> 
+            let loop = do
+                    (r, osiz) <- withCPtr zs $ \ ps -> do
+                        r <- throwZlibIfMinus (inflate ps (#const Z_FINISH))
+                        r' <- if r == (#const Z_NEED_DICT)
+                        then if V.null dict
+                            then throwIO (ZlibException "Z_NEED_DICT" callStack)
+                            else do
+                                throwZlibIfMinus_ . withPrimVectorUnsafe dict $ \ pdict off len ->
+                                    inflate_set_dictionary ps pdict off (fromIntegral len)
+                                throwZlibIfMinus (inflate ps (#const Z_FINISH))
+                        else return r
+                        oavail :: CUInt <- (#peek struct z_stream_s, avail_out) ps
+                        return (r', bufSiz - fromIntegral oavail)
+                    if (r /= (#const Z_STREAM_END) && osiz /= 0)
+                    then do
+                        oarr <- A.unsafeFreezeArr =<< readIORef bufRef
+                        k (Just (V.PrimVector oarr 0 osiz))
+                        newOutBuffer
+                        loop
                     else do
-                        throwZlibIfMinus_ . withPrimVectorUnsafe dict $ \ pdict off len ->
-                            inflate_set_dictionary ps pdict off (fromIntegral len)
-                        throwZlibIfMinus (inflate ps (#const Z_FINISH))
-                else return r
-                oavail :: CUInt <- (#peek struct z_stream_s, avail_out) ps
-                return (r', bufSiz - fromIntegral oavail)
-            if (r /= (#const Z_STREAM_END) && osiz /= 0)
-            then do
-                oarr <- A.unsafeFreezeArr buf
-                buf' <- A.newPinnedPrimArray bufSiz
-                set_avail_out zs buf' bufSiz
-                writeIORef bufRef buf'
-                zflush finRef zs bufRef (V.PrimVector oarr 0 osiz : acc)
-            else do
-                oarr <- A.unsafeFreezeArr buf
-                let trailing = V.concat . List.reverse $ V.PrimVector oarr 0 osiz : acc
-                -- stream ends
-                writeIORef finRef True
-                if V.null trailing then return Nothing else return (Just trailing)
+                        -- stream ends
+                        when (osiz /= 0) $ do
+                            oarr <- A.unsafeFreezeArr =<< readIORef bufRef
+                            k (Just (V.PrimVector oarr 0 osiz))
+                        k Nothing
+            in loop)
 
 -- | Reset decompressor's state so that related 'BIO' can be reused.
 decompressReset :: ZStream -> IO ()
-decompressReset (ZStream fp finRef) = do
+decompressReset (ZStream fp) = do
     throwZlibIfMinus_ (withCPtr fp inflateReset)
-    writeIORef finRef False
 
 -- | Decompress some bytes.
 decompress :: HasCallStack => DecompressConfig -> V.Bytes -> V.Bytes
