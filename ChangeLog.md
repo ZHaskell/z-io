@@ -1,5 +1,14 @@
 # Revision history for Z-IO
 
+## 0.7.2.0  -- 2020-04-20
+
+This is an experimental version to test new 'BIO' module.
+
+* Rewrite `Z.IO.BIO` module, now `BIO` is push based.
+* Remove `zipSource/zipBIO`, add `stepBIO/stepBIO_/runBIO_`.
+* Add `ungroupingNode`, change `newGroupingNode` to use `Vector`.
+* Rename `EOF` exception to `UnexpectedEOF` to avoid the clash with `EOF` pattern.
+
 ## 0.7.1.0  -- 2020-03-16
 
 * Use `CPtr` from Z-Data instead of `ForeignPtr`.

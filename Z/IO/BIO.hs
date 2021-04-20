@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wno-missing-fields #-}
 {-|
 Module      : Z.IO.BIO
-Description : Buffered IO interface
+Description : Composable IO Loops
 Copyright   : (c) Dong Han, 2017-2020
 License     : BSD
 Maintainer  : winterland1989@gmail.com
@@ -85,6 +85,7 @@ module Z.IO.BIO (
   , seqNumNode
   , newGroupingNode
   , ungroupingNode
+  , consumedNode
   ) where
 
 import           Control.Concurrent.MVar
@@ -196,7 +197,15 @@ b1 `appendSource` b2 = \ _ k -> do
 -- Flush result 'BIO' will effectively flush both sink.
 joinSink :: HasCallStack => Sink out -> Sink out -> Sink out
 {-# INLINE joinSink #-}
-b1 `joinSink` b2 = fuseSink [b1, b2]
+b1 `joinSink` b2 = \ mx k ->
+    case mx of
+        Just _ -> do
+            b1 mx discard
+            b2 mx discard
+        _ -> do
+            b1 EOF discard
+            b2 EOF discard
+            k EOF
 
 -- | Fuse a list of 'BIO' sinks, everything written to the fused sink will be written to every sink in the list.
 --
@@ -475,6 +484,7 @@ sinkToList = do
 --
 -- BIO node made with this funtion are stateless, thus can be reused across chains.
 pureBIO :: (a -> b) -> BIO a b
+{-# INLINE pureBIO #-}
 pureBIO f = \ x k -> k (f <$> x)
 
 -- | BIO node from an IO function.
@@ -482,6 +492,7 @@ pureBIO f = \ x k -> k (f <$> x)
 -- BIO node made with this funtion may not be stateless, it depends on if the IO function use
 -- IO state.
 ioBIO :: HasCallStack => (a -> IO b) -> BIO a b
+{-# INLINE ioBIO #-}
 ioBIO f = \ x k ->
     case x of Just x' -> f x' >>= k . Just
               _ -> k EOF
@@ -721,6 +732,15 @@ ungroupingNode :: BIO (V.Vector a) a
 {-# INLINABLE ungroupingNode #-}
 ungroupingNode = \ mx k ->
     case mx of
-        Just x -> do
-            V.traverseVec_ (k . Just) x
-        _ -> k EOF
+        Just x -> V.traverseVec_ (k . Just) x
+        _      -> k EOF
+
+-- | A BIO node which write 'True' to 'IORef' when 'EOF' is reached.
+consumedNode :: IORef Bool -> BIO a a
+{-# INLINABLE consumedNode #-}
+consumedNode ref = \ mx k -> case mx of
+    Just _ -> k mx
+    _ -> do writeIORef ref True
+            k EOF
+
+
