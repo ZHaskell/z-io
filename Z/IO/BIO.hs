@@ -49,13 +49,14 @@ module Z.IO.BIO (
     BIO(..), Source, Sink
   -- ** Basic combinators
   , (>|>), (>~>), (>!>), appendSource
-  , concatSource, zipSource, zipBIO
+  , concatSource --, zipSource, zipBIO
   , joinSink, fuseSink
   -- * Run BIO chain
   , runBIO
   , runSource, runSource_
   , runBlock, runBlock_, unsafeRunBlock
   , runBlocks, runBlocks_, unsafeRunBlocks
+{-
   -- * Make new BIO
   , pureBIO, ioBIO
   -- ** Source
@@ -82,6 +83,7 @@ module Z.IO.BIO (
   , newSeqNumNode
   , newGroupingNode
   , newUngroupingNode
+-}
   ) where
 
 import           Control.Monad
@@ -143,19 +145,30 @@ import           Z.IO.Resource
 -- in multiple threads, check "Z.IO.BIO.Concurrent" module.
 --
 data BIO inp out = BIO
-    { push :: inp -> IO (Maybe out)
+    { push :: inp -> IO (Step out)
       -- ^ Push a block of input, perform some effect, and return output,
       -- if input is not enough to produce any output yet, return 'Nothing'.
-    , pull :: IO (Maybe out)
+    , pull :: IO (Step out)
       -- ^ When input reaches EOF, there may be a finalize stage to output
       -- trailing output blocks. return 'Nothing' to indicate current node
       -- reaches EOF too.
     }
 
+data Step a = Step !a (IO (Step a)) | Stop
+
+instance Functor Step where
+    {-# INLINE fmap #-}
+    fmap f (Step x g) = Step (f x) (return . fmap f =<< g)
+    fmap _ Stop = Stop
+
+-- | Return a single result in one step.
+oneStep :: a -> IO (Step a)
+{-# INLINE oneStep #-}
+oneStep x = return (Step x (return Stop))
+
 -- | Type alias for 'BIO' node which never takes input.
 --
--- 'push' is not available by type system, and 'pull' return 'Nothing' when
--- reaches EOF.
+-- 'push' is not available by type system, and 'pull' return 'Stop' when reaches EOF.
 type Source out = BIO Void out
 
 -- | Type alias for 'BIO' node which only takes input and perform effects.
@@ -180,20 +193,15 @@ infixl 3 >~>
 -- | Connect two 'BIO' nodes, feed left one's output to right one's input.
 (>|>) :: HasCallStack => BIO a b -> BIO b c -> BIO a c
 {-# INLINE (>|>) #-}
-BIO pushA pullA >|> BIO pushB pullB = BIO push_ pull_
+BIO pushA pullA >|> BIO pushB pullB =
+    BIO (loopA <=< pushA) (loopA =<< pullA)
   where
-    push_ inp = do
-        x <- pushA inp
-        case x of Just x' -> pushB x'
-                  _       -> return Nothing
-    pull_ = do
-        x <- pullA
-        case x of
-            Just x' -> do
-                y <- pushB x'
-                case y of Nothing -> pull_  -- draw input from A until there's an output from B
-                          _       -> return y
-            _       -> pullB
+    loopA x = case x of
+        Step x' f -> loopB f =<< pushB x'
+        _         -> return Stop
+    loopB f y = case y of
+        Step y' g -> return (Step y' (loopB f =<< g))
+        _ -> loopA =<< f
 
 -- | Flipped 'fmap' for easier chaining.
 (>~>) :: BIO a b -> (b -> c) -> BIO a c
@@ -203,17 +211,17 @@ BIO pushA pullA >|> BIO pushB pullB = BIO push_ pull_
 -- | Connect BIO to an effectful function.
 (>!>) :: HasCallStack => BIO a b -> (b -> IO c) -> BIO a c
 {-# INLINE (>!>) #-}
-(>!>) BIO{..} f = BIO push_ pull_
+(>!>) BIO{..} f = BIO (push >=> loop) (pull >>= loop)
   where
-    push_ x = push x >>= \ r ->
-        case r of Just r' -> Just <$!> f r'
-                  _       -> return Nothing
-    pull_ = pull >>= \ r ->
-        case r of Just r' -> Just <$!> f r'
-                  _       -> return Nothing
+    loop r = case r of
+        Step r' g -> do
+            r'' <- f r'
+            return (Step r'' (loop =<< g))
+        _ -> return Stop
+
 
 -- | Connect two 'BIO' source, after first reach EOF, draw element from second.
-appendSource :: HasCallStack => Source a -> Source a  -> IO (Source a)
+appendSource :: HasCallStack => Source a -> Source a  -> Source a
 {-# INLINE appendSource #-}
 b1 `appendSource` b2 = concatSource [b1, b2]
 
@@ -231,24 +239,22 @@ fuseSink :: HasCallStack => [Sink out] -> Sink out
 {-# INLINABLE fuseSink #-}
 fuseSink ss = BIO push_ pull_
   where
-    push_ inp = forM_ ss (\ b -> push b inp) >> return Nothing
-    pull_ = mapM_ pull ss >> return Nothing
+    push_ inp = forM_ ss (\ b -> push b inp) >> return Stop
+    pull_ = mapM_ pull ss >> return Stop
 
 -- | Connect list of 'BIO' sources, after one reach EOF, draw element from next.
-concatSource :: HasCallStack => [Source a] -> IO (Source a)
+concatSource :: HasCallStack => [Source a] -> Source a
 {-# INLINABLE concatSource #-}
-concatSource ss0 = newIORef ss0 >>= \ ref -> return (BIO{ pull = loop ref})
+concatSource ss0 = BIO{ pull = loopA ss0}
   where
-    loop ref = do
-        ss <- readIORef ref
-        case ss of
-            []       -> return Nothing
-            (s:rest) -> do
-                r <- pull s
-                case r of
-                    Just _ -> return r
-                    _      -> writeIORef ref rest >> loop ref
+    loopA [] = return Stop
+    loopA (s:ss) = loopB ss =<< pull s
 
+    loopB ss x = case x of
+        Step x' f -> return (Step x' (loopB ss =<< f))
+        _         -> loopA ss
+
+{-
 -- | Zip two 'BIO' source into one, reach EOF when either one reached EOF.
 zipSource :: HasCallStack => Source a -> Source b -> IO (Source (a,b))
 {-# INLINABLE zipSource #-}
@@ -313,31 +319,31 @@ zipBIO (BIO pushA pullA) (BIO pushB pullB) = do
 
 -------------------------------------------------------------------------------
 -- Run BIO
+-}
 
 -- | Run a 'BIO' loop (source >|> ... >|> sink).
 runBIO :: HasCallStack => BIO Void Void -> IO ()
 {-# INLINABLE runBIO #-}
-runBIO BIO{..} = pull >> return ()
+runBIO BIO{..} = void pull
+
 
 -- | Drain a 'BIO' source into a List in memory.
 runSource :: HasCallStack => Source x -> IO [x]
 {-# INLINABLE runSource #-}
-runSource BIO{..} = loop pull []
+runSource BIO{..} = loop [] =<< pull
   where
-    loop f acc = do
-        r <- f
-        case r of Just r' -> loop f (r':acc)
-                  _       -> return (List.reverse acc)
+    loop acc r = case r of
+        Step r' g -> loop (r':acc) =<< g
+        _       -> return (List.reverse acc)
 
 -- | Drain a source without collecting result.
 runSource_ :: HasCallStack => Source x -> IO ()
 {-# INLINABLE runSource_ #-}
-runSource_ BIO{..} = loop pull
+runSource_ BIO{..} = loop =<< pull
   where
-    loop f = do
-        r <- f
-        case r of Just _ -> loop f
-                  _      -> return ()
+    loop r  = do
+        case r of Step _ g -> loop =<< g
+                  _        -> return ()
 
 -- | Supply a single block of input, then run BIO node until EOF.
 --
@@ -345,14 +351,10 @@ runSource_ BIO{..} = loop pull
 runBlock :: HasCallStack => BIO inp out -> inp -> IO [out]
 {-# INLINABLE runBlock #-}
 runBlock BIO{..} inp = do
-    x <- push inp
-    let acc = case x of Just x' -> [x']
-                        _       -> []
-    loop pull acc
+    loop [] =<< push inp
   where
-    loop f acc = do
-        r <- f
-        case r of Just r' -> loop f (r':acc)
+    loop acc r =
+        case r of Step r' g -> loop (r':acc) =<< g
                   _       -> return (List.reverse acc)
 
 -- | Supply a single block of input, then run BIO node until EOF with collecting result.
@@ -417,6 +419,7 @@ unsafeRunBlocks :: HasCallStack => IO (BIO inp out) -> [inp] -> [out]
 {-# INLINABLE unsafeRunBlocks #-}
 unsafeRunBlocks new inps = unsafePerformIO (new >>= \ bio -> runBlocks bio inps)
 
+{-
 -------------------------------------------------------------------------------
 -- Source
 
@@ -849,3 +852,5 @@ newUngroupingNode = do
                     writeIORef seqRef rest
                     index_ c seqRef
             _ -> return Nothing
+
+-}
