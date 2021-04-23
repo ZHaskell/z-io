@@ -70,16 +70,17 @@ newTQueueNode :: Int -- ^ number of producers
 newTQueueNode n = do
     q <- newTQueueIO
     ec <- newCounter 0
+    let loopRead = uninterruptibleMask $ \ restore -> do
+            x <- restore $ atomically (readTQueue q)
+            case x of Just x' -> return (Step x' loopRead)
+                      _ -> do atomically (unGetTQueue q Nothing)
+                              return Stop
     return
-        ( BIO (\ x -> atomically (writeTQueue q (Just x)) >> return Nothing)
-                (do i <- atomicAddCounter' ec 1
-                    when (i == n) (atomically (writeTQueue q Nothing))
-                    return Nothing)
-        , BIO { pull = uninterruptibleMask $ \ restore -> do
-                    x <- restore $ atomically (readTQueue q)
-                    case x of Just _ -> return x
-                              _ -> do atomically (unGetTQueue q Nothing)
-                                      return Nothing})
+        ( BIO (\ x -> atomically (writeTQueue q (Just x)) >> return Stop)
+              (do i <- atomicAddCounter' ec 1
+                  when (i == n) (atomically (writeTQueue q Nothing))
+                  return Stop)
+        , Source loopRead)
 
 -- | Make an bounded queue and a pair of sink and souce connected to it.
 newTBQueueNode :: Int       -- ^ number of producers
@@ -88,16 +89,18 @@ newTBQueueNode :: Int       -- ^ number of producers
 newTBQueueNode n bound = do
     q <- newTBQueueIO bound
     ec <- newCounter 0
+    let loopRead = uninterruptibleMask $ \ restore -> do
+            x <- restore $ atomically (readTBQueue q)
+            case x of Just x' -> return (Step x' loopRead)
+                      _      -> do atomically (unGetTBQueue q Nothing)
+                                   return Stop
     return
-        ( BIO (\ x -> atomically (writeTBQueue q (Just x)) >> return Nothing)
-                (do i <- atomicAddCounter' ec 1
-                    when (i == n) (atomically (writeTBQueue q Nothing))
-                    return Nothing)
-        , BIO { pull = uninterruptibleMask $ \ restore -> do
-                    x <- restore $ atomically (readTBQueue q)
-                    case x of Just _ -> return x
-                              _      -> do atomically (unGetTBQueue q Nothing)
-                                           return Nothing})
+        ( BIO (\ x -> atomically (writeTBQueue q (Just x)) >> return Stop)
+              (do i <- atomicAddCounter' ec 1
+                  when (i == n) (atomically (writeTBQueue q Nothing))
+                  return Stop)
+        , Source loopRead)
+
 
 -- | Make a broadcast chan and a sink connected to it, and a function return sources to receive broadcast message.
 newBroadcastTChanNode :: Int                        -- ^ number of producers
@@ -107,12 +110,13 @@ newBroadcastTChanNode n = do
     ec <- newCounter 0
     let dupSrc = do
             c <- atomically (dupTChan b)
-            return (BIO { pull = do
-                            x <- atomically (readTChan c)
-                            case x of Just _ -> return x
-                                      _ -> return Nothing })
-    return ( BIO (\ x -> atomically (writeTChan b (Just x)) >> return Nothing)
+            let loopRead = do
+                    x <- atomically (readTChan c)
+                    case x of Just x' -> return (Step x' loopRead)
+                              _ -> return Stop
+            return (Source loopRead)
+    return ( BIO (\ x -> atomically (writeTChan b (Just x)) >> return Stop)
                     (do i <- atomicAddCounter' ec 1
                         when (i == n) (atomically (writeTChan b Nothing))
-                        return Nothing)
+                        return Stop)
            , dupSrc)

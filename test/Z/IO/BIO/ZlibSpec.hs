@@ -42,12 +42,6 @@ spec = describe "zlib" $ do
                     TheZlib.defaultCompressParams{TheZlib.compressDictionary = Just "aabbccdd" }
                         (BL.pack xs))
 
-        prop "TheZlib.decompress . TheZlib.compress == id(performace benchmark)" $ \ xss -> do
-            let vs = Prelude.map B.pack xss
-                vs' = TheZlib.decompress . TheZlib.compress $ BL.fromChunks vs
-
-            B.concat vs @=? BL.toStrict vs'
-
         prop "compress >|> decompress" $ \ xss -> do
             (_, c) <- newCompress defaultCompressConfig
             (_, d) <- newDecompress defaultDecompressConfig
@@ -67,3 +61,16 @@ spec = describe "zlib" $ do
             vs' <- runBlocks (c >|> d) vs
 
             V.concat vs @=? V.concat vs'
+
+    describe "decompress . compress === id(performace testing)" . modifyMaxSize (*30) $ do
+
+        prop "decompress . compress == id(performace testing)" $ \ xss -> do
+            let vs = Prelude.map V.pack xss
+                vs' = decompressBlocks defaultDecompressConfig . compressBlocks defaultCompressConfig $ vs
+            V.concat vs @=? V.concat vs'
+
+        prop "TheZlib.decompress . TheZlib.compress == id(performace testing)" $ \ xss -> do
+            let vs = Prelude.map B.pack xss
+                vs' = TheZlib.decompress . TheZlib.compress $ BL.fromChunks vs
+            B.concat vs @=? BL.toStrict vs'
+

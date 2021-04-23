@@ -32,7 +32,7 @@ spec = describe "BIO.Concurrent" $ do
         let consumer =  do
                 (rRef, sink') <- sinkToList
                 runBIO (src >|> sink')
-                r <- readIORef rRef
+                r <- takeMVar rRef
                 atomicModifyIORef' sumRef $ \ x -> (x + sum r, ())
 
         forkIO $ consumer
@@ -59,7 +59,7 @@ spec = describe "BIO.Concurrent" $ do
         let consumer =  do
                 (rRef, sink') <- sinkToList
                 runBIO (src >|> sink')
-                r <- readIORef rRef
+                r <- takeMVar rRef
                 atomicModifyIORef' sumRef $ \ x -> (x + sum r, ())
 
         forkIO $ consumer
@@ -87,7 +87,7 @@ spec = describe "BIO.Concurrent" $ do
                 (rRef, sink') <- sinkToList
                 src <- srcf
                 runBIO (src >|> sink')
-                r <- readIORef rRef
+                r <- takeMVar rRef
                 atomicModifyIORef' sumRef $ \ x -> (x + sum r, ())
 
         forkIO $ consumer
@@ -113,5 +113,5 @@ sourceListWithDelay xs0 = do
             (x:xs') -> do
                 writeIORef xsRef xs'
                 threadDelay x
-                return (Just x)
-            _ -> return Nothing
+                return (Step x (popper xsRef))
+            _ -> return Stop

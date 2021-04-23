@@ -23,7 +23,7 @@ module Z.IO.Buffered
   , unReadBuffer
   , clearInputBuffer
   , readParser
-  , readParseChunks
+  , readParseChunk
   , readExactly
   , readToMagic
   , readLine
@@ -311,19 +311,22 @@ unReadBuffer :: HasCallStack => V.Bytes -> BufferedInput -> IO ()
 unReadBuffer pb' BufferedInput{..} = unless (V.null pb') $ do
     modifyIORef' bufPushBack (\ pb -> pb' `V.append` pb)
 
--- | Read buffer and parse with 'P.ParseChunks'.
+-- | Read buffer and parse with 'P.ParseChunk'.
 --
 -- This function will continuously draw data from input before parsing finish. Unconsumed
 -- bytes will be returned to buffer.
 --
 -- Throw 'OtherError' with name @EPARSE@ if parsing failed.
-readParseChunks :: (T.Print e, HasCallStack) => P.ParseChunks IO V.Bytes e a -> BufferedInput -> IO a
-{-# INLINABLE readParseChunks #-}
-readParseChunks cp i = do
-    bs <- readBuffer i
-    (rest, r) <- cp (readBuffer i) bs
-    unReadBuffer rest i
-    unwrap "EPARSE" r
+readParseChunk :: (T.Print e, HasCallStack) => (V.Bytes -> P.Result e a) -> BufferedInput -> IO a
+{-# INLINABLE readParseChunk #-}
+readParseChunk pc i = loop pc
+  where
+    loop f = do
+        bs <- readBuffer i
+        case f bs of
+            P.Success v rest -> unReadBuffer rest i >> return v
+            P.Failure e rest -> unReadBuffer rest i >> throwOtherError "EPARSE" (T.toText e)
+            P.Partial f'     -> loop f'
 
 -- | Read buffer and parse with 'P.Parser'.
 --
@@ -333,7 +336,7 @@ readParseChunks cp i = do
 -- Throw 'OtherError' with name @EPARSE@ if parsing failed.
 readParser :: HasCallStack => P.Parser a -> BufferedInput -> IO a
 {-# INLINABLE readParser #-}
-readParser = readParseChunks . P.parseChunks
+readParser = readParseChunk . P.parseChunk
 
 {-| Read until reach a magic bytes, return bytes(including the magic bytes).
 
