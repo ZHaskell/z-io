@@ -121,10 +121,10 @@ library
     , exceptions            ^>=0.10
     , primitive             >=0.7.1 && <0.7.2
     , stm                   ^>=2.5
-    , time                  >=1.9   && <=2.0
-    , unix-time             >=0.4.7 && <=0.5
+    , time                  >=1.9   && <2.0
+    , unix-time             >=0.4.7 && <0.5
     , unordered-containers  ^>=0.2
-    , Z-Data                ^>=0.7.1
+    , Z-Data                >=0.8.1 && <0.9
 
   default-language:   Haskell2010
   default-extensions:

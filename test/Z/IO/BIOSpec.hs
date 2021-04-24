@@ -28,7 +28,7 @@ spec = describe "BIO" . modifyMaxSize (*10) $ do
                     (rRef, sink) <- sinkToList
                     enc <- newBase64Encoder
                     dec <- newBase64Decoder
-                    runBIO $ src >|> enc >|> dec >|> sink
+                    runBIO $ src . enc . dec . sink
                     takeMVar rRef
             in V.concat r === V.concat xs
 
@@ -39,7 +39,7 @@ spec = describe "BIO" . modifyMaxSize (*10) $ do
                     (rRef, sink) <- sinkToList
                     let enc = hexEncoder upper
                     dec <- newHexDecoder
-                    runBIO $ src >|> enc >|> dec >|> sink
+                    runBIO $ src . enc . dec . sink
                     takeMVar rRef
             in V.concat r === V.concat xs
 

@@ -16,7 +16,7 @@ withResource (initWatchDirs ["fold_to_be_watch"] True) $ \ srcf -> do
     -- dup a file event source
     src <- srcf
     -- print event to stdout
-    runBIO_ $ src >|> sinkToIO printStd
+    runBIO_ $ src . sinkToIO printStd
 @
 -}
 
@@ -68,7 +68,7 @@ watchDirs :: [CBytes]     -- ^ Directories to be watched
 watchDirs dirs rec callback = do
     withResource (initWatchDirs dirs rec) $ \ srcf -> do
         src <- srcf
-        runBIO_ $ src >|> sinkToIO callback
+        runBIO_ $ src . sinkToIO callback
 
 -- | Start watching a list of given directories, stream version.
 initWatchDirs :: [CBytes]       -- ^ watching list
@@ -110,7 +110,7 @@ watch_ flag dirs = fst <$> initResource (do
     cleanUpWatcher mRef sink = do
         m <- takeMVar mRef
         forM_ m killThread
-        void (sink Nothing discard)
+        void (sink discard EOF)
 
     watchThread mRef dir sink = do
         -- IORef store temp events to de-duplicated

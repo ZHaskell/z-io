@@ -12,7 +12,7 @@ This module provides <https://zlib.net zlib> bindings, with 'BIO' streaming inte
 @
 -- add compressor to your BIO chain to compress streaming blocks of 'V.Bytes'.
 (_, zlibCompressor) <- newCompress defaultCompressConfig{compressWindowBits = 31}
-runBIO $ src >|> zlibCompressor >|> sink
+runBIO $ src . zlibCompressor . sink
 @
 
 -}
@@ -154,7 +154,7 @@ newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
             writeIORef bufRef buf'
             set_avail_out zs buf' bufSiz
 
-    return (ZStream zs, \ mbs k -> case mbs of
+    return (ZStream zs, \ k mbs -> case mbs of
         Just bs -> do
             set_avail_in zs bs (V.length bs)
             let loop = do
@@ -230,7 +230,7 @@ newDecompress (DecompressConfig windowBits dict bufSiz) = do
             writeIORef bufRef buf'
             set_avail_out zs buf' bufSiz
 
-    return (ZStream zs, \ mbs k -> case mbs of
+    return (ZStream zs, \ k mbs -> case mbs of
         Just bs -> do
             set_avail_in zs bs (V.length bs)
 

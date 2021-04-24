@@ -36,7 +36,7 @@ forkIO $ do
 
 forkIO $ do
     ...
-    (runBIO $ ... >|> sink) -- producer using BIO
+    (runBIO $ ... . sink) -- producer using BIO
         `onException` (pull sink)
 
 --------------------------------------------------------------------------------
@@ -50,7 +50,7 @@ forkIO $ do
 
 forkIO $ do
     ...
-    runBIO $ src >|> ...    -- consumer using BIO
+    runBIO $ src . ...    -- consumer using BIO
 @
 
 -}
@@ -58,11 +58,50 @@ forkIO $ do
 module Z.IO.BIO.Concurrent where
 
 import Control.Monad
+import Control.Concurrent
 import Control.Concurrent.STM
+import qualified Data.Sequence as Seq
+import Data.Sequence (Seq((:<|),(:|>)))
 import GHC.Natural
 import Z.IO.BIO
 import Z.Data.PrimRef
 import Z.IO.Exception
+
+-- | Zip two BIO node by running them concurrently.
+--
+-- This implementation use 'MVar' to synchronize two BIO's output, which has some implications:
+--
+--   * Two node should output same numebr of results.
+--   * If the number differs, one node maybe
+--
+zipBIO :: BIO a b -> BIO a c -> BIO a (b,c)
+zipBIO b1 b2 = \ k mx -> do
+    bEOF <- newTVarIO False
+    cEOF <- newTVarIO False
+    bBuf <- newTVarIO Seq.empty
+    cBuf <- newTVarIO Seq.empty
+    _ <- forkIO (b1 (f bBuf bEOF) mx)
+    _ <- forkIO (b2 (f cBuf cEOF) mx)
+    loop k bBuf cBuf bEOF cEOF
+  where
+    f xBuf xEOF = \ mx ->
+        case mx of
+            Just x -> atomically $ modifyTVar' xBuf (:|> x)
+            _ -> atomically $ writeTVar xEOF True
+
+    loop k bBuf cBuf bEOF cEOF = join . atomically $ do
+        bs <- readTVar bBuf
+        cs <- readTVar cBuf
+        beof <- readTVar bEOF
+        ceof <- readTVar cEOF
+        case bs of
+            b :<| bs' -> case cs of
+                c :<| cs' -> do
+                    writeTVar bBuf bs'
+                    writeTVar cBuf cs'
+                    return (k (Just (b, c)) >> loop k bBuf cBuf bEOF cEOF)
+                _ -> if ceof then return (k EOF) else retry
+            _ -> if beof then return (k EOF) else retry
 
 -- | Make an unbounded queue and a pair of sink and souce connected to it.
 newTQueueNode :: Int -- ^ number of producers
@@ -71,7 +110,7 @@ newTQueueNode n = do
     q <- newTQueueIO
     ec <- newCounter 0
     return
-        ( \ mx k -> case mx of
+        ( \ k mx -> case mx of
                 Just _ -> atomically (writeTQueue q mx)
                 _ -> do
                     i <- atomicAddCounter' ec 1
@@ -79,7 +118,7 @@ newTQueueNode n = do
                         atomically (writeTQueue q EOF)
                         k EOF
 
-        , \ _ k ->
+        , \ k _ ->
             let loop = uninterruptibleMask $ \ restore -> do
                     x <- restore $ atomically (readTQueue q)
                     case x of Just _ -> k x >> loop
@@ -95,7 +134,7 @@ newTBQueueNode n bound = do
     q <- newTBQueueIO bound
     ec <- newCounter 0
     return
-        ( \ mx k -> case mx of
+        ( \ k mx -> case mx of
                 Just _ -> atomically (writeTBQueue q mx)
                 _ -> do
                     i <- atomicAddCounter' ec 1
@@ -103,7 +142,7 @@ newTBQueueNode n bound = do
                         atomically (writeTBQueue q EOF)
                         k EOF
 
-        , \ _ k ->
+        , \ k _ ->
             let loop = uninterruptibleMask $ \ restore -> do
                     x <- restore $ atomically (readTBQueue q)
                     case x of Just _ -> k x >> loop
@@ -119,7 +158,7 @@ newBroadcastTChanNode n = do
     ec <- newCounter 0
     let dupSrc = do
             c <- atomically (dupTChan b)
-            return $ \ _ k ->
+            return $ \ k _ ->
                 let loop = do
                         x <- atomically (readTChan c)
                         case x of Just _ -> k x >> loop
@@ -127,7 +166,7 @@ newBroadcastTChanNode n = do
                 in loop
 
     return
-        (\ mx k -> case mx of
+        (\ k mx -> case mx of
             Just _ -> atomically (writeTChan b mx)
             _ -> do i <- atomicAddCounter' ec 1
                     when (i == n) (atomically (writeTChan b EOF))
