@@ -47,7 +47,8 @@ base64AndCompressFile origin target = do
 module Z.IO.BIO (
   -- * The BIO type
     BIO(..), Source, pattern Source, Sink
-  , Step(..), returnStep, stepIO, foldStep, foldStepIO
+  -- * The Step type
+  , Step(..), returnStep, stepIO, stepIO_, foldStep, foldStepIO, runStep, runStep_
   -- ** Basic combinators
   , (>|>), (>~>), (>!>), appendSource
   , concatSource, zipSource
@@ -181,10 +182,22 @@ instance Functor Step where
 -- | Apply an `IO` function in each 'Step'.
 stepIO :: (a -> IO b) -> Step a -> IO (Step b)
 {-# INLINE stepIO #-}
-stepIO f (Step x g) = do
-    y <- f x
-    return (Step y (stepIO f =<< g))
-stepIO _ _ = return Stop
+stepIO f s = go s
+  where
+    go (Step x g) = do
+        y <- f x
+        return (Step y (go =<< g))
+    go _ = return Stop
+
+-- | Apply an `IO` function in each 'Step' without return result.
+stepIO_ :: (a -> IO b) -> Step a -> IO ()
+{-# INLINE stepIO_ #-}
+stepIO_ f s = go s
+  where
+    go (Step x g) = do
+        _ <- f x
+        go =<< g
+    go _ = return ()
 
 -- | Use an `IO` function to fold each 'Step'.
 foldStep :: (b -> a -> b) -> b -> Step a -> IO b
@@ -641,7 +654,8 @@ newParseChunkNode pc = do
 
     loop fRef f chunk = do
         case f chunk of
-            P.Success a chunk' ->
+            P.Success a chunk' -> do
+                writeIORef fRef Nothing
                 return (Step a (loop fRef f chunk'))
             P.Failure e _ ->
                 throwOtherError "EPARSE" (T.toText e)
@@ -653,12 +667,14 @@ newParseChunkNode pc = do
         f <- readIORef fRef
         case f of
             Just f' -> case f' V.empty of
-                P.Success a _ ->
+                P.Success a _ -> do
+                    writeIORef fRef Nothing
                     returnStep a
                 P.Failure e _ ->
                     throwOtherError "EPARSE" (T.toText e)
-                P.Partial _ ->
-                    throwOtherError "EPARSE" "last chunk partial parse"
+                P.Partial f'' -> do
+                    writeIORef fRef (Just f'')
+                    pull_ fRef
             _ -> return Stop
 
 -- | Make a new UTF8 decoder, which decode bytes streams into text streams.
