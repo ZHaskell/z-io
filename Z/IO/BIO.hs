@@ -46,7 +46,8 @@ base64AndCompressFile origin target = do
 -}
 module Z.IO.BIO (
   -- * The BIO type
-    BIO(..), Step(..), returnStep, Source, pattern Source, Sink
+    BIO(..), Source, pattern Source, Sink
+  , Step(..), returnStep, stepIO, foldStep, foldStepIO
   -- ** Basic combinators
   , (>|>), (>~>), (>!>), appendSource
   , concatSource, zipSource
@@ -169,7 +170,7 @@ data BIO inp out = BIO
 data Step a = Step !a (IO (Step a)) | Stop
 
 instance Show a => Show (Step a) where
-    show (Step x _) = "Step " ++ show x + " _"
+    show (Step x _) = "Step " ++ show x ++ " _"
     show _ = "Stop"
 
 instance Functor Step where
@@ -177,16 +178,40 @@ instance Functor Step where
     fmap f (Step x g) = Step (f x) (return . fmap f =<< g)
     fmap _ Stop = Stop
 
+-- | Apply an `IO` function in each 'Step'.
+stepIO :: (a -> IO b) -> Step a -> IO (Step b)
+{-# INLINE stepIO #-}
+stepIO f (Step x g) = do
+    y <- f x
+    return (Step y (stepIO f =<< g))
+stepIO _ _ = return Stop
+
+-- | Use an `IO` function to fold each 'Step'.
+foldStep :: (b -> a -> b) -> b -> Step a -> IO b
+{-# INLINE foldStep #-}
+foldStep f acc0 s = go acc0 s
+  where
+    go !acc (Step x g) = go (f acc x) =<< g
+    go !acc _ = return acc
+
+-- | Use an `IO` function to fold each 'Step'.
+foldStepIO :: (b -> a -> IO b) -> b -> Step a -> IO b
+{-# INLINE foldStepIO #-}
+foldStepIO f acc0 s = go acc0 s
+  where
+    go !acc (Step x g) = do
+        acc' <- f acc x
+        go acc' =<< g
+    go !acc _ = return acc
+
 -- | Materialize 'Step' s into memory.
 runStep :: Step a -> IO [a]
-runStep = loop []
-  where
-    loop acc r = case r of
-        Step r' g -> loop (r':acc) =<< g
-        _         -> return (List.reverse acc)
+{-# INLINE runStep #-}
+runStep s = List.reverse <$> foldStep (\ acc x -> x:acc) [] s
 
 -- | Run 'Step' s without collecting results.
 runStep_ :: Step a -> IO ()
+{-# INLINE runStep_ #-}
 runStep_ = loop
   where
     loop (Step _ g) = loop =<< g
@@ -246,14 +271,7 @@ BIO pushA pullA >|> BIO pushB pullB =
 -- | Connect BIO to an effectful function.
 (>!>) :: HasCallStack => BIO a b -> (b -> IO c) -> BIO a c
 {-# INLINE (>!>) #-}
-(>!>) BIO{..} f = BIO (push >=> loop) (pull >>= loop)
-  where
-    loop r = case r of
-        Step r' g -> do
-            r'' <- f r'
-            return (Step r'' (loop =<< g))
-        _ -> return Stop
-
+(>!>) BIO{..} f = BIO (push >=> stepIO f) (pull >>= stepIO f)
 
 -- | Connect two 'BIO' source, after first reach EOF, draw element from second.
 appendSource :: HasCallStack => Source a -> Source a  -> Source a
@@ -292,7 +310,7 @@ concatSource ss0 = Source (loopA ss0)
 -- | Zip two 'BIO' source into one, reach EOF when either one reached EOF.
 zipSource :: HasCallStack => Source a -> Source b -> Source (a,b)
 {-# INLINABLE zipSource #-}
-zipSource (BIO _ f) (BIO _ g) = Source (do x <- f; y <- g; loop x y)
+zipSource (Source f) (Source g) = Source (do x <- f; y <- g; loop x y)
   where
     loop Stop _ = return Stop
     loop _ Stop = return Stop
@@ -306,7 +324,6 @@ zipSource (BIO _ f) (BIO _ g) = Source (do x <- f; y <- g; loop x y)
 runBIO :: HasCallStack => BIO Void Void -> IO ()
 {-# INLINABLE runBIO #-}
 runBIO BIO{..} = void pull
-
 
 -- | Drain a 'BIO' source into a List in memory.
 runSource :: HasCallStack => Source x -> IO [x]
@@ -324,14 +341,9 @@ runSource_ BIO{..} = runStep_ =<< pull
 runBlock :: HasCallStack => BIO inp out -> inp -> IO [out]
 {-# INLINABLE runBlock #-}
 runBlock BIO{..} inp = do
-    loopA [] =<< push inp
-  where
-    loopA acc r =
-        case r of Step r' g -> loopA (r':acc) =<< g
-                  _         -> loopB acc =<< pull
-    loopB acc r =
-        case r of Step r' g -> loopB (r':acc) =<< g
-                  _         -> return (List.reverse acc)
+    acc' <- foldStep (\ acc x -> x:acc) [] =<< push inp
+    acc''<- foldStep (\ acc x -> x:acc) acc' =<< pull
+    return (List.reverse acc'')
 
 -- | Supply a single block of input, then run BIO node until EOF with collecting result.
 --
@@ -360,13 +372,12 @@ runBlocks BIO{..} = loopA []
     loopA acc (inp:inps) = do
         acc' <- (loopB acc) =<< push inp
         loopA acc' inps
+
     loopA acc _ = do
         acc' <- (loopB acc) =<< pull
         return (List.reverse acc')
 
-    loopB acc r =
-        case r of Step r' g -> loopB (r':acc) =<< g
-                  _         -> return acc
+    loopB = foldStep (\ acc x -> x:acc)
 
 -- | Supply blocks of input, then run BIO node until EOF with collecting result.
 --
@@ -379,7 +390,6 @@ runBlocks_ BIO{..} = loop
         runStep_ =<< push inp
         loop inps
     loop _ = runStep_ =<< pull
-
 
 -- | Wrap 'runBlocks' into a pure interface.
 --
@@ -394,7 +404,7 @@ unsafeRunBlocks new inps = unsafePerformIO (new >>= \ bio -> runBlocks bio inps)
 -- | Source a list from memory.
 --
 -- Note this is a stateless source, which can be used in multiple BIO chain to source
--- the whole list.
+-- the list again.
 sourceFromList :: [a] -> Source a
 sourceFromList = Source . loop
   where
