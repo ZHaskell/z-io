@@ -1,11 +1,13 @@
 # Revision history for Z-IO
 
-## 0.7.2.0  -- 2020-04-20
+## 0.8.0.0  -- 2020-04-25
 
 This is an experimental version to test new 'BIO' module.
 
 * Rewrite `Z.IO.BIO` module, now `BIO` is push based.
+* Remove `>|>`, `>~>`, `>!>`, now `BIO` nodes can be composed via funtion composition `(.)`!
 * Remove `zipSource/zipBIO`, add `stepBIO/stepBIO_/runBIO_`.
+* Add `zipBIO` to `Z.IO.BIO.Concurrent`, which run two BIO nodes concurrently.
 * Add `ungroupingNode`, change `newGroupingNode` to use `Vector`.
 * Rename `EOF` exception to `UnexpectedEOF` to avoid the clash with `EOF` pattern.
 

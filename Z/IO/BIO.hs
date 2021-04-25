@@ -1,4 +1,3 @@
-{-# OPTIONS_GHC -Wno-missing-fields #-}
 {-|
 Module      : Z.IO.BIO
 Description : Composable IO Loops
@@ -167,7 +166,7 @@ type Source x = BIO Void x
 -- do a flush(also write a final 'EOF') when upstream reach EOF.
 type Sink x = BIO x Void
 
--- | Connect two 'BIO' source, after first reach EOF, draw element from second.
+-- | Connect two 'BIO' source, after first reach EOF, draw elements from second.
 appendSource :: HasCallStack => Source a -> Source a -> Source a
 {-# INLINE appendSource #-}
 b1 `appendSource` b2 = \ k _ ->
