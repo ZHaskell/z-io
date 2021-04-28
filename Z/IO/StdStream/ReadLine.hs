@@ -31,7 +31,7 @@ readKey :: HasCallStack => BufferedInput -> IO Key
 readKey i = do
     bs <- readBuffer i
     -- debug
-    printStdLn bs
+    --printStd bs
     (rest, r) <- P.parseChunks keyParser timeoutRead bs
     unReadBuffer rest i
     unwrap "EPARSE" r
@@ -40,7 +40,7 @@ readKey i = do
         -- 200ms timeout
         bs <- timeoutLowRes 2 (readBuffer i)
         case bs of Just bs' -> return bs'
-                   _   -> return V.empty
+                   _  -> return V.empty
 
 data Key = Key Modifier BaseKey
     deriving (Eq, Ord, Show)
@@ -101,9 +101,9 @@ data BaseKey = Char Char
 keyParser :: P.Parser Key
 keyParser = do
     w <- P.anyCharUTF8
-    end <- P.atEnd
     case w of
-        '\ESC' ->
+        '\ESC' -> do
+            end <- P.atEnd
             if end
             then return $ Key noModifier Esc
             else do
