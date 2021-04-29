@@ -1,29 +1,290 @@
 module Z.IO.StdStream.ReadLine where
 
 import Control.Applicative
+    ( Applicative(pure), Alternative((<|>)) )
 import qualified Z.Data.Text            as T
 import qualified Z.Data.Text.Base       as T
 import qualified Z.Data.Vector          as V
 import qualified Z.Data.Parser          as P
+import Z.Data.Builder ( Builder, stringUTF8 )
 import Data.Bits                        ((.|.), (.&.))
 import Z.Data.ASCII
 import Z.IO
-import Z.IO.LowResTimer
+    ( withMVar,
+      HasCallStack,
+      unwrap,
+      readBuffer,
+      unReadBuffer,
+      BufferedInput,
+      stdinBuf,
+      withRawStdin,
+      putStd  )
+import Z.IO.LowResTimer ( timeoutLowRes )
 import Prelude                          hiding (Left, Right)
+import Control.Monad.State ( StateT(..) )
+import Control.Monad ( unless )
+import qualified Z.IO.StdStream.Ansi as Ansi
+import Data.IORef ( IORef, newIORef, readIORef, writeIORef )
+import System.IO.Unsafe ( unsafePerformIO )
+import Data.List ( isPrefixOf )
+import Control.Monad.IO.Class ( MonadIO(liftIO) )
 
+-------------------------------------------------------------------
+--Global state
+{-# NOINLINE globalKeywords #-}
+globalKeywords :: IORef [String]
+globalKeywords = unsafePerformIO (newIORef [])
 
-data ReadLineConf =  ReadLineConf
+setKeyWords :: [String]->IO()
+setKeyWords = writeIORef globalKeywords
 
-defaultReadLineConf :: ReadLineConf
-defaultReadLineConf = ReadLineConf
+getKeyWords :: IO [String]
+getKeyWords = readIORef globalKeywords
+--------------------------------------------------------------------
 
-readLine :: HasCallStack
-         => T.Text           -- ^ prompt
-         -> IO Key
-readLine prompt = withRawStdin . withMVar stdinBuf $ \ i -> do
-    -- first we have to get key event
-    readKey i
-    -- then we have to edit the line buffer and refresh the line
+readKeyfromInput :: HasCallStack => IO Key
+readKeyfromInput = withRawStdin . withMVar stdinBuf $ \i -> readKey i
+
+type InputControl a = StateT CommandLine IO a
+
+data CommandLine = CommandLine {
+    line :: (String,String), -- | S x S is zipper
+    history :: ([String], [String])
+}
+
+instance Show CommandLine where
+    show (CommandLine (cursorL, cursorR) _) = reverse cursorL ++ cursorR
+
+newCommandLine :: IO CommandLine
+newCommandLine = return (CommandLine ("","") ([], []))
+
+addHistory' :: CommandLine->CommandLine
+addHistory' com@(CommandLine ("", "") _) = com
+addHistory' com@(CommandLine (l, r) (hist, zipper))
+    = com{history=( (reverse l ++ r):(hist ++ reverse zipper) ,[])}
+
+lastHistory' :: CommandLine->CommandLine
+lastHistory' commandline@(CommandLine _ ([], _)) = commandline
+lastHistory' commandline@(CommandLine _ (his@[item], zipper)) 
+    = commandline{
+        history=(his, zipper),
+        line=(reverse item, "")
+      }
+lastHistory' commandline@(CommandLine _ (h:hs, zipper)) =
+    commandline{
+        history=(hs, h:zipper),
+        line=(reverse h, "")
+    }
+
+nextHistory' :: CommandLine->CommandLine
+nextHistory' commandline@(CommandLine _ (_, [])) = commandline
+nextHistory' commandline@(CommandLine _ (his, zipper@[item]))
+    = commandline{
+        history=(his, zipper),
+        line=(reverse item, "")
+    }
+nextHistory' commandline@(CommandLine (_, _) (hs, z:zipper)) =
+    commandline{
+        history=(z:hs, zipper),
+        line = (reverse z, "")
+    }
+
+addChar' :: Char->CommandLine->CommandLine
+addChar' c commandline@(CommandLine (l, r) _) = commandline{line=(c:l, r)}
+
+clearLine' :: CommandLine->CommandLine
+clearLine' commandline= commandline{line=("", "")}
+
+putLine :: InputControl ()
+putLine = do
+    com <- getCommandLine
+    let built = stringUTF8 $ show com
+    let prompt = stringUTF8 "> "
+    let new_line = prompt <> built
+    printCommand $ do 
+        Ansi.clearLine
+        Ansi.setCursorColumn 0 
+        new_line
+    
+getCommandLine :: InputControl CommandLine
+getCommandLine = StateT $ \com->return (com, com)
+
+modifyCommandLine :: CommandLine->InputControl ()
+modifyCommandLine new_com = StateT $ \_->return ((), new_com)
+
+printCommand :: Builder ()->InputControl ()
+printCommand !content = StateT $ \com->do
+    putStd content
+    return ((), com)
+
+addChar :: Char->InputControl ()
+addChar c = do
+    com <- getCommandLine 
+    (modifyCommandLine . addChar' c) com
+    com_changed <- getCommandLine
+    let built = stringUTF8 $ show com_changed
+    let prompt = stringUTF8 "> "
+    let new_line = prompt <> built
+    (cur_col, cur_row) <- getCursorPos
+    let start_position = cur_col + 1
+    printCommand $ do
+        Ansi.setCursorPosition 0 cur_row
+        Ansi.clearLine
+        new_line
+        Ansi.setCursorPosition start_position cur_row
+
+readKeyState :: InputControl Key
+readKeyState = StateT $ \commandline->do
+    key <- readKeyfromBuffer
+    return (key, commandline)
+
+addHistory :: InputControl ()
+addHistory = getCommandLine >>= (modifyCommandLine . addHistory')
+
+moveCursorR' :: CommandLine->CommandLine
+moveCursorR' commandline@(CommandLine (_, []) _) = commandline
+moveCursorR' commandline@(CommandLine (l, x:r) _) = do
+     commandline{line=(x:l, r)}
+
+moveCursorL' :: CommandLine->CommandLine
+moveCursorL' commandline@(CommandLine ([], _) _) = commandline
+moveCursorL' commandline@(CommandLine (x:l, r) _) = do
+     commandline{line=(l, x:r)}
+
+moveCursorR :: InputControl ()
+moveCursorR = do 
+    com <- getCommandLine
+    --printCommand $ stringUTF8 (show $ line com)
+    case com of
+        CommandLine (_, []) _-> return ()
+        commandline@(CommandLine (l, x:r) _)->do
+            modifyCommandLine commandline{line=(x:l, r)}
+            printCommand $ Ansi.cursorForward 1
+
+moveCursorL :: InputControl ()
+moveCursorL = do 
+    com <- getCommandLine
+    --printCommand $ stringUTF8 (show $ line com)
+    case com of
+        CommandLine ([], _) _-> return ()
+        commandline@(CommandLine (x:l, r) _)->do
+            modifyCommandLine commandline{line=(l, x:r)}
+            printCommand $ Ansi.cursorBackward 1
+
+getCursorPos :: InputControl (Int, Int)
+getCursorPos = StateT $ \com->do
+    (cur_col, cur_row) <- Ansi.getCursorPosition
+    return ((cur_col, cur_row),com)
+
+deleteChar' :: CommandLine->CommandLine
+deleteChar' commandline@(CommandLine ([], _) _) = commandline
+deleteChar' commandline@(CommandLine (_:ls, r) _) = commandline{line=(ls, r)}
+
+deleteChar :: InputControl ()
+deleteChar = do
+    com <- getCommandLine 
+    (modifyCommandLine . deleteChar') com
+    com_changed <- getCommandLine
+    let built = stringUTF8 $ show com_changed
+    let prompt = stringUTF8 "> "
+    let new_line = prompt <> built
+    (cur_col, cur_row) <- getCursorPos
+    let start_position = if cur_col <= 3 then cur_col else cur_col - 1
+    printCommand $ do
+        Ansi.setCursorPosition 0 cur_row
+        Ansi.clearLine
+        new_line
+        Ansi.setCursorPosition start_position cur_row
+
+lastHistory :: InputControl ()
+lastHistory = getCommandLine >>= (modifyCommandLine . lastHistory')
+
+nextHistory :: InputControl ()
+nextHistory = getCommandLine >>= (modifyCommandLine . nextHistory')
+
+clearLine :: InputControl ()
+clearLine = getCommandLine >>= (modifyCommandLine . clearLine')
+
+newLine :: InputControl ()
+newLine = do 
+    StateT $ \commandline->do
+        putStd "\n> "
+        return ((), commandline)
+    clearLine
+
+hintOrCompletion :: InputControl ()
+hintOrCompletion = do
+    com@(CommandLine (l, r) _) <- getCommandLine
+    let (prefix, rest) = break (== ' ') l
+    wordlist <- liftIO getKeyWords
+    let reverse_prefix = reverse prefix
+    let word_list = [x | x <- wordlist, reverse_prefix `isPrefixOf` x]
+    printCommand $ stringUTF8 (show word_list)
+    case word_list of
+        [] -> return ()
+        [single_word] ->modifyCommandLine com{
+            line=(reverse single_word ++ rest,r)
+         }
+        _ ->printCommand $ stringUTF8 (show word_list)
+
+execute :: InputControl ()
+execute = undefined
+
+readKeyfromBuffer :: HasCallStack => IO Key
+readKeyfromBuffer = withRawStdin . withMVar stdinBuf $ \i -> readKey i
+
+readLineState :: InputControl ()
+readLineState = do
+    key <- readKeyState
+    terminate <- case key of
+        Key (Modifier False False False) (Char '\r')->do
+            addHistory
+            putLine
+            -- TODO: add execute
+            newLine
+            return False
+        Key _ (Char '\NAK')->do 
+            clearLine 
+            putLine
+            return False
+        Key _ (Char '\t')->do 
+            hintOrCompletion
+            putLine 
+            return False
+        Key _ (Char '\ETX')->do 
+            moveCursorR 
+            putLine
+            return True
+        Key _ Up -> do
+            lastHistory
+            putLine
+            return False
+        Key _ Down -> do
+            nextHistory
+            putLine
+            return False
+        Key _ (Char c)->do
+            addChar c
+            --putLine
+            return False
+        Key _ Backspace->do 
+            deleteChar
+            return False
+        Key _ Left->do 
+            moveCursorL
+            return False
+        Key _ Right->do 
+            moveCursorR
+            return False
+        Key _ _ ->return False
+    unless terminate readLineState
+--------------------------------------------------------------------------
+readLine :: HasCallStack => IO ()
+readLine = do
+    command_line <- newCommandLine
+    putStd $ stringUTF8 "> "
+    _ <- runStateT readLineState command_line
+    putStrLn "\nBye."
 
 -- | Get a single key event from tty.
 --
