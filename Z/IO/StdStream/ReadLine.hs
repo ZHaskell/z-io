@@ -40,6 +40,12 @@ setKeyWords = writeIORef globalKeywords
 
 getKeyWords :: IO [String]
 getKeyWords = readIORef globalKeywords
+
+{-# NOINLINE globalPrompt #-}
+globalPrompt :: IORef String
+globalPrompt = unsafePerformIO (newIORef "> ")
+
+
 --------------------------------------------------------------------
 
 readKeyfromInput :: HasCallStack => IO Key
@@ -227,20 +233,23 @@ hintOrCompletion = do
          }
         _ ->printCommand $ stringUTF8 (show word_list)
 
-execute :: InputControl ()
-execute = undefined
+readLine :: (String->IO a)->InputControl a
+readLine f = StateT $ \com->do
+    let command = show com
+    res <- f command
+    return (res, com)
 
 readKeyfromBuffer :: HasCallStack => IO Key
 readKeyfromBuffer = withRawStdin . withMVar stdinBuf $ \i -> readKey i
 
-readLineState :: InputControl ()
-readLineState = do
+readLineState :: (String->IO a)->InputControl ()
+readLineState f = do
     key <- readKeyState
     terminate <- case key of
         Key (Modifier False False False) (Char '\r')->do
             addHistory
             putLine
-            -- TODO: add execute
+            readLine f
             newLine
             return False
         Key _ (Char '\NAK')->do 
@@ -277,14 +286,24 @@ readLineState = do
             moveCursorR
             return False
         Key _ _ ->return False
-    unless terminate readLineState
+    unless terminate (readLineState f)
 --------------------------------------------------------------------------
-readLine :: HasCallStack => IO ()
-readLine = do
+runCommandLine :: 
+    HasCallStack 
+ => (String->IO a) 
+ -> IO ()
+runCommandLine f = do
     command_line <- newCommandLine
+    _ <- runStateT (readLineState f) command_line
+    return ()
+
+runCLI :: HasCallStack => IO ()
+runCLI = do
+    setKeyWords []
     putStd $ stringUTF8 "> "
-    _ <- runStateT readLineState command_line
+    runCommandLine $ \x->return x
     putStrLn "\nBye."
+
 
 -- | Get a single key event from tty.
 --
