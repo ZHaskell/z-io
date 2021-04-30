@@ -35,7 +35,7 @@ import Control.Monad.IO.Class ( MonadIO(liftIO) )
 globalKeywords :: IORef [String]
 globalKeywords = unsafePerformIO (newIORef [])
 
-setKeyWords :: [String]->IO()
+setKeyWords :: [String]->IO ()
 setKeyWords = writeIORef globalKeywords
 
 getKeyWords :: IO [String]
@@ -45,7 +45,13 @@ getKeyWords = readIORef globalKeywords
 globalPrompt :: IORef String
 globalPrompt = unsafePerformIO (newIORef "> ")
 
+setPrompt :: String->IO ()
+setPrompt = writeIORef globalPrompt
 
+getPrompt :: IO (Builder ())
+getPrompt = do
+    prompt' <- readIORef globalPrompt
+    return $ stringUTF8 prompt'
 --------------------------------------------------------------------
 
 readKeyfromInput :: HasCallStack => IO Key
@@ -105,7 +111,7 @@ putLine :: InputControl ()
 putLine = do
     com <- getCommandLine
     let built = stringUTF8 $ show com
-    let prompt = stringUTF8 "> "
+    prompt <- liftIO getPrompt
     let new_line = prompt <> built
     printCommand $ do 
         Ansi.clearLine
@@ -129,7 +135,7 @@ addChar c = do
     (modifyCommandLine . addChar' c) com
     com_changed <- getCommandLine
     let built = stringUTF8 $ show com_changed
-    let prompt = stringUTF8 "> "
+    prompt <- liftIO getPrompt
     let new_line = prompt <> built
     (cur_col, cur_row) <- getCursorPos
     let start_position = cur_col + 1
@@ -192,7 +198,7 @@ deleteChar = do
     (modifyCommandLine . deleteChar') com
     com_changed <- getCommandLine
     let built = stringUTF8 $ show com_changed
-    let prompt = stringUTF8 "> "
+    prompt <- liftIO getPrompt
     let new_line = prompt <> built
     (cur_col, cur_row) <- getCursorPos
     let start_position = if cur_col <= 3 then cur_col else cur_col - 1
@@ -214,7 +220,8 @@ clearLine = getCommandLine >>= (modifyCommandLine . clearLine')
 newLine :: InputControl ()
 newLine = do 
     StateT $ \commandline->do
-        putStd "\n> "
+        prompt <- getPrompt
+        putStd prompt
         return ((), commandline)
     clearLine
 
@@ -225,13 +232,18 @@ hintOrCompletion = do
     wordlist <- liftIO getKeyWords
     let reverse_prefix = reverse prefix
     let word_list = [x | x <- wordlist, reverse_prefix `isPrefixOf` x]
-    printCommand $ stringUTF8 (show word_list)
     case word_list of
         [] -> return ()
         [single_word] ->modifyCommandLine com{
             line=(reverse single_word ++ rest,r)
          }
-        _ ->printCommand $ stringUTF8 (show word_list)
+        _ ->do
+            printCommand "\n"
+            printCommand $ stringUTF8 (show word_list)
+            promt <- liftIO getPrompt
+            printCommand "\n"
+            printCommand promt
+            printCommand $ stringUTF8 (show com)
 
 readLine :: (String->IO a)->InputControl a
 readLine f = StateT $ \com->do
@@ -300,7 +312,9 @@ runCommandLine f = do
 runCLI :: HasCallStack => IO ()
 runCLI = do
     setKeyWords []
-    putStd $ stringUTF8 "> "
+    setPrompt ">> "
+    prompt <- getPrompt
+    putStd prompt
     runCommandLine $ \x->return x
     putStrLn "\nBye."
 
