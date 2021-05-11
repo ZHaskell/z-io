@@ -6,6 +6,9 @@
 [![Windows Build Status](https://github.com/ZHaskell/z-io/workflows/win-ci/badge.svg)](https://github.com/ZHaskell/z-io/actions)
 [![Docker Build Status](https://github.com/ZHaskell/z-io/workflows/docker-ci/badge.svg)](https://github.com/ZHaskell/z-io/actions)
 [![Gitter chat](https://badges.gitter.im/gitterHQ/gitter.svg)](https://gitter.im/Z-Haskell/community)
+<a href="https://opencollective.com/zhaskell/donate" target="_blank">
+  <img src="https://opencollective.com/zhaskell/donate/button@2x.png?color=blue" width=128 />
+</a>
 
 This package is part of [Z.Haskell](https://z.haskell.world) project, provides basic IO operations:
 
