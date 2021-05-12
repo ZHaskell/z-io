@@ -42,6 +42,11 @@ base64AndCompressFile origin target = do
 -- run 'zcat "test.gz" | base64 -d' will give you original file
 @
 
+This module is intended to be imported qualified:
+@
+import           Z.IO.BIO (BIO, Source, Sink)
+import qualified Z.IO.BIO as BIO
+@
 -}
 module Z.IO.BIO (
   -- * The BIO type
@@ -57,6 +62,7 @@ module Z.IO.BIO (
   , runBlocks, runBlocks_, unsafeRunBlocks
   -- * Make new BIO
   , pureBIO, ioBIO
+  , filter, filterM
   -- ** Source
   , initSourceFromFile
   , initSourceFromFile'
@@ -87,8 +93,9 @@ module Z.IO.BIO (
   , consumedNode
   ) where
 
+import           Prelude                hiding (filter)
 import           Control.Concurrent.MVar
-import           Control.Monad
+import           Control.Monad          hiding  (filterM)
 import           Control.Monad.IO.Class
 import           Data.Bits              ((.|.))
 import           Data.IORef
@@ -476,6 +483,26 @@ ioBIO :: HasCallStack => (a -> IO b) -> BIO a b
 ioBIO f = \ k x ->
     case x of Just x' -> f x' >>= k . Just
               _ -> k EOF
+
+-- | BIO node from a pure filter.
+--
+-- BIO node made with this funtion are stateless, thus can be reused across chains.
+filter ::  (a -> Bool) -> BIO a a
+filter f k = go
+  where
+    go (Just a) = when (f a) $ k (Just a)
+    go Nothing = k Nothing
+
+-- | BIO node from an impure filter.
+--
+-- BIO node made with this funtion may not be stateless, it depends on if the IO function use
+filterM ::  (a -> IO Bool) -> BIO a a
+filterM f k = go
+  where
+    go (Just a) = do
+        mbool <- f a
+        when mbool $ k (Just a)
+    go Nothing = k Nothing
 
 -- | Make a chunk size divider.
 --
