@@ -26,13 +26,13 @@ module Z.IO.FileSystem.FilePath
   , absolute
   , relative
   -- * Extensions
-  , splitExtension, changeExtension
+  , splitExtension, changeExtension, dropExtension, takeExtension, hasExtension
   -- * Path Style
   , PathStyle(..)
   , pathStyle
   , getPathStyle, setPathStyle
-  , pathSeparator, pathSeparators
-  , searchPathSeparator, extensionSeparator
+  , pathSeparator, pathSeparators, isPathSeparator, isExtensionSeparator
+  , searchPathSeparator, extensionSeparator, isSearchPathSeparator
   -- * Search path
   , getSearchPath
  ) where
@@ -105,24 +105,31 @@ getPathStyle = enumToPathStyle_ <$> cwk_path_get_style
 -- | Configures which path style is used afterwards.
 --
 -- This function configures which path style is used.
--- call to this function is only required if a non-native behaviour is required. 
+-- call to this function is only required if a non-native behaviour is required.
 -- The style defaults to 'WindowsStyle' on windows builds and to 'UnixStyle' otherwise.
 setPathStyle :: PathStyle -> IO ()
 setPathStyle = cwk_path_set_style . pathStyleToEnum_
 
--- | Get the default character that separates directories. 
+-- | Get the default character that separates directories.
 pathSeparator :: IO Word8
 pathSeparator = do
     s <- getPathStyle
     case s of UnixStyle -> return (#const SLASH)
               _         -> return (#const BACKSLASH)
 
--- | Get characters that separates directories. 
+-- | Get characters that separates directories.
 pathSeparators :: IO [Word8]
 pathSeparators = do
     s <- getPathStyle
     case s of UnixStyle -> return [(#const SLASH)]
               _         -> return [(#const SLASH), (#const BACKSLASH)]
+
+-- | Test if a character is a path separator.
+isPathSeparator :: Word8 -> IO Bool
+isPathSeparator w = do
+    s <- getPathStyle
+    case s of UnixStyle -> return (w == #const SLASH)
+              _         -> return (w == #const BACKSLASH)
 
 -- | The character that is used to separate the entries in the $PATH environment variable.
 --
@@ -135,11 +142,21 @@ searchPathSeparator = do
     case s of UnixStyle -> return (#const COLON)
               _         -> return (#const SEMICOLON)
 
+-- | Test if a character is a file separator.
+isSearchPathSeparator :: Word8 -> IO Bool
+isSearchPathSeparator w = do
+    w' <- searchPathSeparator
+    return (w == w')
+
 -- | File extension character
 --
 -- ExtSeparator is ASCII @.@
 extensionSeparator :: Word8
 extensionSeparator = #const DOT
+
+-- | Test if a character is a file extension separator.
+isExtensionSeparator :: Word8 -> Bool
+isExtensionSeparator = (== #const DOT)
 
 -- | Get the basename of a file path.
 --
@@ -231,7 +248,7 @@ changeBaseName p b = do
 -- | WINDOWS | ..\\hello\\world.txt     | ""                   |
 -- +---------+--------------------------+----------------------+
 --
-splitRoot :: CBytes 
+splitRoot :: CBytes
           -> IO (CBytes, CBytes) -- ^ return (root, rest path)
 {-# INLINABLE splitRoot #-}
 splitRoot p = do
@@ -506,8 +523,8 @@ absolute p p2 = do
 --
 -- This function generates a relative path based on a base path and another path.
 -- It determines how to get to the submitted path, starting from the base directory.
--- 
--- Note the two arguments must be both absolute or both relative, otherwise an 'InvalidArgument' 
+--
+-- Note the two arguments must be both absolute or both relative, otherwise an 'InvalidArgument'
 -- will be thrown.
 --
 -- +---------+--------------------------+--------------------------+-----------------+
@@ -554,6 +571,56 @@ relative p p2 = do
 --
 -- This function extracts the extension portion of a file path.
 --
+-- +----------------------------+------------------------------------+
+-- | Path                       | Result                             |
+-- +----------------------------+------------------------------------+
+-- | \/my\/path.txt             | (\/my\/path, .txt)                 |
+-- +----------------------------+------------------------------------+
+-- | \/my\/path                 | (\/my\/path, "")                   |
+-- +----------------------------+------------------------------------+
+-- | \/my\/.ext                 | (\/my\/, .ext)                     |
+-- +----------------------------+------------------------------------+
+-- | \/my\/path.                | (\/my\/path, .)                    |
+-- +----------------------------+------------------------------------+
+-- | \/my\/path.abc.txt.tests   | (\/my\/path.abc.txt, .tests)       |
+-- +----------------------------+------------------------------------+
+--
+splitExtension :: CBytes              -- ^ file path
+               -> IO (CBytes, CBytes) -- ^ return (file, ext)
+{-# INLINABLE splitExtension #-}
+splitExtension p = do
+    (len ,off) <- withCBytesUnsafe p $ \ pp ->
+        allocPrimUnsafe $ \ plen ->
+            hs_cwk_path_get_extension pp plen
+    if off == -1
+    then return (p, CB.empty)
+    else return ( CB (V.PrimVector (CB.rawPrimArray p) 0 off)
+                , CB (V.PrimVector (CB.rawPrimArray p) off len))
+
+-- | Remove the last extension and its correspondence \".\" of a file path.
+--
+-- +----------------------------+--------------------+
+-- | Path                       | Result             |
+-- +----------------------------+--------------------+
+-- | \/my\/path.txt             | \/my\/path         |
+-- +----------------------------+--------------------+
+-- | \/my\/path                 | \/my\/path         |
+-- +----------------------------+------- ------------+
+-- | \/my\/.ext                 | \/my\/             |
+-- +----------------------------+--------------------+
+-- | \/my\/path.                | \/my\/path         |
+-- +----------------------------+--------------------+
+-- | \/my\/path.abc.txt.tests   | \/my\/path.abc.txt |
+-- +----------------------------+--------------------+
+--
+dropExtension :: CBytes -- ^ file path
+              -> IO CBytes
+{-# INLINE dropExtension #-}
+dropExtension p = fst <$> splitExtension p
+
+-- | Get the extension of a file from a file path, returns @\"\"@ for no
+--   extension, @.ext@ otherwise.
+--
 -- +----------------------------+------------+
 -- | Path                       | Result     |
 -- +----------------------------+------------+
@@ -568,17 +635,17 @@ relative p p2 = do
 -- | \/my\/path.abc.txt.tests   | .tests     |
 -- +----------------------------+------------+
 --
-splitExtension :: CBytes
-               -> IO (CBytes, CBytes) -- ^ return (file, ext)
-{-# INLINABLE splitExtension #-}
-splitExtension p = do
-    (len ,off) <- withCBytesUnsafe p $ \ pp ->
-        allocPrimUnsafe $ \ plen ->
-            hs_cwk_path_get_extension pp plen
-    if off == -1
-    then return (p, CB.empty)
-    else return ( CB (V.PrimVector (CB.rawPrimArray p) 0 off)
-                , CB (V.PrimVector (CB.rawPrimArray p) off len))
+takeExtension :: CBytes -- ^ file path
+              -> IO CBytes
+{-# INLINE takeExtension #-}
+takeExtension p = snd <$> splitExtension p
+
+-- | Test if a file from a file path has an extension.
+hasExtension :: CBytes -- ^ file path
+             -> IO Bool
+hasExtension p = do
+    withCBytesUnsafe p $ \ p' ->
+        cwk_path_has_extension p'
 
 -- | Changes the extension of a file path.
 --
@@ -640,6 +707,7 @@ foreign import ccall unsafe cwk_path_get_intersection :: BA## Word8 -> BA## Word
 foreign import ccall unsafe cwk_path_get_absolute :: BA## Word8 -> BA## Word8 -> MBA## Word8 -> CSize -> IO CSize
 foreign import ccall unsafe cwk_path_get_relative :: BA## Word8 -> BA## Word8 -> MBA## Word8 -> CSize -> IO CSize
 foreign import ccall unsafe hs_cwk_path_get_extension :: BA## Word8 -> MBA## CSize -> IO Int
+foreign import ccall unsafe cwk_path_has_extension :: BA## Word8 -> IO Bool
 foreign import ccall unsafe cwk_path_change_extension :: BA## Word8 -> BA## Word8 -> MBA## Word8 -> CSize -> IO CSize
 foreign import ccall unsafe cwk_path_guess_style :: BA## Word8 -> IO CInt
 foreign import ccall unsafe cwk_path_get_style :: IO CInt
