@@ -166,12 +166,14 @@ buildCompletion prefix (cl, mc, cr) = do
     z <- goR cr 0
     return $! x + y + z
   where
+    goL :: [(T.Text, T.Text)] -> Int -> B.Builder Int
     goL (c:cs) !acc = goL cs (acc+1) <* printComp c
     goL _ !acc = return acc
+
+    goR :: [(T.Text, T.Text)] -> Int -> B.Builder Int
     goR (c:cs) !acc = printComp c >> goR cs (acc+1)
     goR _ !acc = return acc
     printComp (comp, comment) = do
-        "Wtf ?"
         B.text prefix
         B.text comp
         Ansi.cursorForward (max (32 - T.displayWidth comp) 4)
@@ -188,22 +190,22 @@ data ReadLineConf = ReadLineConf
     }
 
 newReadLineState :: ReadLineConf -> IO ReadLineState
-newReadLineState conf = do
+newReadLineState conf =
     return ReadLineState
-        { lineBuffer = emptyCZ
-        , history = emptyZipper
-        , globalPrompt = T.empty
-        , completionPrefix = T.empty
-        , completion = emptyZipper
-        , readLineConf = conf
-        }
+    { lineBuffer = emptyCZ
+    , history = emptyZipper
+    , globalPrompt = T.empty
+    , completionPrefix = T.empty
+    , completion = emptyZipper
+    , readLineConf = conf
+    }
 
 defaultReadLineConf :: ReadLineConf
 defaultReadLineConf = ReadLineConf
     { historyFile = ""
     , maxHistory = -1
     , onComplete = \ _ _ -> return (T.empty, [])
-    , onETX = putStd $ "Ctrl+C pressed\n"
+    , onETX = putStd "Ctrl+C pressed\n"
     }
 
 readLineState :: IORef ReadLineState
@@ -316,7 +318,7 @@ handleKeyLoop promptWidth stdin_ = loop
             resetCursor lw promptWidth ttyWidth            -- clear old
             writeLeft 0 lw' (leftPart $ lineBuffer s')
             writeRight (rightPart $ lineBuffer s')
-            when (aw' `rem`  ttyWidth == 0) $ (B.word8 NEWLINE)
+            when (aw' `rem`  ttyWidth == 0) (B.word8 NEWLINE)
             Ansi.clearFromCursorToScreenEnd
             resetCursor aw' lw' ttyWidth
 
@@ -335,7 +337,7 @@ handleKeyLoop promptWidth stdin_ = loop
             then writeLeft lw lw' (leftPart $ lineBuffer s')    -- insert
             else resetCursor lw lw' ttyWidth                    -- delete
             writeRight (rightPart $ lineBuffer s')
-            when (lw <= aw' && aw' `rem`  ttyWidth == 0) $ (B.word8 NEWLINE)
+            when (lw <= aw' && aw' `rem`  ttyWidth == 0) (B.word8 NEWLINE)
             Ansi.clearFromCursorToScreenEnd
             resetCursor aw' lw' ttyWidth
 
@@ -384,7 +386,7 @@ handleKeyLoop promptWidth stdin_ = loop
         then do
             let !tl = packCZLeft (lineBuffer s)
                 !tr = packCZRight (lineBuffer s)
-            (prefix, candidates) <- (onComplete (readLineConf s)) tl tr
+            (prefix, candidates) <- onComplete (readLineConf s) tl tr
             if null candidates
             then triggerBEL
             else do
@@ -690,12 +692,12 @@ keyParser = do
         P.char8 ';'
         modifier <- P.int
         t <- P.satisfy $ \ t -> t == TILDE || t == DOLLAR || t == CIRCUM
-        return (T.Text code `T.snoc` (w2c t), (modifier .|. 1) - 1)
+        return (T.Text code `T.snoc` w2c t, (modifier .|. 1) - 1)
 
     getEscapedSequence2 = do
         code <- P.takeWhile1 isDigit
         t <- P.satisfy $ \ t -> t == TILDE || t == DOLLAR || t == CIRCUM
-        return (T.Text code `T.snoc` (w2c t), 0)
+        return (T.Text code `T.snoc` w2c t, 0)
 
     getEscapedSequence3 = do
         P.char8 '1'
