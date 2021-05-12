@@ -120,6 +120,7 @@ packCZ (CharZipper l r _ _) = B.unsafeBuildText (goL l >> goR r)
     goR (CLCons c _ cs) = B.charUTF8 c >> goR cs
     goR _ = return ()
 
+
 data ReadLineState = ReadLineState
     { lineBuffer :: CharZipper
     , history :: Zipper T.Text
@@ -146,7 +147,7 @@ emptyZipper :: Zipper a
 emptyZipper = ([], Nothing, [])
 
 stepZipper :: Zipper a ->  Zipper a
-stepZipper (cl, mc, (c:cr')) =
+stepZipper (cl, mc, c:cr') =
     case mc of Just c' -> (c':cl, Just c, cr')
                _ ->  (cl, Just c, cr')
 stepZipper (cl, mc, _) =
@@ -155,7 +156,7 @@ stepZipper (cl, mc, _) =
 
 -- | TODO: compute row using column
 buildCompletion :: T.Text
-                -> ([(T.Text, T.Text)], Maybe (T.Text, T.Text), [(T.Text, T.Text)])
+                -> Zipper (T.Text, T.Text)
                 -> B.Builder Int
 buildCompletion prefix (cl, mc, cr) = do
     x <- goL cl 0
@@ -170,6 +171,7 @@ buildCompletion prefix (cl, mc, cr) = do
     goR (c:cs) !acc = printComp c >> goR cs (acc+1)
     goR _ !acc = return acc
     printComp (comp, comment) = do
+        "Wtf ?"
         B.text prefix
         B.text comp
         Ansi.cursorForward (max (32 - T.displayWidth comp) 4)
