@@ -297,7 +297,7 @@ unlink :: HasCallStack => CBytes -> IO ()
 unlink path = throwUVIfMinus_ (withCBytesUnsafe path hs_uv_fs_unlink)
 
 
--- | Equivalent to <mkdtemp http://linux.die.net/man/3/mkdtemp>
+-- | Equivalent to <http://linux.die.net/man/3/mkdtemp mkdtemp>
 --
 -- Creates a temporary directory in the most secure manner possible.
 -- There are no race conditions in the directory’s creation.
@@ -316,14 +316,30 @@ mkdtemp path = do
             throwUVIfMinus_ (hs_uv_fs_mkdtemp p size p')
         return p'
 
--- | Equivalent to <mkstemp https://man7.org/linux/man-pages/man3/mkstemp.3.html>
-mkstemp :: HasCallStack => CBytes -> IO CBytes
-mkstemp template = do
+-- | Equivalent to <https://man7.org/linux/man-pages/man3/mkstemp.3.html mkstemp>
+--
+--  The file is created with permissions 0600, that is, read plus
+--  write for owner only.  The returned 'File' provides both
+--  read and write access to the file.  The file is opened with the
+--  'O_EXCL' flag, guaranteeing that the caller is the process that creates the file.
+--  After resource is used, the file will be closed, and removed if second param if 'False'.
+--
+mkstemp :: HasCallStack
+        => CBytes       -- ^ A file path prefix template, no "XXXXXX" needed.
+        -> Bool         -- ^ Keep file after used?
+        -> Resource (CBytes, File)
+mkstemp template keep = do
     let size = CBytes.length template
-    CBytes.withCBytesUnsafe template $ \p -> do
-        (p', _) <- CBytes.allocCBytesUnsafe (size + 7) $ \ p' -> do  -- we append "XXXXXX\NUL" in C
-            throwUVIfMinus_ (hs_uv_fs_mkstemp p size p')
-        return p'
+    initResource
+        (CBytes.withCBytesUnsafe template $ \p -> do
+            (p', r) <- CBytes.allocCBytesUnsafe (size + 7) $ \ p' -> do  -- we append "XXXXXX\NUL" in C
+                throwUVIfMinus (hs_uv_fs_mkstemp p size p')
+            closed <- newIORef False
+            return (p', File (fromIntegral r) closed))
+        (\ (p, File r closed) -> do
+            unless keep (unlink p)
+            throwUVIfMinus_ (hs_uv_fs_close r)
+            writeIORef closed True)
 
 -------------------------------------------------------------------------------
 

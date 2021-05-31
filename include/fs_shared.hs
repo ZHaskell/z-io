@@ -137,20 +137,20 @@ isFileSt st = stMode st .&. S_IFMT == S_IFREG
 
 -- | Make a temporary file under system 'Env.getTempDir' and automatically clean after used.
 --
--- >>> withResource (initTempFile "foo") $ printStd
+-- >>> withResource initTempFile $ printStd
 -- File 13
 --
-initTempFile :: CBytes -> Resource File
-initTempFile prefix =
-    initResource initAction unlink >>= (\f -> initFile f O_RDWR DEFAULT_FILE_MODE)
-    where
-        initAction = Env.getTempDir >>= (`P.join` prefix) >>= mkstemp
+initTempFile :: HasCallStack => Resource (CBytes, File)
+initTempFile = do
+    prefix <- liftIO $ do
+        d <- Env.getTempDir
+        d `P.join` "Z-IO-"
+    mkstemp prefix False
 
 -- | Make a temporary directory under system 'Env.getTempDir' and automatically clean after used.
 --
--- >>> withResource (initTempDir "foo") $ printStd
--- "/tmp/fooxfWR0L"
+-- >>> withResource initTempDir $ printStd
+-- "/tmp/Z-IO-xfWR0L"
 --
-initTempDir :: CBytes -> Resource CBytes
-initTempDir prefix =
-    initResource (Env.getTempDir >>= (`P.join` prefix) >>= mkdtemp) rmrf
+initTempDir :: HasCallStack => Resource CBytes
+initTempDir = initResource (Env.getTempDir >>= (`P.join` "Z-IO-") >>= mkdtemp) rmrf

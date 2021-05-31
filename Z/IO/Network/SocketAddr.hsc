@@ -41,6 +41,9 @@ module Z.IO.Network.SocketAddr
   , tupleToIPv6Addr
   , FlowInfo
   , ScopeID
+  -- * Interface
+  , Interface(..)
+  , getInterface
   -- * port numbber
   , PortNumber(..)
   , portAny
@@ -73,12 +76,14 @@ module Z.IO.Network.SocketAddr
   , pokeSocketAddr
   , peekSocketAddrMBA
   , pokeSocketAddrMBA
+  , peekInterface
   , htons
   , ntohs
   , ntohl
   , htonl
   ) where
 
+import           Control.Monad
 import           Data.Bits
 import           Foreign
 import           Foreign.C
@@ -93,6 +98,7 @@ import qualified Z.Data.JSON            as JSON
 import qualified Z.Data.JSON.Builder    as B
 import qualified Z.Data.Vector          as V
 import qualified Z.Data.Vector.Extra    as V
+import qualified Z.Data.Vector.Hex      as V
 import           Z.IO.Exception
 import           Z.Foreign
 
@@ -111,7 +117,7 @@ type CSaFamily = (#type unsigned short)
 #elif defined(darwin_HOST_OS)
 type CSaFamily = (#type u_char)
 #else
-type CSaFamily = (#type sa_family_t)
+type CSaFamily = (#type sa_family_s)
 #endif
 
 -- | IPv4 or IPv6 socket address, i.e. the `sockaddr_in` or `sockaddr_in6` struct.
@@ -579,6 +585,76 @@ pokeSocketAddrMBA p (SocketAddrIPv6 addr port flow scope) =  do
     pokeMBA p (#offset struct sockaddr_in6, sin6_flowinfo) flow
     pokeMBA p (#offset struct sockaddr_in6, sin6_addr) (addr)
     pokeMBA p (#offset struct sockaddr_in6, sin6_scope_id) scope
+
+--------------------------------------------------------------------------------
+
+-- | Data type for interface addresses.
+--
+data Interface = Interface
+    { interfaceName       :: {-# UNPACK #-} !CBytes
+    , interfacePhysAddr   :: !V.HexBytes
+    , interfaceIsInternal :: !Bool
+    , interfaceAddr       :: !SocketAddr
+    , interfaceMask       :: !SocketAddr
+    } deriving (Eq, Ord, Generic)
+      deriving anyclass (Print, JSON)
+
+instance Show Interface where show = T.toString
+
+peekInterface :: HasCallStack => Ptr Interface -> IO Interface
+peekInterface p = do
+    name' <- fromCString =<< (#peek struct uv_interface_address_s, name) p
+    phy <- fromPtr (p `plusPtr` (#offset struct uv_interface_address_s, phys_addr)) 6
+    is_internal <- (#peek struct uv_interface_address_s, is_internal) p
+
+    family <- (#peek struct uv_interface_address_s, address.address4.sin_family) p
+    addr' <- case family :: CSaFamily of
+        (#const AF_INET) -> do
+            addr <- (#peek struct uv_interface_address_s, address.address4.sin_addr) p
+            port <- (#peek struct uv_interface_address_s, address.address4.sin_port) p
+            return (SocketAddrIPv4 addr port)
+        (#const AF_INET6) -> do
+            port <- (#peek struct uv_interface_address_s, address.address6.sin6_port) p
+            flow <- (#peek struct uv_interface_address_s, address.address6.sin6_flowinfo) p
+            addr <- (#peek struct uv_interface_address_s, address.address6.sin6_addr) p
+            scope <- (#peek struct uv_interface_address_s, address.address6.sin6_scope_id) p
+            return (SocketAddrIPv6 addr port flow scope)
+        _ -> do let errno = UV_EAI_ADDRFAMILY
+                name <- uvErrName errno
+                desc <- uvStdError errno
+                throwUVError errno (IOEInfo name desc callStack)
+
+    family' <- (#peek struct uv_interface_address_s, netmask.netmask4.sin_family) p
+    mask' <- case family' :: CSaFamily of
+        (#const AF_INET) -> do
+            addr <- (#peek struct uv_interface_address_s, netmask.netmask4.sin_addr) p
+            port <- (#peek struct uv_interface_address_s, netmask.netmask4.sin_port) p
+            return (SocketAddrIPv4 addr port)
+        (#const AF_INET6) -> do
+            port <- (#peek struct uv_interface_address_s, netmask.netmask6.sin6_port) p
+            flow <- (#peek struct uv_interface_address_s, netmask.netmask6.sin6_flowinfo) p
+            addr <- (#peek struct uv_interface_address_s, netmask.netmask6.sin6_addr) p
+            scope <- (#peek struct uv_interface_address_s, netmask.netmask6.sin6_scope_id) p
+            return (SocketAddrIPv6 addr port flow scope)
+        _ -> do let errno = UV_EAI_ADDRFAMILY
+                name <- uvErrName errno
+                desc <- uvStdError errno
+                throwUVError errno (IOEInfo name desc callStack)
+    
+    return (Interface name' (V.HexBytes phy) (is_internal == (1 :: CInt)) addr' mask')
+
+
+foreign import ccall unsafe uv_interface_addresses :: MBA## (Ptr Interface) -> MBA## CInt -> IO CInt
+foreign import ccall unsafe uv_free_interface_addresses :: Ptr Interface -> CInt -> IO ()
+
+-- | Gets address information about the network interfaces on the system. 
+getInterface :: IO [Interface]
+getInterface = bracket
+    (allocPrimUnsafe @(Ptr Interface) $ \ ppiface ->
+        fst <$> allocPrimUnsafe @CInt (uv_interface_addresses ppiface))
+    (\ (piface, n) -> uv_free_interface_addresses piface n)
+    (\ (piface, n) -> forM [0..n-1] $ \ i ->
+        peekInterface (piface `plusPtr` (fromIntegral i * (#size struct uv_interface_address_s))))
 
 --------------------------------------------------------------------------------
 -- Port Numbers
