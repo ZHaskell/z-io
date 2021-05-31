@@ -117,7 +117,7 @@ type CSaFamily = (#type unsigned short)
 #elif defined(darwin_HOST_OS)
 type CSaFamily = (#type u_char)
 #else
-type CSaFamily = (#type sa_family_s)
+type CSaFamily = (#type sa_family_t)
 #endif
 
 -- | IPv4 or IPv6 socket address, i.e. the `sockaddr_in` or `sockaddr_in6` struct.
