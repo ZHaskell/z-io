@@ -3,7 +3,7 @@
 ## 0.8.1.0  -- 2020-04-25
 
 * Add `getInterface` to `Z.IO.Network`.
-* `mkstemp` now return opend file, the type changed to `mkstemp :: CBytes -> Bool -> Resource (CBytes, File)`, which has an option for keep file or not.
+* `mkstemp` now return opend file, the type changed to `mkstemp :: CBytes -> CBytes -> Bool -> Resource (CBytes, File)`, which has an option for keep file or not.
 * `initTempFile` and `initTempDir` now do not need a prefix argument, the prefix is hardcoded as `Z-IO-`.
 
 ## 0.8.0.0  -- 2020-04-25

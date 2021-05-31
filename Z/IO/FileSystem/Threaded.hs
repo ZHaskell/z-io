@@ -352,20 +352,22 @@ mkdtemp path = do
 --  read and write access to the file.  The file is opened with the
 --  'O_EXCL' flag, guaranteeing that the caller is the process that creates the file.
 --
---  After resource is used, the file will be closed, and removed if second param if 'False'.
+--  After resource is used, the file will be closed, and removed if keep param is 'False'.
 mkstemp :: HasCallStack
-        => CBytes       -- ^ A file path prefix template, no "XXXXXX" needed.
+        => CBytes       -- ^ directory where temp file are created.
+        -> CBytes       -- ^ A file path prefix template, no "XXXXXX" needed.
         -> Bool         -- ^ Keep file after used?
         -> Resource (CBytes, File)
-mkstemp template keep = do
-    let size = CBytes.length template
+mkstemp dir template keep = do
     initResource
-        (CBytes.withCBytesUnsafe template $ \ p -> do
-            (p'', r) <- CBytes.allocCBytesUnsafe (size+7) $ \ p' -> do  -- we append "XXXXXX\NUL" in C
-                uvm <- getUVManager
-                withUVRequest uvm (hs_uv_fs_mkstemp_threaded p size p')
-            closed <- newIORef False
-            return (p'', File (fromIntegral r) closed))
+        (do template' <- dir `P.join` template
+            let !size = CBytes.length template'
+            CBytes.withCBytesUnsafe template' $ \ p -> do
+                (p'', r) <- CBytes.allocCBytesUnsafe (size+7) $ \ p' -> do  -- we append "XXXXXX\NUL" in C
+                    uvm <- getUVManager
+                    withUVRequest uvm (hs_uv_fs_mkstemp_threaded p size p')
+                closed <- newIORef False
+                return (p'', File (fromIntegral r) closed))
         (\ (p, File r closed) -> do
             unless keep (unlink p)
             throwUVIfMinus_ (hs_uv_fs_close r)

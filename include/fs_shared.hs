@@ -137,17 +137,19 @@ isFileSt st = stMode st .&. S_IFMT == S_IFREG
 
 -- | Make a temporary file under system 'Env.getTempDir' and automatically clean after used.
 --
+-- This is a shortcut to 'mkstemp', the file name use @Z-IO-@ as prefix, and will be removed after use.
+--
 -- >>> withResource initTempFile $ printStd
--- File 13
+-- ("/var/folders/3l/cfdy03vd1gvd1x75gg_js7280000gn/T/Z-IO-bYgZDX",File 13)
 --
 initTempFile :: HasCallStack => Resource (CBytes, File)
 initTempFile = do
-    prefix <- liftIO $ do
-        d <- Env.getTempDir
-        d `P.join` "Z-IO-"
-    mkstemp prefix False
+    d <- liftIO $ Env.getTempDir
+    mkstemp d "Z-IO-" False
 
 -- | Make a temporary directory under system 'Env.getTempDir' and automatically clean after used.
+--
+-- This is a shortcut to 'mkdtemp', the directory name use @Z-IO-@ as prefix, and will be removed(with files within it) after use.
 --
 -- >>> withResource initTempDir $ printStd
 -- "/tmp/Z-IO-xfWR0L"
