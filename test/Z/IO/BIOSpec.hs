@@ -20,7 +20,7 @@ import           System.IO.Unsafe
 
 spec :: Spec
 spec = describe "BIO" . modifyMaxSize (*10) $ do
-
+{-
     describe "decode . encode === id(Base64)" $
         prop "Base64" $ \ xs ->
             let r = unsafePerformIO $ do
@@ -31,7 +31,7 @@ spec = describe "BIO" . modifyMaxSize (*10) $ do
                     runBIO $ src . enc . dec . sink
                     takeMVar rRef
             in V.concat r === V.concat xs
-
+-}
     describe "decode . encode === id(Hex)" $ do
         prop "Hex" $ \ xs upper ->
             let r = unsafePerformIO $ do
