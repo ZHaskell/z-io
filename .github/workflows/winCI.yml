@@ -12,8 +12,6 @@ jobs:
           - ghc: 9.0
             cabal: 3.2
     name: Haskell GHC ${{ matrix.ghc }} sample
-    env:
-        CONFIG: '--enable-tests --enable-benchmarks --constraint=Z-Data+no_avx'
     steps:
       - uses: actions/checkout@v2
         with:
@@ -40,9 +38,11 @@ jobs:
             ${{ runner.os }}-${{ matrix.ghc }}-
 
       - run: |
-          cabal configure $CONFIG
+          cabal configure --enable-tests --enable-benchmarks --constraint="Z-Data +no_avx"
           cabal build
-          cabal test --test-show-details=direct
+          # windows need permission to open pipes
+          cabal test --test-show-details=direct --test-options='--skip=IPC --skip=Process'
+
       - run: |
           cabal haddock
           cabal check

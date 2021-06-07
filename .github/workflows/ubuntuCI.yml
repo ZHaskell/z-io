@@ -46,7 +46,7 @@ jobs:
       - run: |
           cabal configure --enable-tests --enable-benchmarks --constraint="Z-Data +no_avx"
           cabal build
-          cabal test --test-show-details=direct
+
       - run: |
           cabal haddock
           cabal check
