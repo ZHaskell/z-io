@@ -34,7 +34,7 @@ jobs:
 
       - run: |
           cabal update
-          cabal freeze $CONFIG
+          cabal freeze
 
       - uses: actions/cache@v2
         with:
@@ -47,7 +47,7 @@ jobs:
 
       - run: |
           cabal configure $CONFIG  
-          cabal build $CONFIG
+          cabal build
           cabal test --test-show-details=direct
       - run: |
           cabal haddock
