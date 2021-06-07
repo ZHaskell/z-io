@@ -5,7 +5,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        ghc: ['8.10', '9.0']
+        ghc: ['8.10']
         cabal: ['3.2', '3.4']
         exclude:
           # GHC 9+ only works with cabal v3.4+
