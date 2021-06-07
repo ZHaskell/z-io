@@ -48,6 +48,9 @@ jobs:
           cabal build
 
       - run: |
+          cabal test --test-show-details=direct
+
+      - run: |
           cabal haddock
           cabal check
           cabal sdist

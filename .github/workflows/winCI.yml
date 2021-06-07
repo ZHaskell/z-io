@@ -40,6 +40,8 @@ jobs:
       - run: |
           cabal configure --enable-tests --enable-benchmarks --constraint="Z-Data +no_avx"
           cabal build
+
+      - run: |
           # windows need permission to open pipes
           cabal test --test-show-details=direct --test-options='--skip=IPC --skip=Process'
 
