@@ -44,7 +44,7 @@ jobs:
             ${{ runner.os }}-${{ matrix.ghc }}-
 
       - run: |
-          cabal configure --enable-tests --enable-benchmarks --constraint Z-Data+no_avx
+          cabal configure --enable-tests --enable-benchmarks --constraint="Z-Data +no_avx"
           cabal build
           cabal test --test-show-details=direct
       - run: |
