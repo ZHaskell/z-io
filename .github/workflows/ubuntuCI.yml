@@ -13,7 +13,7 @@ jobs:
             cabal: 3.2
     name: Haskell GHC ${{ matrix.ghc }} sample
     env:
-        CONFIG: '--enable-tests --enable-benchmarks --constraint="Z-Data +no_avx"'
+        CONFIG: '--enable-tests --enable-benchmarks --constraint=Z-Data+no_avx'
     steps:
 
       - name: CPU info
