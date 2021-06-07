@@ -1,20 +1,17 @@
-name: osx-ci
 on: [push, pull_request]
-
+name: osx-ci
 jobs:
   build:
-    name: Build on macos-10.15:ghc-${{ matrix.ghc }}:cabal-${{ matrix.cabal }}
-    runs-on: macos-10.15
+    runs-on: macOS-latest
     strategy:
       matrix:
-        ghc: ['8.6', '8.8', '8.10']
-        cabal: ['2.4', '3.2']
+        ghc: ['8.8', '8.10', '9.0']
+        cabal: ['3.2', '3.4']
         exclude:
-          # GHC 8.8+ only works with cabal v3+
-          - ghc: 8.8
-            cabal: 2.4
-          - ghc: 8.10
-            cabal: 2.4
+          # GHC 9+ only works with cabal v3.4+
+          - ghc: 9.0
+            cabal: 3.2
+    name: Haskell GHC ${{ matrix.ghc }} sample
     env:
         CONFIG: "--enable-tests --enable-benchmarks"
     steps:
@@ -24,31 +21,29 @@ jobs:
 
       - name: Setup Haskell
         uses: haskell/actions/setup@v1
+        id: setup-haskell-cabal # <--- give it a name for later cache usage
         with:
           ghc-version: ${{ matrix.ghc }}
           cabal-version: ${{ matrix.cabal }}
 
-      - run: cabal v2-update
-      - run: cabal v2-freeze $CONFIG
+      - run: |
+          cabal update
+          cabal freeze $CONFIG
 
       - uses: actions/cache@v2
         with:
           path: |
-            ~/.cabal/packages
-            ~/.cabal/store
+            ${{ steps.setup-haskell-cabal.outputs.cabal-store }}
             dist-newstyle
           key: ${{ runner.os }}-${{ matrix.ghc }}-${{ hashFiles('cabal.project.freeze') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.ghc }}-
 
-      - run: "cabal update && cabal v2-build $CONFIG"
-      - run: cabal v2-configure --enable-tests 
-
-      - if: "matrix.cabal < '3'"
-        run: cabal v2-test
-      - if: "matrix.cabal >= '3'"
-        run: cabal v2-test --test-show-details=direct
-
-      - run: cabal check
-      - run: cabal v2-haddock
-      - run: cabal v2-sdist
+      - run: |
+          cabal configure $CONFIG
+          cabal build $CONFIG
+          cabal test --test-show-details=direct
+      - run: |
+          cabal haddock
+          cabal check
+          cabal sdist

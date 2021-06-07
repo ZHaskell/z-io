@@ -5,8 +5,12 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        ghc: ['8.10']
-        cabal: ['3.2']
+        ghc: ['8.10', '9.0']
+        cabal: ['3.2', '3.4']
+        exclude:
+          # GHC 9+ only works with cabal v3.4+
+          - ghc: 9.0
+            cabal: 3.2
     name: Haskell GHC ${{ matrix.ghc }} sample
     env:
         CONFIG: "--enable-tests --enable-benchmarks"
@@ -16,13 +20,16 @@ jobs:
           submodules: 'recursive'
 
       - name: Setup Haskell
-        uses: actions/setup-haskell@v1
+        uses: haskell/actions/setup@v1
+        id: setup-haskell-cabal # <--- give it a name for later cache usage
         with:
           ghc-version: ${{ matrix.ghc }}
           cabal-version: ${{ matrix.cabal }}
 
-      - run: cabal v2-update
-      - run: cabal v2-freeze $CONFIG
+      - run: |
+          cabal update
+          cabal freeze $CONFIG
+
       - uses: actions/cache@v2
         with:
           path: |
@@ -32,11 +39,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.ghc }}-
 
-      - run: cabal v2-build $CONFIG
-        # there're bugs stop hacakge's zlib installation, which stop test from running
-        #- if: matrix.cabal < '3'
-        #  run: cabal v2-test
-        #- if: matrix.cabal >= '3'
-        #  run: cabal v2-test --test-show-details=direct
-      - run: cabal v2-haddock
-      - run: cabal v2-sdist
+      - run: |
+          cabal configure $CONFIG
+          cabal build
+          cabal test --test-show-details=direct
+      - run: |
+          cabal haddock
+          cabal check
+          cabal sdist
