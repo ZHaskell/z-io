@@ -7,11 +7,14 @@ jobs:
       matrix:
         ghc: ['8.8', '8.10', '9.0']
         cabal: ['3.2', '3.4']
+        avx_flag: ['', '--constraint="Z-Data -no_avx"']
         exclude:
           # GHC 9+ only works with cabal v3.4+
           - ghc: 9.0
             cabal: 3.2
     name: Haskell GHC ${{ matrix.ghc }} sample
+    env:
+        CONFIG: "--enable-tests --enable-benchmarks"
     steps:
 
       - name: CPU info
@@ -32,7 +35,7 @@ jobs:
 
       - run: |
           cabal update
-          cabal freeze
+          cabal freeze 
 
       - uses: actions/cache@v2
         with:
@@ -44,12 +47,10 @@ jobs:
             ${{ runner.os }}-${{ matrix.ghc }}-
 
       - run: |
-          cabal configure --enable-tests --enable-benchmarks --constraint="Z-Data +no_avx"
-          cabal build
-
+          cabal configure ${{ matrix.avx_flag }} $CONFIG  
+          cabal build $CONFIG
       - run: |
           cabal test --test-show-details=direct
-
       - run: |
           cabal haddock
           cabal check
