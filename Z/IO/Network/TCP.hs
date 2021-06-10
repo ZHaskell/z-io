@@ -48,7 +48,6 @@ import           Z.IO.UV.FFI
 import           Z.IO.UV.Manager
 import           Z.IO.UV.UVStream
 import           Z.Foreign
-import           Data.Coerce
 
 --------------------------------------------------------------------------------
 
@@ -179,7 +178,7 @@ startServerLoop backLog initStream bind spawn worker = do
                 acceptBuf <- newPinnedPrimArray backLog
                 -- https://stackoverflow.com/questions/1953639/is-it-safe-to-cast-socket-to-int-under-win64
                 -- FD is 32bit CInt, it's large enough to hold uv_os_sock_t
-                let acceptBufPtr = coerce (mutablePrimArrayContents acceptBuf :: Ptr FD)
+                let acceptBufPtr = castPtr (mutablePrimArrayContents acceptBuf :: Ptr FD)
 
                 withUVManager' serverUVManager $ do
                     -- We use buffersize as accepted fd count(count backwards)
