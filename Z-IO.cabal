@@ -181,7 +181,7 @@ library
     zconf.h
     zlib.h
 
-  cc-options:         -march=native -D_FILE_OFFSET_BITS=64
+  cc-options:         -D_FILE_OFFSET_BITS=64
   c-sources:
     cbits/hs_cwalk.c
     cbits/hs_uv_base.c
@@ -246,7 +246,7 @@ library
       third_party/libuv/src/win/winsock.c
 
     cc-options:
-      -Wall -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600 -march=native
+      -Wall -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600
 
     cpp-options:     -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600
     include-dirs:    third_party/libuv/include third_party/libuv/src
@@ -301,7 +301,7 @@ library
         third_party/libuv/include third_party/libuv/src/unix
         third_party/libuv/src
 
-      cc-options:   -Wall -march=native
+      cc-options:   -Wall
 
     else
       if os(osx)
@@ -346,7 +346,7 @@ library
           third_party/libuv/include third_party/libuv/src/unix
           third_party/libuv/src
 
-        cc-options:   -Wall -march=native
+        cc-options:   -Wall
 
       else
         if flag(no-pkg-config)
