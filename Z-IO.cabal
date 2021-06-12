@@ -301,7 +301,7 @@ library
         third_party/libuv/include third_party/libuv/src/unix
         third_party/libuv/src
 
-      cc-options:   -Wall 
+      cc-options:   -Wall -D_GNU_SOURCE -D_POSIX_C_SOURCE=200112
 
     else
       if os(osx)
@@ -346,7 +346,7 @@ library
           third_party/libuv/include third_party/libuv/src/unix
           third_party/libuv/src
 
-        cc-options:   -Wall 
+        cc-options:   -Wall -D_DARWIN_UNLIMITED_SELECT=1 -D_DARWIN_USE_64_BIT_INODE=1
 
       else
         if flag(no-pkg-config)
