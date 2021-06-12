@@ -1,5 +1,9 @@
 # Revision history for Z-IO
 
+## 0.8.1.0  -- 2020-06-12
+
+* Remove `-march=native` flag to improve binary portability.
+
 ## 0.8.1.0  -- 2020-04-25
 
 * Add `getInterface` to `Z.IO.Network`.

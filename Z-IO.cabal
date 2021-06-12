@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               Z-IO
-version:            0.8.1.0
+version:            0.8.2.0
 synopsis:           Simple and high performance IO toolkit for Haskell
 description:
   Simple and high performance IO toolkit for Haskell, including
@@ -246,7 +246,7 @@ library
       third_party/libuv/src/win/winsock.c
 
     cc-options:
-      -Wall -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600
+      -Wall -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600 
 
     cpp-options:     -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600
     include-dirs:    third_party/libuv/include third_party/libuv/src
@@ -301,7 +301,7 @@ library
         third_party/libuv/include third_party/libuv/src/unix
         third_party/libuv/src
 
-      cc-options:   -Wall
+      cc-options:   -Wall 
 
     else
       if os(osx)
@@ -346,7 +346,7 @@ library
           third_party/libuv/include third_party/libuv/src/unix
           third_party/libuv/src
 
-        cc-options:   -Wall
+        cc-options:   -Wall 
 
       else
         if flag(no-pkg-config)
