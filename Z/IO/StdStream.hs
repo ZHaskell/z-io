@@ -252,13 +252,13 @@ withRawStdin = bracket_ (setStdinTTYMode TTY_MODE_RAW) (setStdinTTYMode TTY_MODE
 
 -- | Get terminal's output window size in (width, height) format,
 -- return (-1, -1) if stdout is not connected to TTY.
-getStdoutWinSize :: HasCallStack => IO (CInt, CInt)
+getStdoutWinSize :: HasCallStack => IO (Int, Int)
 getStdoutWinSize = case stdout of
     StdStream True hdl _ uvm ->
         withUVManager' uvm $ do
-            (w, (h, ())) <- allocPrimUnsafe $ \ w ->
-                allocPrimUnsafe $ \ h -> throwUVIfMinus_ $ uv_tty_get_winsize hdl w h
-            return (w, h)
+            (w, (h, ())) <- allocPrimUnsafe @CInt $ \ w ->
+                allocPrimUnsafe @CInt $ \ h -> throwUVIfMinus_ $ uv_tty_get_winsize hdl w h
+            return (fromIntegral w, fromIntegral h)
     _ -> return (-1, -1)
 
 --------------------------------------------------------------------------------

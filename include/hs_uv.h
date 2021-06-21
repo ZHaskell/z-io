@@ -158,6 +158,9 @@ typedef struct {
     // non-threaded RTS respectively.
     uv_async_t* async;
     uv_timer_t* timer;
+    // Special field if stdin is connected to a tty and it's polling terminal size
+    // on this loop
+    uv_tty_t* stdin_tty;
 } hs_loop_data;
 // Note: the slot allocator
 //

@@ -46,6 +46,7 @@ module Z.IO.StdStream.Ansi
     csi, sgr, colorToCode
   ) where
 
+import Control.Monad
 import qualified Z.Data.Builder as B
 import qualified Z.Data.Parser as P
 import qualified Z.Data.Text    as T
@@ -69,26 +70,25 @@ cursorUp, cursorDown, cursorForward, cursorBackward
   -> B.Builder ()
 cursorDownLine, cursorUpLine :: Int -- ^ Number of lines to move
                                      -> B.Builder ()
-cursorUp n       = csi [n] (B.char8 'A')
-cursorDown n     = csi [n] (B.char8 'B')
-cursorForward n  = csi [n] (B.char8 'C')
-cursorBackward n = csi [n] (B.char8 'D')
-cursorDownLine n = csi [n] (B.char8 'E')
-cursorUpLine n   = csi [n] (B.char8 'F')
+cursorUp n       = when (n > 0) $ csi [n] (B.char8 'A')
+cursorDown n     = when (n > 0) $ csi [n] (B.char8 'B')
+cursorForward n  = when (n > 0) $ csi [n] (B.char8 'C')
+cursorBackward n = when (n > 0) $ csi [n] (B.char8 'D')
+cursorDownLine n = when (n > 0) $ csi [n] (B.char8 'E')
+cursorUpLine n   = when (n > 0) $ csi [n] (B.char8 'F')
 
-getCursorPosition :: IO (Int, Int)
-getCursorPosition = do
-    withRawStdin . withMVar stdinBuf $ \ i -> do
-        clearInputBuffer i
-        putStd (csi [] "6n")
-        readParser (do
-            P.word8 ESC
-            P.word8 BRACKET_LEFT
-            !n <- P.int
-            P.word8 SEMICOLON
-            !m <- P.int
-            P.word8 LETTER_R
-            return (m, n)) i
+getCursorPosition :: BufferedInput -> IO (Int, Int)
+getCursorPosition i = do
+    clearInputBuffer i
+    putStd (csi [] "6n")
+    readParser (do
+        P.word8 ESC
+        P.word8 BRACKET_LEFT
+        !n <- P.int
+        P.word8 SEMICOLON
+        !m <- P.int
+        P.word8 LETTER_R
+        return (m, n)) i
 
 -- | Code to move the cursor to the specified column. The column numbering is
 -- 1-based (that is, the left-most column is numbered 1).
@@ -119,8 +119,8 @@ clearLine                        = csi [2] (B.char8 'K')
 
 scrollPageUp, scrollPageDown :: Int -- ^ Number of lines to scroll by
                              -> B.Builder()
-scrollPageUp n   = csi [n] (B.char8 'S')
-scrollPageDown n = csi [n] (B.char8 'T')
+scrollPageUp n   = when (n > 0) $ csi [n] (B.char8 'S')
+scrollPageDown n = when (n > 0) $ csi [n] (B.char8 'T')
 
 hideCursor, showCursor :: B.Builder ()
 hideCursor = csi [] "?25l"
