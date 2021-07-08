@@ -205,6 +205,7 @@ instance Print SocketAddr where
         T.toUTF8Builder port
 
 sockAddrFamily :: SocketAddr -> SocketFamily
+{-# INLINABLE sockAddrFamily #-}
 sockAddrFamily (SocketAddrIPv4 _ _) = AF_INET
 sockAddrFamily (SocketAddrIPv6 _ _ _ _) = AF_INET6
 
@@ -215,6 +216,7 @@ type ScopeID = Word32
 --
 -- This is partial function, wrong address will throw 'InvalidArgument' exception.
 ipv4:: HasCallStack => CBytes -> PortNumber -> SocketAddr
+{-# INLINABLE ipv4 #-}
 ipv4 str (PortNumber port) = unsafeDupablePerformIO . withSocketAddrStorageUnsafe $ \ p ->
     withCBytesUnsafe str $ \ cstr -> throwUVIfMinus_ $ uv_ip4_addr cstr (fromIntegral port) p
 
@@ -222,6 +224,7 @@ ipv4 str (PortNumber port) = unsafeDupablePerformIO . withSocketAddrStorageUnsaf
 --
 -- This is partial function, wrong address will throw 'InvalidArgument' exception.
 ipv6:: HasCallStack => CBytes -> PortNumber -> SocketAddr
+{-# INLINABLE ipv6 #-}
 ipv6 str (PortNumber port) = unsafeDupablePerformIO . withSocketAddrStorageUnsafe $ \ p ->
     withCBytesUnsafe str $ \ cstr -> throwUVIfMinus_ $ uv_ip6_addr cstr (fromIntegral port) p
 
@@ -257,54 +260,71 @@ instance Print IPv4 where
 
 -- | @0.0.0.0@
 ipv4Any             :: IPv4
+{-# INLINABLE ipv4Any #-}
 ipv4Any              = IPv4 0
 
 -- | @255.255.255.255@
 ipv4Broadcast       :: IPv4
+{-# INLINABLE ipv4Broadcast #-}
 ipv4Broadcast        = tupleToIPv4Addr (255,255,255,255)
 
 -- | @255.255.255.255@
 ipv4None            :: IPv4
+{-# INLINABLE ipv4None #-}
 ipv4None             = tupleToIPv4Addr (255,255,255,255)
 
 -- | @127.0.0.1@
 ipv4Loopback        :: IPv4
+{-# INLINABLE ipv4Loopback #-}
 ipv4Loopback         = tupleToIPv4Addr (127,  0,  0,  1)
 
 -- | @224.0.0.0@
 ipv4UnspecificGroup :: IPv4
+{-# INLINABLE ipv4UnspecificGroup #-}
 ipv4UnspecificGroup  = tupleToIPv4Addr (224,  0,  0,  0)
 
 -- | @224.0.0.1@
 ipv4AllHostsGroup   :: IPv4
+{-# INLINABLE ipv4AllHostsGroup #-}
 ipv4AllHostsGroup    = tupleToIPv4Addr (224,  0,  0,  1)
 
 -- | @224.0.0.255@
 ipv4MaxLocalGroup   :: IPv4
+{-# INLINABLE ipv4MaxLocalGroup #-}
 ipv4MaxLocalGroup    = tupleToIPv4Addr (224,  0,  0,255)
 
 instance Storable IPv4 where
+    {-# INLINABLE sizeOf #-}
     sizeOf _ = 4
+    {-# INLINABLE alignment #-}
     alignment _ = alignment (undefined :: Word32)
+    {-# INLINABLE peek #-}
     peek p = (IPv4 . ntohl) `fmap` peekByteOff p 0
+    {-# INLINABLE poke #-}
     poke p (IPv4 ia) = pokeByteOff p 0 (htonl ia)
 
 instance Unaligned IPv4 where
+    {-# INLINABLE unalignedSize #-}
     unalignedSize = 4
+    {-# INLINABLE pokeMBA #-}
     pokeMBA p off x = pokeMBA p off (htonl (getIPv4Addr x))
+    {-# INLINABLE peekMBA #-}
     peekMBA p off = IPv4 . ntohl <$> peekMBA p off
+    {-# INLINABLE indexBA #-}
     indexBA p off = IPv4 (ntohl (indexBA p off))
 
 -- | Converts 'IPv4' to representation-independent IPv4 quadruple.
 -- For example for @127.0.0.1@ the function will return @(127, 0, 0, 1)@
 -- regardless of host endianness.
 ipv4AddrToTuple :: IPv4 -> (Word8, Word8, Word8, Word8)
+{-# INLINE ipv4AddrToTuple #-}
 ipv4AddrToTuple (IPv4 ia) =
     let byte i = fromIntegral (ia `shiftR` i) :: Word8
     in (byte 24, byte 16, byte 8, byte 0)
 
 -- | Converts IPv4 quadruple to 'IPv4'.
 tupleToIPv4Addr :: (Word8, Word8, Word8, Word8) -> IPv4
+{-# INLINE tupleToIPv4Addr #-}
 tupleToIPv4Addr (b3, b2, b1, b0) =
     let x `sl` i = fromIntegral x `shiftL` i :: Word32
     in IPv4 $ (b3 `sl` 24) .|. (b2 `sl` 16) .|. (b1 `sl` 8) .|. (b0 `sl` 0)
@@ -336,6 +356,7 @@ instance JSON IPv6 where
 
 instance Show IPv6 where show = T.toString
 instance Print IPv6 where
+    {-# INLINABLE toUTF8BuilderP #-}
     toUTF8BuilderP _ ia6@(IPv6 a1 a2 a3 a4)
         -- IPv4-Mapped IPv6 Address
         | a1 == 0 && a2 == 0 && a3 == 0xffff =
@@ -361,15 +382,18 @@ instance Print IPv6 where
 
 -- | @::@
 ipv6Any      :: IPv6
+{-# INLINABLE ipv6Any #-}
 ipv6Any       = IPv6 0 0 0 0
 
 -- | @::1@
 ipv6Loopback :: IPv6
+{-# INLINABLE ipv6Loopback #-}
 ipv6Loopback  = IPv6 0 0 0 1
 
 -- | convert 'IPv6' to octets.
 ipv6AddrToTuple :: IPv6 -> (Word16, Word16, Word16, Word16,
                                         Word16, Word16, Word16, Word16)
+{-# INLINABLE ipv6AddrToTuple #-}
 ipv6AddrToTuple (IPv6 w3 w2 w1 w0) =
     let high, low :: Word32 -> Word16
         high w = fromIntegral (w `shiftR` 16)
@@ -379,20 +403,25 @@ ipv6AddrToTuple (IPv6 w3 w2 w1 w0) =
 -- | convert 'IPv6' from octets.
 tupleToIPv6Addr :: (Word16, Word16, Word16, Word16,
                         Word16, Word16, Word16, Word16) -> IPv6
+{-# INLINABLE tupleToIPv6Addr #-}
 tupleToIPv6Addr (w7, w6, w5, w4, w3, w2, w1, w0) =
     let add :: Word16 -> Word16 -> Word32
         high `add` low = (fromIntegral high `shiftL` 16) .|. (fromIntegral low)
     in  IPv6 (w7 `add` w6) (w5 `add` w4) (w3 `add` w2) (w1 `add` w0)
 
 instance Storable IPv6 where
+    {-# INLINABLE sizeOf #-}
     sizeOf _    = #size struct in6_addr
+    {-# INLINABLE alignment #-}
     alignment _ = #alignment struct in6_addr
+    {-# INLINABLE peek #-}
     peek p = do
         a <- peek32 p 0
         b <- peek32 p 1
         c <- peek32 p 2
         d <- peek32 p 3
         return $ IPv6 a b c d
+    {-# INLINABLE poke #-}
     poke p (IPv6 a b c d) = do
         poke32 p 0 a
         poke32 p 1 b
@@ -401,9 +430,11 @@ instance Storable IPv6 where
 
 
 s6_addr_offset :: Int
+{-# INLINABLE s6_addr_offset #-}
 s6_addr_offset = (#offset struct in6_addr, s6_addr)
 
 peek32 :: Ptr a -> Int -> IO Word32
+{-# INLINABLE peek32 #-}
 peek32 p i0 = do
     let i' = i0 * 4
         peekByte n = peekByteOff p (s6_addr_offset + i' + n) :: IO Word8
@@ -415,6 +446,7 @@ peek32 p i0 = do
     return ((a0 `sl` 24) .|. (a1 `sl` 16) .|. (a2 `sl` 8) .|. (a3 `sl` 0))
 
 poke32 :: Ptr a -> Int -> Word32 -> IO ()
+{-# INLINABLE poke32 #-}
 poke32 p i0 a = do
     let i' = i0 * 4
         pokeByte n = pokeByteOff p (s6_addr_offset + i' + n)
@@ -425,22 +457,23 @@ poke32 p i0 a = do
     pokeByte 3 (a `sr`  0)
 
 instance Unaligned IPv6 where
+    {-# INLINABLE unalignedSize #-}
     unalignedSize = (#size struct in6_addr)
-
+    {-# INLINABLE indexBA #-}
     indexBA p off =
         let a = indexBA p (off + s6_addr_offset + 0)
             b = indexBA p  (off + s6_addr_offset + 4)
             c = indexBA p  (off + s6_addr_offset + 8)
             d = indexBA p  (off + s6_addr_offset + 12)
         in IPv6 (getBE a) (getBE b) (getBE c) (getBE d)
-
+    {-# INLINABLE peekMBA #-}
     peekMBA p off = do
         a <- peekMBA p (off + s6_addr_offset + 0)
         b <- peekMBA p  (off + s6_addr_offset + 4)
         c <- peekMBA p  (off + s6_addr_offset + 8)
         d <- peekMBA p  (off + s6_addr_offset + 12)
         return $ IPv6 (getBE a) (getBE b) (getBE c) (getBE d)
-
+    {-# INLINABLE pokeMBA #-}
     pokeMBA p off (IPv6 a b c d) = do
         pokeMBA p (off + s6_addr_offset) (BE a)
         pokeMBA p (off + 4 + s6_addr_offset) (BE b)
@@ -450,6 +483,7 @@ instance Unaligned IPv6 where
 --------------------------------------------------------------------------------
 
 peekSocketAddr :: HasCallStack => Ptr SocketAddr -> IO SocketAddr
+{-# INLINABLE peekSocketAddr #-}
 peekSocketAddr p = do
     family <- (#peek struct sockaddr, sa_family) p
     case family :: CSaFamily of
@@ -469,6 +503,7 @@ peekSocketAddr p = do
                 throwUVError errno (IOEInfo name desc callStack)
 
 pokeSocketAddr :: Ptr SocketAddr -> SocketAddr -> IO ()
+{-# INLINABLE pokeSocketAddr #-}
 pokeSocketAddr p (SocketAddrIPv4 addr port) =  do
 #if defined(darwin_HOST_OS)
     clearPtr p (#size struct sockaddr_in)
@@ -496,6 +531,7 @@ pokeSocketAddr p (SocketAddrIPv6 addr port flow scope) =  do
 -- | Pass 'SocketAddr' to FFI as pointer.
 --
 withSocketAddr :: SocketAddr -> (Ptr SocketAddr -> IO a) -> IO a
+{-# INLINABLE withSocketAddr #-}
 withSocketAddr sa@(SocketAddrIPv4 _ _) f = do
     allocaBytesAligned
         (#size struct sockaddr_in)
@@ -510,6 +546,7 @@ withSocketAddr sa@(SocketAddrIPv6 _ _ _ _) f = do
 -- USE THIS FUNCTION WITH UNSAFE FFI CALL ONLY.
 --
 withSocketAddrUnsafe :: SocketAddr -> (MBA## SocketAddr -> IO a) -> IO a
+{-# INLINABLE withSocketAddrUnsafe #-}
 withSocketAddrUnsafe sa@(SocketAddrIPv4 _ _) f = do
     (MutableByteArray p) <- newByteArray (#size struct sockaddr_in)
     pokeSocketAddrMBA p sa
@@ -520,11 +557,13 @@ withSocketAddrUnsafe sa@(SocketAddrIPv6 _ _ _ _) f = do
     f p
 
 sizeOfSocketAddr :: SocketAddr -> CSize
+{-# INLINABLE sizeOfSocketAddr #-}
 sizeOfSocketAddr (SocketAddrIPv4 _ _) = #size struct sockaddr_in
 sizeOfSocketAddr (SocketAddrIPv6 _ _ _ _) = #size struct sockaddr_in6
 
 -- | Allocate space for 'sockaddr_storage' and pass to FFI.
 withSocketAddrStorage :: (Ptr SocketAddr -> IO ()) -> IO SocketAddr
+{-# INLINABLE withSocketAddrStorage #-}
 withSocketAddrStorage f = do
     allocaBytesAligned
         (#size struct sockaddr_storage)
@@ -535,15 +574,18 @@ withSocketAddrStorage f = do
 -- USE THIS FUNCTION WITH UNSAFE FFI CALL ONLY.
 --
 withSocketAddrStorageUnsafe :: (MBA## SocketAddr -> IO ()) -> IO SocketAddr
+{-# INLINABLE withSocketAddrStorageUnsafe #-}
 withSocketAddrStorageUnsafe f = do
     (MutableByteArray p) <- newByteArray (#size struct sockaddr_storage)
     f p
     peekSocketAddrMBA p
 
 sizeOfSocketAddrStorage :: CSize
+{-# INLINABLE sizeOfSocketAddrStorage #-}
 sizeOfSocketAddrStorage = (#size struct sockaddr_storage)
 
 peekSocketAddrMBA :: HasCallStack => MBA## SocketAddr -> IO SocketAddr
+{-# INLINABLE peekSocketAddrMBA #-}
 peekSocketAddrMBA p = do
     family <- peekMBA p (#offset struct sockaddr, sa_family)
     case family :: CSaFamily of
@@ -563,6 +605,7 @@ peekSocketAddrMBA p = do
                 throwUVError errno (IOEInfo name desc callStack)
 
 pokeSocketAddrMBA :: MBA## SocketAddr -> SocketAddr -> IO ()
+{-# INLINABLE pokeSocketAddrMBA #-}
 pokeSocketAddrMBA p (SocketAddrIPv4 addr port) =  do
 #if defined(darwin_HOST_OS)
     clearMBA p (#size struct sockaddr_in)
@@ -602,6 +645,7 @@ data Interface = Interface
 instance Show Interface where show = T.toString
 
 peekInterface :: HasCallStack => Ptr Interface -> IO Interface
+{-# INLINABLE peekInterface #-}
 peekInterface p = do
     name' <- fromCString =<< (#peek struct uv_interface_address_s, name) p
     phy <- fromPtr (p `plusPtr` (#offset struct uv_interface_address_s, phys_addr)) 6
@@ -649,6 +693,7 @@ foreign import ccall unsafe uv_free_interface_addresses :: Ptr Interface -> CInt
 
 -- | Gets address information about the network interfaces on the system. 
 getInterface :: IO [Interface]
+{-# INLINABLE getInterface #-}
 getInterface = bracket
     (allocPrimUnsafe @(Ptr Interface) $ \ ppiface ->
         fst <$> allocPrimUnsafe @CInt (uv_interface_addresses ppiface))
@@ -681,37 +726,52 @@ newtype PortNumber = PortNumber Word16
 
 -- | @:0@
 portAny :: PortNumber
+{-# INLINABLE portAny #-}
 portAny = PortNumber 0
 
 defaultPortNumberHTTP :: PortNumber
+{-# INLINABLE defaultPortNumberHTTP #-}
 defaultPortNumberHTTP = 80
 
 defaultPortNumberHTTPS :: PortNumber
+{-# INLINABLE defaultPortNumberHTTPS #-}
 defaultPortNumberHTTPS = 443
 
 defaultPortNumberSMTP :: PortNumber
+{-# INLINABLE defaultPortNumberSMTP #-}
 defaultPortNumberSMTP = 25
 
 defaultPortNumberPOP3 :: PortNumber
+{-# INLINABLE defaultPortNumberPOP3 #-}
 defaultPortNumberPOP3 = 110
 
 defaultPortNumberIMAP :: PortNumber
+{-# INLINABLE defaultPortNumberIMAP #-}
 defaultPortNumberIMAP = 143
 
 defaultPortNumberIRC :: PortNumber
+{-# INLINABLE defaultPortNumberIRC #-}
 defaultPortNumberIRC = 194
 
 instance Storable PortNumber where
-   sizeOf    _ = sizeOf    (0 :: Word16)
-   alignment _ = alignment (0 :: Word16)
-   poke p (PortNumber po) = poke (castPtr p) (htons po)
-   peek p = PortNumber . ntohs <$> peek (castPtr p)
+    {-# INLINABLE sizeOf #-}
+    sizeOf    _ = sizeOf    (0 :: Word16)
+    {-# INLINABLE alignment #-}
+    alignment _ = alignment (0 :: Word16)
+    {-# INLINABLE poke #-}
+    poke p (PortNumber po) = poke (castPtr p) (htons po)
+    {-# INLINABLE peek #-}
+    peek p = PortNumber . ntohs <$> peek (castPtr p)
 
 instance Unaligned PortNumber where
-   unalignedSize = 2
-   indexBA p off = PortNumber . ntohs $ indexBA p off
-   pokeMBA p off (PortNumber po) = pokeMBA p off (htons po)
-   peekMBA p off = PortNumber . ntohs <$> peekMBA p off
+    {-# INLINABLE unalignedSize #-}
+    unalignedSize = 2
+    {-# INLINABLE indexBA #-}
+    indexBA p off = PortNumber . ntohs $ indexBA p off
+    {-# INLINABLE pokeMBA #-}
+    pokeMBA p off (PortNumber po) = pokeMBA p off (htons po)
+    {-# INLINABLE peekMBA #-}
+    peekMBA p off = PortNumber . ntohs <$> peekMBA p off
 
 --------------------------------------------------------------------------------
 

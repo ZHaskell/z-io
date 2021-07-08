@@ -55,7 +55,7 @@ import           Foreign.Storable
 import           GHC.Conc.Sync            (labelThread)
 import           System.IO.Unsafe
 import           Z.Data.Array
-import           Z.Data.PrimRef.PrimIORef
+import           Z.Data.PrimRef
 import qualified Z.Data.Text.Print as T
 import           Z.IO.Exception
 import           Z.IO.Resource
@@ -82,6 +82,7 @@ data UVManager = UVManager
 instance Show UVManager where show = T.toString
 
 instance T.Print UVManager where
+    {-# INLINABLE toUTF8BuilderP #-}
     toUTF8BuilderP p uvm = T.parenWhen (p > 10) $
         "UVManager on capability " >> T.int (uvmCap uvm)
 
@@ -162,6 +163,7 @@ pokeBufferSizeTable uvm slot bufSiz = do
     pokeElemOff bufSizTable slot (fromIntegral bufSiz)
 
 initUVManager :: HasCallStack => Int -> Int -> Resource UVManager
+{-# INLINABLE initUVManager #-}
 initUVManager siz cap = do
     loop  <- initResource
                 (throwOOMIfNull $ hs_uv_loop_init (fromIntegral siz))
@@ -180,6 +182,7 @@ initUVManager siz cap = do
 -- libuv is not thread safe, use this function to perform any action which will mutate uv_loop's state.
 --
 withUVManager :: HasCallStack => UVManager -> (Ptr UVLoop -> IO a) -> IO a
+{-# INLINABLE withUVManager #-}
 withUVManager (UVManager _ loop loopData runningLock _) f = go
   where
     go = do
@@ -205,11 +208,13 @@ withUVManager (UVManager _ loop loopData runningLock _) f = go
 -- In fact most of the libuv's functions are not thread safe, so watch out!
 --
 withUVManager' :: HasCallStack => UVManager -> IO a -> IO a
+{-# INLINABLE withUVManager' #-}
 withUVManager' uvm f = withUVManager uvm (\ _ -> f)
 
 -- | Start the uv loop
 --
 startUVManager :: HasCallStack => UVManager -> IO ()
+{-# INLINABLE startUVManager #-}
 startUVManager uvm@(UVManager _ _ _ runningLock _) = poll -- use a closure capture uvm in case of stack memory leaking
   where
     -- we borrow mio's non-blocking/blocking poll strategy here
@@ -267,7 +272,7 @@ startUVManager uvm@(UVManager _ _ _ runningLock _) = poll -- use a closure captu
 -- Always use this function to turn an 'UVSlotUnsafe' into 'UVSlot', so that the block
 -- table size synchronize with libuv side's slot table.
 getUVSlot :: HasCallStack => UVManager -> IO UVSlotUnsafe -> IO UVSlot
-{-# INLINE getUVSlot #-}
+{-# INLINABLE getUVSlot #-}
 getUVSlot (UVManager blockTableRef _ _ _ _) f = do
     slot <- throwUVIfMinus (unsafeGetSlot <$> f)
     blockTable <- readIORef blockTableRef
@@ -287,6 +292,7 @@ getUVSlot (UVManager blockTableRef _ _ _ _) f = do
 -- | Cancel uv async function (actions which can be cancelled with 'uv_cancel') with
 -- best effort, if the action is already performed, run an extra clean up action.
 cancelUVReq :: UVManager -> UVSlot -> (Int -> IO ()) -> IO ()
+{-# INLINABLE cancelUVReq #-}
 cancelUVReq uvm slot extra_cleanup = withUVManager uvm $ \ loop -> do
     m <- getBlockMVar uvm slot
     r <- tryTakeMVar m
@@ -306,6 +312,7 @@ cancelUVReq uvm slot extra_cleanup = withUVManager uvm $ \ loop -> do
 -- async function with best efforts,
 withUVRequest :: HasCallStack
               => UVManager -> (Ptr UVLoop -> IO UVSlotUnsafe) -> IO Int
+{-# INLINABLE withUVRequest #-}
 withUVRequest uvm f = do
     (slot, m) <- withUVManager uvm $ \ loop -> mask_ $ do
         slot <- getUVSlot uvm (f loop)
@@ -318,6 +325,7 @@ withUVRequest uvm f = do
 -- | Same with 'withUVRequest' but disgard the result.
 withUVRequest_ :: HasCallStack
                => UVManager -> (Ptr UVLoop -> IO UVSlotUnsafe) -> IO ()
+{-# INLINABLE withUVRequest_ #-}
 withUVRequest_ uvm f = void (withUVRequest uvm f)
 
 -- | Same with 'withUVRequest' but apply an convert function to result.
@@ -330,6 +338,7 @@ withUVRequest' :: HasCallStack
                -> (Ptr UVLoop -> IO UVSlotUnsafe)
                -> (Int -> IO b)     -- ^ convert function
                -> IO b
+{-# INLINABLE withUVRequest' #-}
 withUVRequest' uvm f g = do
     (slot, m) <- withUVManager uvm $ \ loop -> mask_ $ do
         slot <- getUVSlot uvm (f loop)
@@ -345,6 +354,7 @@ withUVRequest' uvm f g = do
 -- e.g. release result memory.
 withUVRequestEx :: HasCallStack
                 => UVManager -> (Ptr UVLoop -> IO UVSlotUnsafe) -> (Int -> IO ()) -> IO Int
+{-# INLINABLE withUVRequestEx #-}
 withUVRequestEx uvm f extra_cleanup = do
     (slot, m) <- withUVManager uvm $ \ loop -> mask_ $ do
         slot <- getUVSlot uvm (f loop)
@@ -364,6 +374,7 @@ withUVRequestEx uvm f extra_cleanup = do
 -- we solve this problem with simple round-robin load-balancing: forkBa will automatically
 -- distribute new threads to all capabilities in round-robin manner. Thus its name forkBa(lance).
 forkBa :: IO () -> IO ThreadId
+{-# INLINABLE forkBa #-}
 forkBa io = do
     i <- atomicAddCounter counter 1
     forkOn i io

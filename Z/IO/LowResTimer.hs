@@ -49,12 +49,13 @@ import           Control.Monad
 import           Data.IORef
 import           GHC.Conc
 import           System.IO.Unsafe
-import           Z.Data.PrimRef.PrimIORef
+import           Z.Data.PrimRef
 import           Z.IO.Exception
 import           Z.IO.UV.FFI_Env    (uv_hrtime)
 
 --
 queueSize :: Int
+{-# INLINABLE queueSize #-}
 queueSize = 128
 
 -- | A simple timing wheel
@@ -72,6 +73,7 @@ data LowResTimerManager = LowResTimerManager
     -- running lock
 
 newLowResTimerManager :: IO LowResTimerManager
+{-# INLINABLE newLowResTimerManager #-}
 newLowResTimerManager = do
     indexLock <- newMVar 0
     regCounter <- newCounter 0
@@ -100,6 +102,7 @@ lowResTimerManager = unsafePerformIO $ do
 -- This is not a must though, when we fetch timer manager we always take a modulo.
 --
 lowResTimerManagerCapabilitiesChanged :: IO ()
+{-# INLINABLE lowResTimerManagerCapabilitiesChanged #-}
 lowResTimerManagerCapabilitiesChanged = do
     lrtmArray <- readIORef lowResTimerManager
     let oldSize = sizeofArr lrtmArray
@@ -193,7 +196,7 @@ newtype LowResTimer = LowResTimer Counter
 --
 queryLowResTimer :: LowResTimer -> IO Int
 {-# INLINABLE queryLowResTimer #-}
-queryLowResTimer (LowResTimer c) = readPrimIORef c
+queryLowResTimer (LowResTimer c) = readPrimRef c
 
 -- | Cancel a timer, return the remaining ticks.
 --
@@ -280,9 +283,10 @@ ensureLowResTimerManager lrtm@(LowResTimerManager _ _ _ runningLock) = do
 -- | Start low resolution timer loop, the loop is automatically stopped if there's no more new registrations.
 --
 startLowResTimerManager :: LowResTimerManager -> Word64 -> IO ()
+{-# INLINABLE startLowResTimerManager #-}
 startLowResTimerManager lrtm@(LowResTimerManager _ _ regCounter runningLock) !stdT = do
     modifyMVar_ runningLock $ \ _ -> do     -- we shouldn't receive async exception here
-        c <- readPrimIORef regCounter          -- unless something terribly wrong happened, e.g., stackoverflow
+        c <- readPrimRef regCounter          -- unless something terribly wrong happened, e.g., stackoverflow
         if c > 0
         then do
             t <- uv_hrtime
@@ -311,6 +315,7 @@ startLowResTimerManager lrtm@(LowResTimerManager _ _ regCounter runningLock) !st
 -- | Scan the timeout queue in current tick index, and move tick index forward by one.
 --
 fireLowResTimerQueue :: LowResTimerManager -> IO ()
+{-# INLINABLE fireLowResTimerQueue #-}
 fireLowResTimerQueue (LowResTimerManager queue indexLock regCounter _) = do
     (tList, tListRef) <- modifyMVar indexLock $ \ index -> do                 -- get the index lock
         tListRef <- indexArrM queue index

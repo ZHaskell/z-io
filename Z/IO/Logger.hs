@@ -94,7 +94,7 @@ import           System.IO.Unsafe        (unsafePerformIO)
 import qualified Z.Data.Builder          as B
 import qualified Z.Data.CBytes           as CB
 import qualified Z.Data.JSON.Builder     as JB
-import           Z.Data.Vector.Base      as V
+import qualified Z.Data.Vector.Base      as V
 import           Z.IO.Buffered
 import           Z.IO.Exception
 import qualified Z.IO.FileSystem         as ZF
@@ -144,6 +144,7 @@ data LoggerConfig = LoggerConfig
 -- * show everything by default
 -- * 'defaultFmt'
 defaultLoggerConfig :: LoggerConfig
+{-# INLINABLE defaultLoggerConfig #-}
 defaultLoggerConfig = LoggerConfig 1 240 NOTSET defaultFmt
 
 -- | A default logger config with
@@ -153,6 +154,7 @@ defaultLoggerConfig = LoggerConfig 1 240 NOTSET defaultFmt
 -- * show everything by default
 -- * 'defaultJSONFmt'
 defaultJSONLoggerConfig :: LoggerConfig
+{-# INLINABLE defaultJSONLoggerConfig #-}
 defaultJSONLoggerConfig = LoggerConfig 5 1000 NOTSET defaultJSONFmt
 
 -- | A default timestamp cache with format @%Y-%m-%dT%H:%M:%S%Z@('iso8061DateFormat').
@@ -171,6 +173,7 @@ defaultTSCache = unsafePerformIO $ do
 newLogger :: LoggerConfig
           -> MVar BufferedOutput
           -> IO Logger
+{-# INLINABLE newLogger #-}
 newLogger LoggerConfig{..} oLock = do
     logsRef <- newIORef []
     let flush = flushLogIORef oLock logsRef
@@ -186,12 +189,14 @@ newLogger LoggerConfig{..} oLock = do
 
 -- | Make a new logger write to 'stderrBuf'.
 newStdLogger :: LoggerConfig -> IO Logger
+{-# INLINABLE newStdLogger #-}
 newStdLogger config = newLogger config stderrBuf
 
 -- | Make a new file based logger with 'defaultFmt'.
 --
 -- The file will be opened in append mode.
 newFileLogger :: LoggerConfig -> CB.CBytes -> IO Logger
+{-# INLINABLE newFileLogger #-}
 newFileLogger config path = do
     let res = ZF.initFile path (ZF.O_CREAT .|. ZF.O_RDWR .|. ZF.O_APPEND) ZF.DEFAULT_FILE_MODE
     (file, _closeFunc) <- acquire res
@@ -215,11 +220,13 @@ pushLogIORef :: IORef [V.Bytes]     -- ^ logs stored in a list, new log will be 
              -> Int                 -- ^ buffer size to build each log
              -> B.Builder ()        -- ^ formatted log
              -> IO ()
+{-# INLINABLE pushLogIORef #-}
 pushLogIORef logsRef loggerLineBufSize b = do
     let !bs = B.buildWith loggerLineBufSize b
     unless (V.null bs) $ atomicModifyIORef' logsRef (\ bss -> (bs:bss, ()))
 
 flushLogIORef :: HasCallStack => MVar BufferedOutput -> IORef [V.Bytes] -> IO ()
+{-# INLINABLE flushLogIORef #-}
 flushLogIORef oLock logsRef =
     withMVar oLock $ \ o -> do
         bss <- atomicModifyIORef' logsRef (\ bss -> ([], bss))
@@ -230,6 +237,7 @@ flushLogIORef oLock logsRef =
 --
 -- @[FATAL][2021-02-01T15:03:30+0800][<interactive>:31:1][thread#669]...@
 defaultFmt :: LogFormatter
+{-# INLINABLE defaultFmt #-}
 defaultFmt ts level content cstack (ThreadId tid#) = do
     B.square (defaultLevelFmt level)
     B.square ts
@@ -242,6 +250,7 @@ defaultFmt ts level content cstack (ThreadId tid#) = do
 --
 -- DEBUG level is 'Cyan', WARNING level is 'Yellow', FATAL and CRITICAL level are 'Red'.
 defaultColoredFmt :: LogFormatter
+{-# INLINABLE defaultColoredFmt #-}
 defaultColoredFmt ts level content cstack (ThreadId tid#) = do
     let blevel = defaultLevelFmt level
     B.square (case level of
@@ -260,6 +269,7 @@ defaultColoredFmt ts level content cstack (ThreadId tid#) = do
 --
 -- > {"level":"FATAL","time":"2021-02-01T15:02:19+0800","loc":"<interactive>:27:1","theadId":606,"content":"..."}\n
 defaultJSONFmt :: LogFormatter
+{-# INLINABLE defaultJSONFmt #-}
 defaultJSONFmt ts level content cstack (ThreadId tid#) = do
     B.curly $ do
         "level" `JB.kv` B.quotes (defaultLevelFmt level)
@@ -275,6 +285,7 @@ defaultJSONFmt ts level content cstack (ThreadId tid#) = do
 
 -- | Default stack formatter which fetch the logging source and location.
 defaultFmtCallStack :: CallStack -> B.Builder ()
+{-# INLINABLE defaultFmtCallStack #-}
 defaultFmtCallStack cs =
  case reverse $ getCallStack cs of
    [] -> "<no call stack found>"
@@ -294,6 +305,7 @@ globalLogger = unsafePerformIO $
 
 -- | Change the global logger.
 setDefaultLogger :: Logger -> IO ()
+{-# INLINABLE setDefaultLogger #-}
 setDefaultLogger !logger = atomicWriteIORef globalLogger logger
 
 -- | Get the global logger.
@@ -301,16 +313,19 @@ setDefaultLogger !logger = atomicWriteIORef globalLogger logger
 -- This is a logger connected to stderr, if stderr is connect to TTY,
 -- then use 'defaultColoredFmt', otherwise use 'defaultFmt'.
 getDefaultLogger :: IO Logger
+{-# INLINABLE getDefaultLogger #-}
 getDefaultLogger = readIORef globalLogger
 
 -- | Manually flush global logger.
 flushDefaultLogger :: IO ()
+{-# INLINABLE flushDefaultLogger #-}
 flushDefaultLogger = do
     (Logger _ flush) <- getDefaultLogger
     flush
 
 -- | Flush global logger when program exits.
 withDefaultLogger :: IO () -> IO ()
+{-# INLINABLE withDefaultLogger #-}
 withDefaultLogger = (`finally` flushDefaultLogger)
 
 --------------------------------------------------------------------------------
@@ -361,7 +376,7 @@ pattern NOTSET = 0
 -- Level other than built-in ones, are formatted in decimal numeric format, i.e.
 -- @defaultLevelFmt 60 == "LEVEL60"@
 defaultLevelFmt :: Level -> B.Builder ()
-{-# INLINE defaultLevelFmt #-}
+{-# INLINABLE defaultLevelFmt #-}
 defaultLevelFmt level = case level of
     CRITICAL -> "CRITICAL"
     FATAL    -> "FATAL"
@@ -372,23 +387,23 @@ defaultLevelFmt level = case level of
     level'   -> "LEVEL" >> B.int level'
 
 debug :: HasCallStack => B.Builder () -> IO ()
-{-# INLINE debug #-}
+{-# INLINABLE debug #-}
 debug = otherLevel_ DEBUG False callStack
 
 info :: HasCallStack => B.Builder () -> IO ()
-{-# INLINE info #-}
+{-# INLINABLE info #-}
 info = otherLevel_ INFO False callStack
 
 warning :: HasCallStack => B.Builder () -> IO ()
-{-# INLINE warning #-}
+{-# INLINABLE warning #-}
 warning = otherLevel_ WARNING False callStack
 
 fatal :: HasCallStack => B.Builder () -> IO ()
-{-# INLINE fatal #-}
+{-# INLINABLE fatal #-}
 fatal = otherLevel_ FATAL True callStack
 
 critical :: HasCallStack => B.Builder () -> IO ()
-{-# INLINE critical #-}
+{-# INLINABLE critical #-}
 critical = otherLevel_ CRITICAL True callStack
 
 otherLevel :: HasCallStack
@@ -396,11 +411,11 @@ otherLevel :: HasCallStack
            -> Bool              -- ^ flush immediately?
            -> B.Builder ()      -- ^ log content
            -> IO ()
-{-# INLINE otherLevel #-}
+{-# INLINABLE otherLevel #-}
 otherLevel level flushNow bu = otherLevel_ level flushNow callStack bu
 
 otherLevel_ :: Level -> Bool -> CallStack -> B.Builder () -> IO ()
-{-# INLINE otherLevel_ #-}
+{-# INLINABLE otherLevel_ #-}
 otherLevel_ level flushNow cstack bu = do
     (Logger f _) <- getDefaultLogger
     f level flushNow cstack bu
@@ -408,19 +423,19 @@ otherLevel_ level flushNow cstack bu = do
 --------------------------------------------------------------------------------
 
 debugTo :: HasCallStack => Logger -> B.Builder () -> IO ()
-{-# INLINE debugTo #-}
+{-# INLINABLE debugTo #-}
 debugTo = otherLevelTo_ DEBUG False callStack
 
 infoTo :: HasCallStack => Logger -> B.Builder () -> IO ()
-{-# INLINE infoTo #-}
+{-# INLINABLE infoTo #-}
 infoTo = otherLevelTo_ INFO False callStack
 
 warningTo :: HasCallStack => Logger -> B.Builder () -> IO ()
-{-# INLINE warningTo #-}
+{-# INLINABLE warningTo #-}
 warningTo = otherLevelTo_ WARNING False callStack
 
 fatalTo :: HasCallStack => Logger -> B.Builder () -> IO ()
-{-# INLINE fatalTo #-}
+{-# INLINABLE fatalTo #-}
 fatalTo = otherLevelTo_ FATAL True callStack
 
 otherLevelTo :: HasCallStack
@@ -429,11 +444,11 @@ otherLevelTo :: HasCallStack
              -> Bool              -- ^ flush immediately?
              -> B.Builder ()      -- ^ log content
              -> IO ()
-{-# INLINE otherLevelTo #-}
+{-# INLINABLE otherLevelTo #-}
 otherLevelTo logger level flushNow = otherLevelTo_ level flushNow callStack logger
 
 otherLevelTo_ :: Level -> Bool -> CallStack -> Logger -> B.Builder () -> IO ()
-{-# INLINE otherLevelTo_ #-}
+{-# INLINABLE otherLevelTo_ #-}
 otherLevelTo_ level flushNow cs (Logger f _) = f level flushNow cs
 
 foreign import ccall unsafe "rts_getThreadId" getThreadId :: ThreadId# -> CInt

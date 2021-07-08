@@ -36,6 +36,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 -- | A alternative version of 'getSystemTime'' based on libuv's @uv_gettimeofday@, which also doesn't use pinned allocation.
 getSystemTime' :: HasCallStack => IO SystemTime
+{-# INLINABLE getSystemTime' #-}
 getSystemTime' = do
     (TimeVal64 s us) <- getTimeOfDay
     return (MkSystemTime s (fromIntegral us * 1000))
@@ -48,6 +49,7 @@ type TimeFormat = CBytes
 -- The value is \"%Y-%m-%d %H:%M:%S\".
 -- This should be used with 'formatSystemTime' and 'parseSystemTime'.
 simpleDateFormat :: TimeFormat
+{-# INLINABLE simpleDateFormat #-}
 simpleDateFormat = "%Y-%m-%d %H:%M:%S"
 
 -- | Simple format @2020-10-16T03:15:29@.
@@ -55,6 +57,7 @@ simpleDateFormat = "%Y-%m-%d %H:%M:%S"
 -- The value is \"%Y-%m-%dT%H:%M:%S%z\".
 -- This should be used with 'formatSystemTime' and 'parseSystemTime'.
 iso8061DateFormat :: TimeFormat
+{-# INLINABLE iso8061DateFormat #-}
 iso8061DateFormat = "%Y-%m-%dT%H:%M:%S%z"
 
 -- | Format for web (RFC 2616).
@@ -62,6 +65,7 @@ iso8061DateFormat = "%Y-%m-%dT%H:%M:%S%z"
 -- The value is \"%a, %d %b %Y %H:%M:%S GMT\".
 -- This should be used with 'formatSystemTimeGMT' and 'parseSystemTimeGMT'.
 webDateFormat :: TimeFormat
+{-# INLINABLE webDateFormat #-}
 webDateFormat = "%a, %d %b %Y %H:%M:%S GMT"
 
 -- | Format for e-mail (RFC 5322).
@@ -69,6 +73,7 @@ webDateFormat = "%a, %d %b %Y %H:%M:%S GMT"
 -- The value is \"%a, %d %b %Y %H:%M:%S %z\".
 -- This should be used with 'formatSystemTime' and 'parseSystemTime'.
 mailDateFormat :: TimeFormat
+{-# INLINABLE mailDateFormat #-}
 mailDateFormat = "%a, %d %b %Y %H:%M:%S %z"
 
 ----------------------------------------------------------------
@@ -79,7 +84,7 @@ mailDateFormat = "%a, %d %b %Y %H:%M:%S %z"
 --
 formatSystemTime :: TimeFormat -> SystemTime -> IO CBytes
 formatSystemTime fmt t = formatSystemTimeHelper c_format_unix_time fmt t
-{-# INLINE formatSystemTime #-}
+{-# INLINABLE formatSystemTime #-}
 
 -- | Formatting 'SystemTime' to 'CBytes' in GMT.
 --
@@ -98,7 +103,7 @@ formatSystemTime fmt t = formatSystemTimeHelper c_format_unix_time fmt t
 formatSystemTimeGMT :: TimeFormat -> SystemTime -> CBytes
 formatSystemTimeGMT fmt t =
     unsafePerformIO $ formatSystemTimeHelper c_format_unix_time_gmt fmt t
-{-# INLINE formatSystemTimeGMT #-}
+{-# INLINABLE formatSystemTimeGMT #-}
 
 ----------------------------------------------------------------
 -- | Parsing 'CBytes' to 'SystemTime' interpreting as localtime.
@@ -120,6 +125,7 @@ formatSystemTimeGMT fmt t =
 -- @
 --
 parseSystemTime :: TimeFormat -> CBytes -> IO SystemTime
+{-# INLINABLE parseSystemTime #-}
 parseSystemTime fmt str =
     withCBytesUnsafe fmt $ \cfmt ->
         withCBytesUnsafe str $ \cstr -> do
@@ -134,6 +140,7 @@ parseSystemTime fmt str =
 -- MkSystemTime {systemSeconds = 0, systemNanoseconds = 0}
 
 parseSystemTimeGMT :: TimeFormat -> CBytes -> SystemTime
+{-# INLINABLE parseSystemTimeGMT #-}
 parseSystemTimeGMT fmt str = unsafePerformIO $
     withCBytesUnsafe fmt $ \cfmt ->
         withCBytesUnsafe str $ \cstr -> do
@@ -160,6 +167,7 @@ formatSystemTimeHelper
     -> TimeFormat
     -> SystemTime
     -> IO CBytes
+{-# INLINABLE formatSystemTimeHelper #-}
 formatSystemTimeHelper formatFun fmt t = go 80
   where
     MkSystemTime sec _ = t

@@ -70,7 +70,7 @@ import System.Exit
 import Z.Data.CBytes
 import Z.Data.CBytes                    as CBytes
 import Z.Data.JSON                      (JSON)
-import Z.Data.Vector                    as V
+import qualified Z.Data.Vector          as V
 import qualified Z.Data.Text            as T
 import qualified Data.List              as List
 import Z.Data.Array.Unaligned
@@ -88,6 +88,7 @@ import Z.IO.UV.UVStream
 
 -- | Default process options, start @".\/main"@ with no arguments, redirect all std streams to @\/dev\/null@.
 defaultProcessOptions :: ProcessOptions
+{-# INLINABLE defaultProcessOptions #-}
 defaultProcessOptions = ProcessOptions
     { processFile = "./main"
     , processArgs = []
@@ -106,6 +107,7 @@ data ProcessState = ProcessRunning PID | ProcessExited ExitCode
 
 -- | Wait until process exit and return the 'ExitCode'.
 waitProcessExit :: TVar ProcessState -> IO ExitCode
+{-# INLINABLE waitProcessExit #-}
 waitProcessExit svar = atomically $ do
     s <- readTVar svar
     case s of ProcessExited e -> return e
@@ -113,6 +115,7 @@ waitProcessExit svar = atomically $ do
 
 -- | Get process 'PID' if process is running.
 getProcessPID :: TVar ProcessState -> IO (Maybe PID)
+{-# INLINABLE getProcessPID #-}
 getProcessPID svar = atomically $ do
     s <- readTVar svar
     case s of ProcessRunning pid -> return (Just pid)
@@ -120,6 +123,7 @@ getProcessPID svar = atomically $ do
 
 -- | Send signals to process.
 killPID :: HasCallStack => PID -> Signal -> IO ()
+{-# INLINABLE killPID #-}
 killPID (PID pid) sig = throwUVIfMinus_ (uv_kill pid sig)
 
 pattern SIGTERM :: Signal
@@ -151,6 +155,7 @@ pattern SIGHUP  = #const SIGHUP
 --   waitProcessExit pstate  -- wait for process exit on current thread.
 -- @
 initProcess :: ProcessOptions -> Resource (Maybe UVStream, Maybe UVStream, Maybe UVStream, TVar ProcessState)
+{-# INLINABLE initProcess #-}
 initProcess opt = initResource (spawn opt) $
     \ (s0,s1,s2, pstate) -> do
         _ <- waitProcessExit pstate
@@ -163,6 +168,7 @@ initProcess opt = initResource (spawn opt) $
 -- The same as 'initProcess', but the clean action will try to send 'SIGTERM'
 -- to the process first.
 initProcess' :: ProcessOptions -> Resource (Maybe UVStream, Maybe UVStream, Maybe UVStream, TVar ProcessState)
+{-# INLINABLE initProcess' #-}
 initProcess' opt = initResource (spawn opt) $
     \ (s0, s1, s2, pstate) -> do
         m_pid <- getProcessPID pstate
@@ -179,6 +185,7 @@ readProcess :: HasCallStack
             => ProcessOptions                   -- ^ processStdStreams options are ignored
             -> V.Bytes                          -- ^ stdin
             -> IO (V.Bytes, V.Bytes, ExitCode)  -- ^ stdout, stderr, exit code
+{-# INLINABLE readProcess #-}
 readProcess opts inp = do
     withResource (initProcess opts{processStdStreams=(ProcessCreate, ProcessCreate, ProcessCreate)})
         $ \ (Just s0, Just s1, Just s2, pstate) -> do
@@ -202,6 +209,7 @@ readProcessText :: HasCallStack
                 => ProcessOptions                   -- ^ processStdStreams options are ignored
                 -> T.Text                           -- ^ stdin
                 -> IO (T.Text, T.Text, ExitCode)    -- ^ stdout, stderr, exit code
+{-# INLINABLE readProcessText #-}
 readProcessText opts inp = do
     (out, err, e) <- readProcess opts (T.getUTF8Bytes inp)
     return (T.validate out, T.validate err, e)
@@ -210,6 +218,7 @@ readProcessText opts inp = do
 --
 -- Please manually close child process's std stream(if any) after process exits.
 spawn :: HasCallStack => ProcessOptions -> IO (Maybe UVStream, Maybe UVStream, Maybe UVStream, TVar ProcessState)
+{-# INLINABLE spawn #-}
 spawn ProcessOptions{..} = do
 
     (MutableByteArray popts##) <- newByteArray (#size uv_process_options_t)
@@ -296,6 +305,7 @@ spawn ProcessOptions{..} = do
 -- The returned value of priority is between -20 (high priority) and 19 (low priority).
 -- On Windows, the returned priority will equal one of the PRIORITY constants.
 getPriority :: HasCallStack => PID -> IO Priority
+{-# INLINABLE getPriority #-}
 getPriority pid = do
     (p, _) <- allocPrimUnsafe $ \ p_p -> throwUVIfMinus_ (uv_os_getpriority pid p_p)
     return p
@@ -307,4 +317,5 @@ getPriority pid = do
 -- 'PRIORITY_ABOVE_NORMAL', 'PRIORITY_HIGH', and 'PRIORITY_HIGHEST' are also provided for convenience.
 --
 setPriority :: HasCallStack => PID -> Priority -> IO ()
+{-# INLINABLE setPriority #-}
 setPriority pid p = throwUVIfMinus_ (uv_os_setpriority pid p)

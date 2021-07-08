@@ -20,7 +20,7 @@ import Control.Exception
 -- This functions will run 'uv__once_init' once if not run before,
 --
 withUVInitDo :: IO a -> IO a
-{-# INLINE withUVInitDo #-}
+{-# INLINABLE withUVInitDo #-}
 
 #if defined(mingw32_HOST_OS)
 

@@ -120,7 +120,7 @@ import           Prelude                  hiding (readFile, writeFile)
 import qualified Z.Data.Builder           as B
 import           Z.Data.CBytes            as CBytes
 import qualified Z.Data.JSON              as JSON
-import           Z.Data.PrimRef.PrimIORef
+import           Z.Data.PrimRef
 import qualified Z.Data.Text              as T
 import qualified Z.Data.Text.Print        as T
 import qualified Z.Data.Vector            as V
@@ -153,12 +153,14 @@ instance T.Print File where
 
 -- | Return File fd.
 getFileFD :: File -> IO FD
+{-# INLINABLE getFileFD #-}
 getFileFD (File fd closedRef) = do
     closed <- readIORef closedRef
     if closed then throwECLOSED else return fd
 
 -- | If fd is -1 (closed), throw 'ResourceVanished' ECLOSED.
 checkFileClosed :: HasCallStack => File -> (FD -> IO a) -> IO a
+{-# INLINABLE checkFileClosed #-}
 checkFileClosed (File fd closedRef) f = do
     closed <- readIORef closedRef
     if closed then throwECLOSED else f fd
@@ -167,11 +169,13 @@ checkFileClosed (File fd closedRef) f = do
 --
 -- Equivalent to <https://linux.die.net/man/3/lseek64 lseek64(3)>.
 seek :: HasCallStack => File -> Int64 -> Whence -> IO Int64
+{-# INLINABLE seek #-}
 seek uvf off w = checkFileClosed uvf $ \ fd -> throwUVIfMinus $ hs_seek fd off w
 
 instance Input File where
     -- readInput :: HasCallStack => File -> Ptr Word8 -> Int -> IO Int
     -- use -1 offset to use fd's default offset
+    {-# INLINABLE readInput #-}
     readInput f buf bufSiz = readFileP f buf bufSiz (-1)
 
 -- | Read file with given offset
@@ -183,10 +187,12 @@ readFileP :: HasCallStack
            -> Int       -- ^ buffer size
            -> Int64     -- ^ file offset, pass -1 to use default(system) offset
            -> IO Int    -- ^ read length
+{-# INLINABLE readFileP #-}
 readFileP uvf buf bufSiz off =
     checkFileClosed uvf $ \ fd -> throwUVIfMinus $ hs_uv_fs_read fd buf bufSiz off
 
 instance Output File where
+    {-# INLINABLE writeOutput #-}
     writeOutput f buf bufSiz = writeFileP f buf bufSiz (-1)
 
 -- | Write buffer to file
@@ -207,6 +213,7 @@ writeFileP :: HasCallStack
             -> Int       -- ^ buffer size
             -> Int64     -- ^ file offset, pass -1 to use default(system) offset
             -> IO ()
+{-# INLINABLE writeFileP #-}
 writeFileP uvf buf0 bufSiz0 off0 =
     checkFileClosed uvf $ \fd ->  if off0 == -1 then go fd buf0 bufSiz0
                                                 else go' fd buf0 bufSiz0 off0
@@ -236,6 +243,7 @@ initFile :: HasCallStack
          -> FileMode        -- ^ Sets the file mode (permission and sticky bits),
                             -- but only if the file was created, see 'DEFAULT_FILE_MODE'.
          -> Resource File
+{-# INLINABLE initFile #-}
 initFile path flags mode =
     initResource
         (do !fd <- withCBytesUnsafe path $ \ p ->
@@ -256,6 +264,7 @@ initFile path flags mode =
 -- Note mode is currently not implemented on Windows. On unix you should set execute bit
 -- if you want the directory is accessable, e.g. 0o777.
 mkdir :: HasCallStack => CBytes -> FileMode -> IO ()
+{-# INLINABLE mkdir #-}
 mkdir path mode = throwUVIfMinus_ . withCBytesUnsafe path $ \ p ->
      hs_uv_fs_mkdir p mode
 
@@ -269,6 +278,7 @@ mkdir path mode = throwUVIfMinus_ . withCBytesUnsafe path $ \ p ->
 -- can be created), e.g. 'DEFAULT_DIR_MODE'.
 --
 mkdirp :: HasCallStack => CBytes -> FileMode -> IO ()
+{-# INLINABLE mkdirp #-}
 mkdirp path mode = do
     r <- withCBytesUnsafe path $ \ p -> hs_uv_fs_mkdir p mode
     case fromIntegral r of
@@ -294,6 +304,7 @@ mkdirp path mode = do
 
 -- | Equivalent to <http://linux.die.net/man/2/unlink unlink(2)>.
 unlink :: HasCallStack => CBytes -> IO ()
+{-# INLINABLE unlink #-}
 unlink path = throwUVIfMinus_ (withCBytesUnsafe path hs_uv_fs_unlink)
 
 
@@ -309,6 +320,7 @@ unlink path = throwUVIfMinus_ (withCBytesUnsafe path hs_uv_fs_unlink)
 -- so no need to add XXXXXX ending.
 --
 mkdtemp :: HasCallStack => CBytes -> IO CBytes
+{-# INLINABLE mkdtemp #-}
 mkdtemp path = do
     let size = CBytes.length path
     withCBytesUnsafe path $ \ p -> do
@@ -329,6 +341,7 @@ mkstemp :: HasCallStack
         -> CBytes       -- ^ A file path prefix template, no "XXXXXX" needed.
         -> Bool         -- ^ Keep file after used?
         -> Resource (CBytes, File)
+{-# INLINABLE mkstemp #-}
 mkstemp dir template keep = do
     initResource
         (do template' <- dir `P.join` template
@@ -349,12 +362,14 @@ mkstemp dir template keep = do
 --
 -- Note this function may inherent OS limitations such as argument must be an empty folder.
 rmdir :: HasCallStack => CBytes -> IO ()
+{-# INLINABLE rmdir #-}
 rmdir path = throwUVIfMinus_ (withCBytesUnsafe path hs_uv_fs_rmdir)
 
 -- | Removes a file or directory at path together with its contents and
 -- subdirectories. Symbolic links are removed without affecting their targets.
 -- If the path does not exist, nothing happens.
 rmrf :: HasCallStack => CBytes -> IO ()
+{-# INLINABLE rmrf #-}
 rmrf path =
     withCBytesUnsafe path $ \path' ->
     allocaBytes uvStatSize $ \s -> do
@@ -385,6 +400,7 @@ rmrf path =
 -- systems (btrfs, ext2, ext3 and ext4 at the time of this writing), check the
 -- <http://linux.die.net/man/2/getdents getdents(2)> man page.
 scandir :: HasCallStack => CBytes -> IO [(CBytes, DirEntType)]
+{-# INLINABLE scandir #-}
 scandir path = do
     bracket
         (withCBytesUnsafe path $ \ p ->
@@ -403,6 +419,7 @@ scandir path = do
 
 -- | Equivalent to <http://linux.die.net/man/2/stat stat(2)>
 stat :: HasCallStack => CBytes -> IO FStat
+{-# INLINABLE stat #-}
 stat path = withCBytesUnsafe path $ \ p ->
      allocaBytes uvStatSize $ \ s -> do
         throwUVIfMinus_ (hs_uv_fs_stat p s)
@@ -410,6 +427,7 @@ stat path = withCBytesUnsafe path $ \ p ->
 
 -- | Equivalent to <http://linux.die.net/man/2/lstat lstat(2)>
 lstat :: HasCallStack => CBytes -> IO FStat
+{-# INLINABLE lstat #-}
 lstat path = withCBytesUnsafe path $ \ p ->
      allocaBytes uvStatSize $ \ s -> do
         throwUVIfMinus_ (hs_uv_fs_lstat p s)
@@ -419,6 +437,7 @@ lstat path = withCBytesUnsafe path $ \ p ->
 --
 -- Return 'Nothing' instead of throwing 'NoSuchThing' if the file doesn't exist.
 stat' :: HasCallStack => CBytes -> IO (Maybe FStat)
+{-# INLINABLE stat' #-}
 stat' path = withCBytesUnsafe path $ \ p ->
      allocaBytes uvStatSize $ \ s -> do
         r <- fromIntegral <$> hs_uv_fs_stat p s
@@ -430,6 +449,7 @@ stat' path = withCBytesUnsafe path $ \ p ->
 --
 -- Return 'Nothing' instead of throwing 'NoSuchThing' if the link doesn't exist.
 lstat' :: HasCallStack => CBytes -> IO (Maybe FStat)
+{-# INLINABLE lstat' #-}
 lstat' path = withCBytesUnsafe path $ \ p ->
      allocaBytes uvStatSize $ \ s -> do
         r <- fromIntegral <$> hs_uv_fs_lstat p s
@@ -439,6 +459,7 @@ lstat' path = withCBytesUnsafe path $ \ p ->
 
 -- | Equivalent to <http://linux.die.net/man/2/fstat fstat(2)>
 fstat :: HasCallStack => File -> IO FStat
+{-# INLINABLE fstat #-}
 fstat uvf = checkFileClosed uvf $ \ fd ->
     allocaBytes uvStatSize $ \ s -> do
         throwUVIfMinus_ (hs_uv_fs_fstat fd s)
@@ -450,25 +471,30 @@ fstat uvf = checkFileClosed uvf $ \ fd ->
 --
 -- Note On Windows if this function fails with UV_EBUSY, UV_EPERM or UV_EACCES, it will retry to rename the file up to four times with 250ms wait between attempts before giving up. If both path and new_path are existing directories this function will work only if target directory is empty.
 rename :: HasCallStack => CBytes -> CBytes -> IO ()
+{-# INLINABLE rename #-}
 rename path path' = throwUVIfMinus_ . withCBytesUnsafe path $ \ p ->
     withCBytesUnsafe path' (hs_uv_fs_rename p)
 
 -- | Equivalent to <http://linux.die.net/man/2/fsync fsync(2)>.
 fsync :: HasCallStack => File -> IO ()
+{-# INLINABLE fsync #-}
 fsync uvf = checkFileClosed uvf $ \ fd -> throwUVIfMinus_ $ hs_uv_fs_fsync fd
 
 -- | Equivalent to <http://linux.die.net/man/2/fdatasync fdatasync(2)>.
 fdatasync :: HasCallStack => File -> IO ()
+{-# INLINABLE fdatasync #-}
 fdatasync uvf = checkFileClosed uvf $ \ fd -> throwUVIfMinus_ $ hs_uv_fs_fdatasync fd
 
 -- | Equivalent to <http://linux.die.net/man/2/ftruncate ftruncate(2)>.
 ftruncate :: HasCallStack => File -> Int64 -> IO ()
+{-# INLINABLE ftruncate #-}
 ftruncate uvf off = checkFileClosed uvf $ \ fd -> throwUVIfMinus_ $ hs_uv_fs_ftruncate fd off
 
 -- | Copies a file from path to new_path.
 --
 -- Warning: If the destination path is created, but an error occurs while copying the data, then the destination path is removed. There is a brief window of time between closing and removing the file where another process could access the file.
 copyfile :: HasCallStack => CBytes -> CBytes -> CopyFileFlag -> IO ()
+{-# INLINABLE copyfile #-}
 copyfile path path' flag = throwUVIfMinus_ . withCBytesUnsafe path $ \ p ->
     withCBytesUnsafe path' $ \ p' -> hs_uv_fs_copyfile p p' flag
 
@@ -476,6 +502,7 @@ copyfile path path' flag = throwUVIfMinus_ . withCBytesUnsafe path $ \ p ->
 --
 -- Windows uses GetFileAttributesW().
 access :: HasCallStack => CBytes -> AccessMode -> IO AccessResult
+{-# INLINABLE access #-}
 access path mode = do
      r <- withCBytesUnsafe path $ \ p -> fromIntegral <$> hs_uv_fs_access p mode
      if | r == 0           -> return AccessOK
@@ -488,10 +515,12 @@ access path mode = do
 
 -- | Equivalent to <http://linux.die.net/man/2/chmod chmod(2)>.
 chmod :: HasCallStack => CBytes -> FileMode -> IO ()
+{-# INLINABLE chmod #-}
 chmod path mode = throwUVIfMinus_ . withCBytesUnsafe path $ \ p -> hs_uv_fs_chmod p mode
 
 -- | Equivalent to <http://linux.die.net/man/2/fchmod fchmod(2)>.
 fchmod :: HasCallStack => File -> FileMode -> IO ()
+{-# INLINABLE fchmod #-}
 fchmod uvf mode = checkFileClosed uvf $ \ fd -> throwUVIfMinus_ $ hs_uv_fs_fchmod fd mode
 
 -- | Equivalent to <http://linux.die.net/man/2/utime utime(2)>.
@@ -502,12 +531,14 @@ utime :: HasCallStack
       -> Double     -- ^ atime, i.e. access time
       -> Double     -- ^ mtime, i.e. modify time
       -> IO ()
+{-# INLINABLE utime #-}
 utime path atime mtime = throwUVIfMinus_ . withCBytesUnsafe path $ \ p -> hs_uv_fs_utime p atime mtime
 
 -- | Equivalent to <https://man7.org/linux/man-pages/man3/futimes.3.html futime(3)>.
 --
 -- Same precision notes with 'utime'.
 futime :: HasCallStack => File -> Double -> Double -> IO ()
+{-# INLINABLE futime #-}
 futime uvf atime mtime = checkFileClosed uvf $ \ fd ->
     throwUVIfMinus_ (hs_uv_fs_futime fd atime mtime)
 
@@ -519,10 +550,12 @@ lutime :: HasCallStack
        -> Double     -- ^ atime, i.e. access time
        -> Double     -- ^ mtime, i.e. modify time
        -> IO ()
+{-# INLINABLE lutime #-}
 lutime path atime mtime = throwUVIfMinus_ . withCBytesUnsafe path $ \ p -> hs_uv_fs_lutime p atime mtime
 
 -- | Equivalent to <http://linux.die.net/man/2/link link(2)>.
 link :: HasCallStack => CBytes -> CBytes -> IO ()
+{-# INLINABLE link #-}
 link path path' = throwUVIfMinus_ . withCBytesUnsafe path $ \ p ->
     withCBytesUnsafe path' $ hs_uv_fs_link p
 
@@ -535,11 +568,13 @@ link path path' = throwUVIfMinus_ . withCBytesUnsafe path $ \ p ->
 --
 -- On other platforms these flags are ignored.
 symlink :: HasCallStack => CBytes -> CBytes -> SymlinkFlag -> IO ()
+{-# INLINABLE symlink #-}
 symlink path path' flag = throwUVIfMinus_ . withCBytesUnsafe path $ \ p ->
     withCBytesUnsafe path' $ \ p' -> hs_uv_fs_symlink p p' flag
 
 -- | Equivalent to <http://linux.die.net/man/2/readlink readlink(2)>.
 readlink :: HasCallStack => CBytes -> IO CBytes
+{-# INLINABLE readlink #-}
 readlink path = do
     bracket
         (withCBytesUnsafe path $ \ p ->
@@ -567,6 +602,7 @@ readlink path = do
 --
 -- Note This function is not implemented on Windows XP and Windows Server 2003. On these systems, UV_ENOSYS is returned.
 realpath :: HasCallStack => CBytes -> IO CBytes
+{-# INLINABLE realpath #-}
 realpath path = do
     bracket
         (withCBytesUnsafe path $ \ p ->
@@ -577,12 +613,15 @@ realpath path = do
 
 -- | Equivalent to <http://linux.die.net/man/2/chown chown(2)>.
 chown :: HasCallStack => CBytes -> UID -> GID -> IO ()
+{-# INLINABLE chown #-}
 chown path uid gid = throwUVIfMinus_ . withCBytesUnsafe path $ \ p -> hs_uv_fs_chown p uid gid
 
 -- | Equivalent to <http://linux.die.net/man/2/fchown fchown(2)>.
 fchown :: HasCallStack => File -> UID -> GID -> IO ()
+{-# INLINABLE fchown #-}
 fchown uvf uid gid = checkFileClosed uvf $ \ fd -> throwUVIfMinus_ $ hs_uv_fs_fchown fd uid gid
 
 -- | Equivalent to <http://linux.die.net/man/2/lchown lchown(2)>.
 lchown :: HasCallStack => CBytes -> UID -> GID -> IO ()
+{-# INLINABLE lchown #-}
 lchown path uid gid = throwUVIfMinus_ . withCBytesUnsafe path $ \ p -> hs_uv_fs_lchown p uid gid

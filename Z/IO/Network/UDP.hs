@@ -59,7 +59,7 @@ module Z.IO.Network.UDP (
 
 import Control.Concurrent
 import Control.Monad
-import Data.Primitive.PrimArray         as A
+import qualified Data.Primitive.PrimArray       as A
 import Data.IORef
 import Data.Word
 import Data.Int
@@ -68,12 +68,11 @@ import Foreign.Storable (peek, poke)
 import Foreign.Ptr (plusPtr)
 import Foreign.C
 import GHC.Generics
-import Z.Data.Array                     as A
-import Z.Data.Vector.Base               as V
-import Z.Data.Vector.Extra              as V
-import Z.Data.CBytes                    as CBytes
-import qualified Z.Data.Text.Print      as T
-import Z.Data.JSON                      (JSON)
+import Z.Data.CBytes
+import qualified Z.Data.Vector.Base             as V
+import qualified Z.Data.Vector.Extra            as V
+import qualified Z.Data.Text.Print              as T
+import Z.Data.JSON                              (JSON)
 import Z.IO.Network.SocketAddr
 import Z.Foreign
 import Z.IO.UV.FFI
@@ -97,6 +96,7 @@ data UDP = UDP
 
 instance Show UDP where show = T.toString
 instance T.Print UDP where
+    {-# INLINABLE toUTF8BuilderP #-}
     toUTF8BuilderP _ (UDP hdl slot uvm _ _) = do
         "UDP{udpHandle="    >> T.toUTF8Builder hdl
         ",udpSlot="         >> T.toUTF8Builder slot
@@ -117,11 +117,13 @@ data UDPConfig = UDPConfig
 
 -- | @UDPConfig 512 Nothing@
 defaultUDPConfig :: UDPConfig
+{-# INLINABLE defaultUDPConfig #-}
 defaultUDPConfig = UDPConfig 512 Nothing
 
 -- | Initialize a UDP socket.
 --
 initUDP :: UDPConfig -> Resource UDP
+{-# INLINABLE initUDP #-}
 initUDP (UDPConfig sbsiz maddr) = initResource
     (do uvm <- getUVManager
         (hdl, slot) <- withUVManager uvm $ \ loop -> do
@@ -146,12 +148,14 @@ initUDP (UDPConfig sbsiz maddr) = initResource
         unless c $ writeIORef closed True >> hs_uv_handle_close hdl)
 
 checkUDPClosed :: HasCallStack => UDP -> IO ()
+{-# INLINABLE checkUDPClosed #-}
 checkUDPClosed udp = do
     c <- readIORef (udpClosed udp)
     when c throwECLOSED
 
 -- | Get the local IP and port of the 'UDP'.
 getSockName :: HasCallStack => UDP -> IO SocketAddr
+{-# INLINABLE getSockName #-}
 getSockName udp@(UDP hdl _ _ _ _) = do
     checkUDPClosed udp
     withSocketAddrStorageUnsafe $ \ paddr ->
@@ -172,6 +176,7 @@ instance T.Print ConnectedUDP where
 -- | Associate the UDP handle to a remote address and port,
 -- so every message sent by this handle is automatically sent to that destination
 connectUDP :: HasCallStack => UDP -> SocketAddr -> IO ConnectedUDP
+{-# INLINABLE connectUDP #-}
 connectUDP udp@(UDP hdl _ _ _ _) addr = do
     checkUDPClosed udp
     withSocketAddrUnsafe addr $ \ paddr ->
@@ -180,6 +185,7 @@ connectUDP udp@(UDP hdl _ _ _ _) addr = do
 
 -- | Disconnect the UDP handle from a remote address and port.
 disconnectUDP :: HasCallStack => ConnectedUDP -> IO UDP
+{-# INLINABLE disconnectUDP #-}
 disconnectUDP (ConnectedUDP udp@(UDP hdl _ _ _ _)) = do
     checkUDPClosed udp
     throwUVIfMinus_ (uv_udp_disconnect hdl nullPtr)
@@ -187,6 +193,7 @@ disconnectUDP (ConnectedUDP udp@(UDP hdl _ _ _ _)) = do
 
 -- | Get the remote IP and port on 'ConnectedUDP'.
 getPeerName :: HasCallStack => ConnectedUDP -> IO SocketAddr
+{-# INLINABLE getPeerName #-}
 getPeerName (ConnectedUDP udp@(UDP hdl _ _ _ _)) = do
     checkUDPClosed udp
     withSocketAddrStorageUnsafe $ \ paddr ->
@@ -198,6 +205,7 @@ getPeerName (ConnectedUDP udp@(UDP hdl _ _ _ _)) = do
 -- WARNING: A 'InvalidArgument' with errno 'UV_EMSGSIZE' will be thrown
 -- if message is larger than 'sendMsgSize'.
 sendConnectedUDP :: HasCallStack => ConnectedUDP -> V.Bytes -> IO ()
+{-# INLINABLE sendConnectedUDP #-}
 sendConnectedUDP (ConnectedUDP udp@(UDP hdl _ uvm sbuf _)) (V.PrimVector ba s la) = mask_ $ do
     checkUDPClosed udp
     -- copy message to pinned buffer
@@ -224,6 +232,7 @@ sendConnectedUDP (ConnectedUDP udp@(UDP hdl _ uvm sbuf _)) (V.PrimVector ba s la
 -- WARNING: A 'InvalidArgument' with errno 'UV_EMSGSIZE' will be thrown
 -- if message is larger than 'sendMsgSize'.
 sendUDP :: HasCallStack => UDP -> SocketAddr -> V.Bytes -> IO ()
+{-# INLINABLE sendUDP #-}
 sendUDP udp@(UDP hdl _ uvm sbuf _) addr (V.PrimVector ba s la) = mask_ $ do
     checkUDPClosed udp
     -- copy message to pinned buffer
@@ -248,12 +257,14 @@ sendUDP udp@(UDP hdl _ uvm sbuf _) addr (V.PrimVector ba s la) = mask_ $ do
 
 -- | Set IP multicast loop flag. Makes multicast packets loop back to local sockets.
 setMulticastLoop :: HasCallStack => UDP -> Bool -> IO ()
+{-# INLINABLE setMulticastLoop #-}
 setMulticastLoop udp@(UDP hdl _ _ _ _) loop = do
     checkUDPClosed udp
     throwUVIfMinus_ (uv_udp_set_multicast_loop hdl (if loop then 1 else 0))
 
 -- | Set the multicast ttl.
 setMulticastTTL :: HasCallStack => UDP -> Int -> IO ()
+{-# INLINABLE setMulticastTTL #-}
 setMulticastTTL udp@(UDP hdl _ _ _ _) ttl = do
     checkUDPClosed udp
     throwUVIfMinus_ (uv_udp_set_multicast_ttl hdl (fromIntegral ttl'))
@@ -261,6 +272,7 @@ setMulticastTTL udp@(UDP hdl _ _ _ _) ttl = do
 
 -- | Set the multicast interface to send or receive data on.
 setMulticastInterface :: HasCallStack => UDP -> CBytes ->IO ()
+{-# INLINABLE setMulticastInterface #-}
 setMulticastInterface udp@(UDP hdl _ _ _ _) iaddr = do
     checkUDPClosed udp
     withCBytesUnsafe iaddr $ \ iaddrp ->
@@ -268,6 +280,7 @@ setMulticastInterface udp@(UDP hdl _ _ _ _) iaddr = do
 
 -- | Set broadcast on or off.
 setBroadcast :: HasCallStack => UDP -> Bool -> IO ()
+{-# INLINABLE setBroadcast #-}
 setBroadcast udp@(UDP hdl _ _ _ _) b = do
     checkUDPClosed udp
     throwUVIfMinus_ (uv_udp_set_broadcast hdl (if b then 1 else 0))
@@ -277,6 +290,7 @@ setTTL :: HasCallStack
        => UDP
        -> Int       -- ^ 1 ~ 255
        -> IO ()
+{-# INLINABLE setTTL #-}
 setTTL udp@(UDP hdl _ _ _ _) ttl = do
     checkUDPClosed udp
     throwUVIfMinus_ (uv_udp_set_ttl hdl (fromIntegral ttl))
@@ -288,6 +302,7 @@ setMembership :: HasCallStack
               -> CBytes             -- ^ Interface address.
               -> Membership       -- ^ UV_JOIN_GROUP | UV_LEAVE_GROUP
               -> IO ()
+{-# INLINABLE setMembership #-}
 setMembership udp@(UDP hdl _ _ _ _) gaddr iaddr member = do
     checkUDPClosed udp
     withCBytesUnsafe gaddr $ \ gaddrp ->
@@ -302,6 +317,7 @@ setSourceMembership :: HasCallStack
                     -> CBytes           -- ^ Source address.
                     -> Membership     -- ^ UV_JOIN_GROUP | UV_LEAVE_GROUP
                     -> IO ()
+{-# INLINABLE setSourceMembership #-}
 setSourceMembership udp@(UDP hdl _ _ _ _) gaddr iaddr source member = do
     checkUDPClosed udp
     withCBytesUnsafe gaddr $ \ gaddrp ->
@@ -324,6 +340,7 @@ data UDPRecvConfig = UDPRecvConfig
 
 -- | @UDPRecvConfig 512 6@
 defaultUDPRecvConfig :: UDPRecvConfig
+{-# INLINABLE defaultUDPRecvConfig #-}
 defaultUDPRecvConfig = UDPRecvConfig 512 6
 
 
@@ -355,6 +372,7 @@ defaultUDPRecvConfig = UDPRecvConfig 512 6
 -- Then we poke those cells out.
 --
 newRecvBuf :: Int32 -> Int -> IO (A.MutablePrimArray RealWorld Word8, A.MutablePrimArray RealWorld (Ptr Word8))
+{-# INLINABLE newRecvBuf #-}
 newRecvBuf bufSiz bufArrSiz = do
     rbuf <- A.newPinnedPrimArray (fromIntegral bufsiz' * bufArrSiz')
     rbufArr <- A.newPinnedPrimArray bufArrSiz'
@@ -383,6 +401,7 @@ recvUDPLoop :: HasCallStack
             -> UDP
             -> ((Maybe SocketAddr, Bool, V.Bytes) -> IO a)
             -> IO ()
+{-# INLINABLE recvUDPLoop #-}
 recvUDPLoop (UDPRecvConfig bufSiz bufArrSiz) udp@(UDP hdl slot uvm _ _) worker = do
     bracket
         (do check <- throwOOMIfNull $ hs_uv_check_alloc
@@ -404,6 +423,7 @@ recvUDPLoop (UDPRecvConfig bufSiz bufArrSiz) udp@(UDP hdl slot uvm _ _) worker =
 -- to indicate if the message is partial (larger than receive buffer size).
 --
 recvUDP :: HasCallStack => UDPRecvConfig -> UDP -> IO [(Maybe SocketAddr, Bool, V.Bytes)]
+{-# INLINABLE recvUDP #-}
 recvUDP (UDPRecvConfig bufSiz bufArrSiz) udp@(UDP hdl slot uvm _ _)  = do
     bracket
         (do check <- throwOOMIfNull $ hs_uv_check_alloc
@@ -423,6 +443,7 @@ recvUDPWith :: HasCallStack
             -> (A.MutablePrimArray RealWorld Word8, A.MutablePrimArray RealWorld (Ptr Word8))
             -> Int32
             -> IO [(Maybe SocketAddr, Bool, V.Bytes)]
+{-# INLINABLE recvUDPWith #-}
 recvUDPWith udp@(UDP hdl slot uvm _ _) (rubf, rbufArr) bufSiz =
     -- It's important to keep recv buffer alive, even if we don't directly use it
     mask_ . withMutablePrimArrayContents rubf $ \ _ -> do

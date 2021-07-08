@@ -62,15 +62,18 @@ data UVLoop
 data UVLoopData
 
 peekUVEventQueue :: Ptr UVLoopData -> IO (Int, Ptr Int)
+{-# INLINABLE peekUVEventQueue #-}
 peekUVEventQueue p = (,)
     <$> (#{peek hs_loop_data, event_counter          } p)
     <*> (#{peek hs_loop_data, event_queue            } p)
 
 clearUVEventCounter :: Ptr UVLoopData -> IO ()
+{-# INLINABLE clearUVEventCounter #-}
 clearUVEventCounter p = do
     #{poke hs_loop_data, event_counter          } p $ (0 :: Int)
 
 peekUVBufferTable :: Ptr UVLoopData -> IO (Ptr (Ptr Word8), Ptr CSsize)
+{-# INLINABLE peekUVBufferTable #-}
 peekUVBufferTable p = (,)
     <$> (#{peek hs_loop_data, buffer_table          } p)
     <*> (#{peek hs_loop_data, buffer_size_table     } p)
@@ -86,6 +89,7 @@ pattern UV_RUN_NOWAIT  = #const UV_RUN_NOWAIT
 
 -- | Peek loop data pointer from uv loop  pointer.
 peekUVLoopData :: Ptr UVLoop -> IO (Ptr UVLoopData)
+{-# INLINABLE peekUVLoopData #-}
 peekUVLoopData p = #{peek uv_loop_t, data} p
 
 foreign import ccall unsafe hs_uv_loop_init      :: Int -> IO (Ptr UVLoop)
@@ -110,6 +114,7 @@ foreign import ccall unsafe hs_uv_wake_up_async :: Ptr UVLoopData -> IO CInt
 data UVHandle
 
 peekUVHandleData :: Ptr UVHandle -> IO UVSlotUnsafe
+{-# INLINABLE peekUVHandleData #-}
 peekUVHandleData p =  UVSlotUnsafe <$> (#{peek uv_handle_t, data} p :: IO Int)
 
 foreign import ccall unsafe hs_uv_fileno :: Ptr UVHandle -> IO FD
@@ -155,6 +160,7 @@ foreign import ccall unsafe uv_tcp_getsockname :: Ptr UVHandle -> MBA## SocketAd
 foreign import ccall unsafe uv_tcp_getpeername :: Ptr UVHandle -> MBA## SocketAddr -> MBA## CInt -> IO CInt
 
 uV_TCP_IPV6ONLY :: CUInt
+{-# INLINABLE uV_TCP_IPV6ONLY #-}
 uV_TCP_IPV6ONLY = #const UV_TCP_IPV6ONLY
 
 foreign import ccall unsafe uv_tcp_bind :: Ptr UVHandle -> MBA## SocketAddr -> CUInt -> IO CInt
@@ -515,6 +521,7 @@ fromUVDirEntType t
     | otherwise          = DirEntUnknown
 
 peekUVDirEnt :: Ptr DirEntType -> IO (CString, UVDirEntType)
+{-# INLINABLE peekUVDirEnt #-}
 #ifdef HAVE_DIRENT_TYPES
 peekUVDirEnt p = (,) (#{ptr hs_uv__dirent_t, d_name } p) <$> (#{peek hs_uv__dirent_t, d_type } p)
 #else
@@ -537,10 +544,14 @@ data UVTimeSpec = UVTimeSpec
         deriving anyclass (Print, JSON)
 
 instance Storable UVTimeSpec where
+    {-# INLINABLE sizeOf #-}
     sizeOf _  = #{size uv_timespec_t}
+    {-# INLINABLE alignment #-}
     alignment _ = #{alignment uv_timespec_t}
+    {-# INLINABLE peek #-}
     peek p = UVTimeSpec <$> (#{peek uv_timespec_t, tv_sec } p)
                         <*> (#{peek uv_timespec_t, tv_nsec } p)
+    {-# INLINABLE poke #-}
     poke p (UVTimeSpec sec nsec) = do
         (#{poke uv_timespec_t, tv_sec  } p sec)
         (#{poke uv_timespec_t, tv_nsec } p nsec)
@@ -566,9 +577,11 @@ data FStat = FStat
       deriving anyclass (Print, JSON)
 
 uvStatSize :: Int
+{-# INLINABLE uvStatSize #-}
 uvStatSize = #{size uv_stat_t}
 
 peekUVStat :: Ptr FStat -> IO FStat
+{-# INLINABLE peekUVStat #-}
 peekUVStat p = FStat
     <$> (#{peek uv_stat_t, st_dev          } p)
     <*> (fromIntegral <$> (#{peek uv_stat_t, st_mode } p :: IO Word64))
@@ -821,6 +834,7 @@ data ProcessStdStream
   deriving anyclass (Print, JSON)
 
 processStdStreamFlag :: ProcessStdStream -> CInt
+{-# INLINABLE processStdStreamFlag #-}
 processStdStreamFlag ProcessIgnore = #const UV_IGNORE
 processStdStreamFlag ProcessCreate = (#const UV_CREATE_PIPE)
                             .|. (#const UV_READABLE_PIPE)

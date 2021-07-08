@@ -51,6 +51,7 @@ data UVStream = UVStream
 instance Show UVStream where show = T.toString
 
 instance T.Print UVStream where
+    {-# INLINABLE toUTF8BuilderP #-}
     toUTF8BuilderP _ (UVStream hdl slot uvm _) = do
         "UVStream{uvsHandle="  >> T.toUTF8Builder hdl
         ",uvsSlot="            >> T.toUTF8Builder slot
@@ -72,6 +73,7 @@ initUVStream :: HasCallStack
              => (Ptr UVLoop -> Ptr UVHandle -> IO ())
              -> UVManager
              -> Resource UVStream
+{-# INLINABLE initUVStream #-}
 initUVStream f uvm = initResource
     (withUVManager uvm $ \ loop -> do
         hdl <- hs_uv_handle_alloc loop
@@ -85,6 +87,7 @@ initUVStream f uvm = initResource
 
 -- | Manually close a uv stream.
 closeUVStream :: UVStream -> IO ()
+{-# INLINABLE closeUVStream #-}
 closeUVStream (UVStream hdl _ uvm closed) = withUVManager' uvm $ do
     c <- readIORef closed
     -- hs_uv_handle_close won't return error
@@ -94,6 +97,7 @@ closeUVStream (UVStream hdl _ uvm closed) = withUVManager' uvm $ do
 --
 -- Futher writing will throw 'ResourceVanished'(EPIPE).
 shutdownUVStream :: HasCallStack => UVStream -> IO ()
+{-# INLINABLE shutdownUVStream #-}
 shutdownUVStream (UVStream hdl _ uvm closed) = do
     c <- readIORef closed
     when c throwECLOSED
@@ -106,6 +110,7 @@ shutdownUVStream (UVStream hdl _ uvm closed) = do
 
 -- | Get stream fd
 getUVStreamFD :: HasCallStack => UVStream -> IO FD
+{-# INLINABLE getUVStreamFD #-}
 getUVStreamFD (UVStream hdl _ _ closed) = do
     c <- readIORef closed
     when c throwECLOSED
@@ -187,10 +192,12 @@ instance Output UVStream where
 
 -- | Write "hello world" to a 'UVStream'.
 helloWorld :: UVStream -> IO ()
+{-# INLINABLE helloWorld #-}
 helloWorld uvs = writeOutput uvs (Ptr "hello world"#) 11
 
 -- | Echo whatever received bytes.
 echo :: UVStream -> IO ()
+{-# INLINABLE echo #-}
 echo uvs = do
     i <- newBufferedInput uvs
     o <- newBufferedOutput uvs

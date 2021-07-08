@@ -36,7 +36,7 @@ module Z.IO.Environment
 
 import Control.Monad
 import Data.Word
-import Z.Data.Vector.Base as V
+import qualified Z.Data.Vector.Base as V
 import Z.Data.CBytes
 import Z.Foreign
 import Z.IO.Exception
@@ -51,6 +51,7 @@ import Z.IO.UV.FFI_Env
 -- This is different from base's 'System.Environment.getArgs' since result
 -- includes the program path(more like C's *argv).
 getArgs :: IO [CBytes]
+{-# INLINABLE getArgs #-}
 getArgs = do
     (argc :: CInt, (p_argv :: Ptr CString, _)) <- allocPrimUnsafe $ \ p_argc -> do
         allocPrimUnsafe $ \ p_p_argv -> do
@@ -62,6 +63,7 @@ getArgs = do
 --
 -- Warning: This function is not thread safe.
 getAllEnv :: HasCallStack => IO [(CBytes, CBytes)]
+{-# INLINABLE getAllEnv #-}
 getAllEnv = bracket
     (do (p_env :: Ptr CString, (envc :: CInt, _)) <- allocPrimUnsafe $ \ p_p_env -> do
             allocPrimUnsafe $ \ p_envc ->
@@ -78,6 +80,7 @@ getAllEnv = bracket
 --
 -- Warning: This function is not thread safe.
 getEnv :: HasCallStack => CBytes -> IO (Maybe CBytes)
+{-# INLINABLE getEnv #-}
 getEnv k = go 512
   where
     go siz = do
@@ -96,6 +99,7 @@ getEnv k = go 512
 --
 -- Warning: This function is not thread safe.
 getEnv' :: HasCallStack => CBytes -> IO CBytes
+{-# INLINABLE getEnv' #-}
 getEnv' k = getEnv k >>= \ mv -> case mv of
     Just v -> return v
     _ -> throwUVError UV_ENOENT (IOEInfo "ENOENT" "no such environment variable" callStack)
@@ -104,6 +108,7 @@ getEnv' k = getEnv k >>= \ mv -> case mv of
 --
 -- Warning: This function is not thread safe.
 setEnv :: HasCallStack => CBytes -> CBytes -> IO ()
+{-# INLINABLE setEnv #-}
 setEnv k v = withCBytesUnsafe k $ \ p_k ->
     withCBytesUnsafe v $ \ p_v ->
         throwUVIfMinus_ (uv_os_setenv p_k p_v)
@@ -112,10 +117,12 @@ setEnv k v = withCBytesUnsafe k $ \ p_k ->
 --
 -- Warning: This function is not thread safe.
 unsetEnv :: HasCallStack => CBytes -> IO ()
+{-# INLINABLE unsetEnv #-}
 unsetEnv k = void . withCBytesUnsafe k $ \ p -> throwUVIfMinus_ (uv_os_unsetenv p)
 
 -- | Gets the resident set size (RSS) for the current process.
 getResidentSetMemory :: HasCallStack => IO CSize
+{-# INLINABLE getResidentSetMemory #-}
 getResidentSetMemory = do
     (size, r) <- allocPrimUnsafe uv_resident_set_memory
     throwUVIfMinus_ (return r)
@@ -123,6 +130,7 @@ getResidentSetMemory = do
 
 -- | Gets the current system uptime.
 getUpTime :: HasCallStack => IO Double
+{-# INLINABLE getUpTime #-}
 getUpTime = do
     (size, r) <- allocPrimUnsafe uv_uptime
     throwUVIfMinus_ (return r)
@@ -134,6 +142,7 @@ getUpTime = do
 -- It is not related to the time of day and therefore not subject to clock drift.
 -- The primary use is for measuring performance between intervals.
 getHighResolutionTime :: IO Word64
+{-# INLINABLE getHighResolutionTime #-}
 getHighResolutionTime = uv_hrtime
 
 -- | Gets the resource usage measures for the current process.
@@ -141,6 +150,7 @@ getHighResolutionTime = uv_hrtime
 --  On Windows not all fields are set, the unsupported fields are filled with zeroes.
 --  See 'ResUsage' for more details.
 getResUsage :: HasCallStack => IO ResUsage
+{-# INLINABLE getResUsage #-}
 getResUsage = do
     (MutableByteArray mba#) <- newByteArray sizeOfResUsage
     throwUVIfMinus_ (uv_getrusage mba#)
@@ -148,15 +158,18 @@ getResUsage = do
 
 -- | Returns the current process ID.
 getPID :: IO PID
+{-# INLINABLE getPID #-}
 getPID = uv_os_getpid
 
 -- | Returns the parent process ID.
 getPPID :: IO PID
+{-# INLINABLE getPPID #-}
 getPPID = uv_os_getppid
 
 -- | Returns the hostname as a null-terminated string.
 --
 getHostname :: HasCallStack => IO CBytes
+{-# INLINABLE getHostname #-}
 getHostname = do
     (n, _) <- allocCBytesUnsafe (fromIntegral UV_MAXHOSTNAMESIZE) $ \ p_n ->
         withPrimUnsafe UV_MAXHOSTNAMESIZE $ \ p_siz ->
@@ -168,6 +181,7 @@ getHostname = do
 -- The function may block indefinitely when not enough entropy is available, don't use it to get
 -- long random sequences.
 getRandom :: Int -> IO V.Bytes
+{-# INLINABLE getRandom #-}
 getRandom siz = do
     (v, _) <- allocPrimVectorUnsafe siz $ \ mba# ->
         throwUVIfMinus_ (hs_uv_random mba# (fromIntegral siz) 0)
@@ -177,6 +191,7 @@ getRandom siz = do
 --
 -- The function run 'getRandom' in libuv's threadpool, suitable for get long random byte sequences.
 getRandomT :: Int -> IO V.Bytes
+{-# INLINABLE getRandomT #-}
 getRandomT siz = do
     (v, _) <- allocPrimVectorSafe siz $ \ p -> do
         uvm <- getUVManager
@@ -186,6 +201,7 @@ getRandomT siz = do
 -- | Gets the current working directory.
 --
 getCWD :: HasCallStack => IO CBytes
+{-# INLINABLE getCWD #-}
 getCWD = go 512
   where
     go siz = do
@@ -201,6 +217,7 @@ getCWD = go 512
 -- | Changes the current working directory.
 --
 chDir :: HasCallStack => CBytes -> IO ()
+{-# INLINABLE chDir #-}
 chDir p = throwUVIfMinus_ (withCBytesUnsafe p $ \ pp -> uv_chdir pp)
 
 -- | Gets the current user’s home directory.
@@ -212,6 +229,7 @@ chDir p = throwUVIfMinus_ (withCBytesUnsafe p $ \ pp -> uv_chdir pp)
 --
 -- Warning 'getHomeDir' is not thread safe.
 getHomeDir :: HasCallStack => IO CBytes
+{-# INLINABLE getHomeDir #-}
 getHomeDir = go 512
   where
     go siz = do
@@ -232,6 +250,7 @@ getHomeDir = go 512
 --
 -- Warning 'getHomeDir' is not thread safe.
 getTempDir :: HasCallStack => IO CBytes
+{-# INLINABLE getTempDir #-}
 getTempDir = go 512
   where
     go siz = do
@@ -246,10 +265,12 @@ getTempDir = go 512
 
 -- | Gets the amount of free memory available in the system, as reported by the kernel (in bytes).
 getFreeMem :: IO Word64
+{-# INLINABLE getFreeMem #-}
 getFreeMem = uv_get_free_memory
 
 -- | Gets the total amount of physical memory in the system (in bytes).
 getTotalMem :: IO Word64
+{-# INLINABLE getTotalMem #-}
 getTotalMem = uv_get_total_memory
 
 -- | Gets the amount of memory available to the process (in bytes) based on limits imposed by the OS.
@@ -258,6 +279,7 @@ getTotalMem = uv_get_total_memory
 -- Note that it is not unusual for this value to be less than or greater than 'getTotalMem'.
 -- Note This function currently only returns a non-zero value on Linux, based on cgroups if it is present.
 getConstrainedMem :: IO Word64
+{-# INLINABLE getConstrainedMem #-}
 getConstrainedMem = uv_get_constrained_memory
 
 --------------------------------------------------------------------------------

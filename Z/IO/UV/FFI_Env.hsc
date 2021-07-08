@@ -75,9 +75,11 @@ data ResUsage = ResUsage
         deriving anyclass (Print, JSON)
 
 sizeOfResUsage :: Int
+{-# INLINABLE sizeOfResUsage #-}
 sizeOfResUsage = #size uv_rusage_t
 
 peekResUsage :: MBA## a -> IO ResUsage
+{-# INLINABLE peekResUsage #-}
 peekResUsage mba = do
     utime_sec :: CLong <- peekMBA mba (#offset  uv_rusage_t, ru_utime )
     utime_usec :: CLong <- peekMBA mba ((#offset  uv_rusage_t, ru_utime) + sizeOf (undefined :: CLong))
@@ -147,6 +149,7 @@ data OSName = OSName
         deriving anyclass (Print, JSON)
 
 getOSName :: HasCallStack => IO OSName
+{-# INLINABLE getOSName #-}
 getOSName = do
     (MutableByteArray mba##) <- newByteArray (#size uv_utsname_t)
     throwUVIfMinus_ (uv_os_uname mba##)
@@ -180,6 +183,7 @@ foreign import ccall unsafe uv_os_free_passwd :: MBA## PassWD -> IO ()
 -- On non-Windows systems, all data comes from getpwuid_r(3).
 -- On Windows, uid and gid are set to -1 and have no meaning, and shell is empty.
 getPassWD :: HasCallStack => IO PassWD
+{-# INLINABLE getPassWD #-}
 getPassWD =  bracket
     (do mpa@(MutableByteArray mba##) <- newByteArray (#size uv_passwd_t)
         throwUVIfMinus_ (uv_os_get_passwd mba##)
@@ -215,6 +219,7 @@ data CPUInfo = CPUInfo
 
 -- | Gets information about the CPUs on the system.
 getCPUInfo :: HasCallStack => IO [CPUInfo]
+{-# INLINABLE getCPUInfo #-}
 getCPUInfo = bracket
     (do (p, (len, _)) <-  allocPrimUnsafe $ \ pp ->
             allocPrimUnsafe $ \ plen ->
@@ -224,6 +229,7 @@ getCPUInfo = bracket
     (\ (p, len) -> forM [0..fromIntegral len-1] (peekCPUInfoOff p))
 
 peekCPUInfoOff :: Ptr CPUInfo -> Int -> IO CPUInfo
+{-# INLINABLE peekCPUInfoOff #-}
 peekCPUInfoOff p off = do
     let p' = p `plusPtr` (off * (#size uv_cpu_info_t))
     model <- fromCString =<< (#peek uv_cpu_info_t, model) p'
@@ -239,6 +245,7 @@ foreign import ccall unsafe uv_loadavg :: MBA## (Double, Double, Double) -> IO (
 
 -- | Gets the load average. See: <https://en.wikipedia.org/wiki/Load_(computing)>
 getLoadAvg :: IO (Double, Double, Double)
+{-# INLINABLE getLoadAvg #-}
 getLoadAvg = do
     (arr, _) <- allocPrimArrayUnsafe 3 uv_loadavg
     return ( indexPrimArray arr 0
@@ -258,6 +265,7 @@ foreign import ccall unsafe uv_gettimeofday :: MBA## TimeVal64 -> IO CInt
 -- | Cross-platform implementation of <https://man7.org/linux/man-pages/man2/gettimeofday.2.html gettimeofday(2)>.
 -- The timezone argument to gettimeofday() is not supported, as it is considered obsolete.
 getTimeOfDay :: HasCallStack => IO TimeVal64
+{-# INLINABLE getTimeOfDay #-}
 getTimeOfDay = do
     (MutableByteArray mba##) <- newByteArray (#size uv_timeval64_t)
     throwUVIfMinus_ (uv_gettimeofday mba##)

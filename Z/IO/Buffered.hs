@@ -33,7 +33,7 @@ module Z.IO.Buffered
   , newBufferedOutput
   , newBufferedOutput'
   , writeBuffer, writeBuffer'
-  , writeBuilder
+  , writeBuilder, writeBuilder'
   , flushBuffer
   , clearOutputBuffer
     -- * Buffered Input and Output
@@ -51,14 +51,13 @@ import           Data.Primitive.PrimArray
 import           Data.Word
 import           Data.Bits                 (unsafeShiftR)
 import           Foreign.Ptr
-import           Z.Data.Array
 import qualified Z.Data.Builder.Base       as B
 import qualified Z.Data.Parser             as P
 import qualified Z.Data.Vector             as V
 import qualified Z.Data.Text               as T
 import qualified Z.Data.Text.UTF8Codec     as T
 import qualified Z.Data.Vector.Base        as V
-import           Z.Data.PrimRef.PrimIORef
+import           Z.Data.PrimRef
 import           Z.Foreign
 import           Z.IO.Exception
 
@@ -125,14 +124,16 @@ newBufferedOutput :: Output o => o -> IO BufferedOutput
 newBufferedOutput = newBufferedOutput' V.defaultChunkSize
 
 -- | Open a new buffered output with given buffer size, e.g. 'V.defaultChunkSize'.
+--
+-- Size smaller than 'V.smallChunkSize' will be taken as 'V.smallChunkSize'.
 newBufferedOutput' :: Output o
                    => Int    -- ^ Output buffer size
                    -> o
                    -> IO BufferedOutput
 {-# INLINABLE newBufferedInput' #-}
 newBufferedOutput' bufSiz o = do
-    index <- newPrimIORef 0
-    buf <- newPinnedPrimArray (max bufSiz 0)
+    index <- newPrimRef 0
+    buf <- newPinnedPrimArray (max bufSiz V.smallChunkSize)
     return (BufferedOutput (writeOutput o) index buf)
 
 -- | Open a new buffered input with given buffer size, e.g. 'V.defaultChunkSize'.
@@ -143,18 +144,18 @@ newBufferedInput' :: Input i
 {-# INLINABLE newBufferedOutput' #-}
 newBufferedInput' bufSiz i = do
     pb <- newIORef V.empty
-    buf <- newPinnedPrimArray (max bufSiz 0)
+    buf <- newPinnedPrimArray (max bufSiz V.smallChunkSize)
     inputBuffer <- newIORef buf
     return (BufferedInput (readInput i) pb inputBuffer)
 
 -- | Open a new buffered input and output with 'V.defaultChunkSize' as buffer size.
 newBufferedIO :: IODev dev => dev -> IO (BufferedInput, BufferedOutput)
-{-# INLINE newBufferedIO #-}
+{-# INLINABLE newBufferedIO #-}
 newBufferedIO dev = newBufferedIO' dev V.defaultChunkSize V.defaultChunkSize
 
 -- | Open a new buffered input and output with given buffer size, e.g. 'V.defaultChunkSize'.
 newBufferedIO' :: IODev dev => dev -> Int -> Int -> IO (BufferedInput, BufferedOutput)
-{-# INLINE newBufferedIO' #-}
+{-# INLINABLE newBufferedIO' #-}
 newBufferedIO' dev inSize outSize = do
     i <- newBufferedInput' inSize dev
     o <- newBufferedOutput' outSize dev
@@ -184,9 +185,8 @@ readBuffer BufferedInput{..} = do
             ba <- unsafeFreezePrimArray mba
             return $! V.fromArr ba 0 l
         else do                                -- freeze buf into result
-            when (bufSiz /= 0) $ do
-                buf' <- newPinnedPrimArray bufSiz
-                writeIORef inputBuffer buf'
+            buf' <- newPinnedPrimArray bufSiz
+            writeIORef inputBuffer buf'
             shrinkMutablePrimArray rbuf l
             ba <- unsafeFreezePrimArray rbuf
             return $! V.fromArr ba 0 l
@@ -196,8 +196,8 @@ readBuffer BufferedInput{..} = do
 
 -- | Request UTF8 'T.Text' chunk from 'BufferedInput'.
 --
--- The buffer size must be larger than 4 bytes to guarantee decoding progress. If there're
--- trailing bytes before EOF, an 'OtherError' with name 'EINCOMPLETE' will be thrown, if there're
+-- The buffer size must be larger than 4 bytes to guarantee decoding progress(which is guaranteed by 'newBufferedInput').
+-- If there're trailing bytes before EOF, an 'OtherError' with name 'EINCOMPLETE' will be thrown, if there're
 -- invalid UTF8 bytes, an 'OtherError' with name 'EINVALIDUTF8' will be thrown.`
 readBufferText :: HasCallStack => BufferedInput -> IO T.Text
 {-# INLINABLE readBufferText #-}
@@ -235,9 +235,8 @@ readBufferText BufferedInput{..} = do
             ba <- unsafeFreezePrimArray mba
             splitLastChar (V.PrimVector ba 0 l)
         else do                                -- freeze buf into result
-            when (bufSiz /= 0) $ do
-                buf' <- newPinnedPrimArray bufSiz
-                writeIORef inputBuffer buf'
+            buf' <- newPinnedPrimArray bufSiz
+            writeIORef inputBuffer buf'
             shrinkMutablePrimArray rbuf l
             ba <- unsafeFreezePrimArray rbuf
             splitLastChar (V.PrimVector ba 0 l)
@@ -257,6 +256,7 @@ readBufferText BufferedInput{..} = do
 
 -- | Clear already buffered input.
 clearInputBuffer :: BufferedInput -> IO ()
+{-# INLINABLE clearInputBuffer #-}
 clearInputBuffer BufferedInput{..} = writeIORef bufPushBack V.empty
 
 -- | Read exactly N bytes.
@@ -264,23 +264,31 @@ clearInputBuffer BufferedInput{..} = writeIORef bufPushBack V.empty
 -- If EOF reached before N bytes read, an 'OtherError' with name 'EINCOMPLETE' will be thrown.
 readExactly :: HasCallStack => Int -> BufferedInput -> IO V.Bytes
 {-# INLINABLE readExactly #-}
-readExactly n0 h0 = V.concat `fmap` (go h0 n0)
+readExactly n0 h = do
+    chunk <- readBuffer h
+    let l = V.length chunk
+    if n0 < l
+    then do
+        let (!chunk', !rest) = V.splitAt n0 chunk
+        unReadBuffer rest h
+        return chunk'
+    else if n0 == l
+        then return chunk
+        else V.concatR <$> (go (n0 - l) [chunk])
   where
-    go h n = do
+    go !n acc = do
         chunk <- readBuffer h
         let l = V.length chunk
         if l > n
         then do
-            let (chunk', rest) = V.splitAt n chunk
+            let (!chunk', !rest) = V.splitAt n chunk
             unReadBuffer rest h
-            return [chunk']
+            return (chunk':acc)
         else if l == n
-            then return [chunk]
+            then return (chunk:acc)
             else if l == 0
                 then throwOtherError "EINCOMPLETE" "input is incomplete"
-                else do
-                    chunks <- go h (n - l)
-                    return (chunk : chunks)
+                else go (n - l) (chunk:acc)
 
 -- | Read all chunks from a 'BufferedInput' until EOF.
 --
@@ -293,7 +301,7 @@ readAll h = loop []
     loop acc = do
         chunk <- readBuffer h
         if V.null chunk
-        then return $! reverse (chunk:acc)
+        then return $! reverse acc
         else loop (chunk:acc)
 
 -- | Read all chunks from a 'BufferedInput', and concat chunks together.
@@ -302,7 +310,13 @@ readAll h = loop []
 -- Useful for reading small file into memory.
 readAll' :: HasCallStack => BufferedInput -> IO V.Bytes
 {-# INLINABLE readAll' #-}
-readAll' i = V.concat <$> readAll i
+readAll' h = loop []
+  where
+    loop acc = do
+        chunk <- readBuffer h
+        if V.null chunk
+        then return $! V.concatR acc
+        else loop (chunk:acc)
 
 -- | Push bytes back into buffer(if not empty).
 --
@@ -403,18 +417,18 @@ readLine i = do
 writeBuffer :: HasCallStack => BufferedOutput -> V.Bytes -> IO ()
 {-# INLINABLE writeBuffer #-}
 writeBuffer o@BufferedOutput{..} v@(V.PrimVector ba s l) = do
-    i <- readPrimIORef bufIndex
+    i <- readPrimRef bufIndex
     bufSiz <- getSizeofMutablePrimArray outputBuffer
     if i /= 0
     then if i + l <= bufSiz
         then do
             -- current buffer can hold it
             copyPrimArray outputBuffer i ba s l   -- copy to buffer
-            writePrimIORef bufIndex (i+l)              -- update index
+            writePrimRef bufIndex (i+l)              -- update index
         else do
             -- flush the buffer first
             withMutablePrimArrayContents outputBuffer $ \ ptr -> bufOutput ptr i
-            writePrimIORef bufIndex 0
+            writePrimRef bufIndex 0
             -- try write to buffer again
             writeBuffer o v
     else
@@ -422,18 +436,13 @@ writeBuffer o@BufferedOutput{..} v@(V.PrimVector ba s l) = do
         then withPrimVectorSafe v bufOutput
         else do
             copyPrimArray outputBuffer i ba s l   -- copy to buffer
-            writePrimIORef bufIndex l             -- update index
+            writePrimRef bufIndex l             -- update index
 
 -- | Write 'V.Bytes' into buffered handle then flush the buffer into output device (if buffer is not empty).
 --
--- * If buffer is empty and bytes are larger than half of buffer, directly write bytes,
---   otherwise copy bytes to buffer.
---
--- * If buffer is not empty, then copy bytes to buffer if it can hold, otherwise
---   write buffer first, then try again.
---
+-- Equivalent to add a 'flushBuffer' after write.
 writeBuffer' :: HasCallStack => BufferedOutput -> V.Bytes -> IO ()
-{-# INLINE writeBuffer' #-}
+{-# INLINABLE writeBuffer' #-}
 writeBuffer' bo o = writeBuffer bo o >> flushBuffer bo
 
 -- | Directly write 'B.Builder' into buffered handle.
@@ -443,21 +452,21 @@ writeBuffer' bo o = writeBuffer bo o >> flushBuffer bo
 writeBuilder :: HasCallStack => BufferedOutput -> B.Builder a -> IO ()
 {-# INLINABLE writeBuilder #-}
 writeBuilder BufferedOutput{..} (B.Builder b) = do
-    i <- readPrimIORef bufIndex
+    i <- readPrimRef bufIndex
     originBufSiz <- getSizeofMutablePrimArray outputBuffer
     loop originBufSiz =<< b (\ _ -> return . B.Done) (B.Buffer outputBuffer i)
   where
     loop originBufSiz r = case r of
         B.Done buffer@(B.Buffer buf' i') -> do
             if sameMutablePrimArray buf' outputBuffer
-            then writePrimIORef bufIndex i'
+            then writePrimRef bufIndex i'
             else if i' >= originBufSiz
                 then do
                     action =<< freezeBuffer buffer
-                    writePrimIORef bufIndex 0
+                    writePrimRef bufIndex 0
                 else do
                     copyMutablePrimArray outputBuffer 0 buf' 0 i'
-                    writePrimIORef bufIndex i'
+                    writePrimRef bufIndex i'
         B.BufferFull buffer@(B.Buffer _ i') wantSiz k -> do
             when (i' /= 0) (action =<< freezeBuffer buffer)
             if wantSiz <= originBufSiz
@@ -483,16 +492,24 @@ writeBuilder BufferedOutput{..} (B.Builder b) = do
         !arr <- unsafeFreezePrimArray buf
         return (V.PrimVector arr 0 offset)
 
+-- | Directly write 'B.Builder' into buffered handle then flush the buffer into output device (if buffer is not empty).
+--
+-- Equivalent to add a 'flushBuffer' after write.
+writeBuilder' :: HasCallStack => BufferedOutput -> B.Builder () -> IO ()
+{-# INLINABLE writeBuilder' #-}
+writeBuilder' bo o = writeBuilder bo o >> flushBuffer bo
+
 -- | Flush the buffer into output device(if buffer is not empty).
 --
 flushBuffer :: HasCallStack => BufferedOutput -> IO ()
 {-# INLINABLE flushBuffer #-}
 flushBuffer BufferedOutput{..} = do
-    i <- readPrimIORef bufIndex
+    i <- readPrimRef bufIndex
     when (i /= 0) $ do
         withMutablePrimArrayContents outputBuffer $ \ ptr -> bufOutput ptr i
-        writePrimIORef bufIndex 0
+        writePrimRef bufIndex 0
 
 -- | Clear already buffered output.
 clearOutputBuffer :: BufferedOutput -> IO ()
-clearOutputBuffer BufferedOutput{..} = writePrimIORef bufIndex 0
+{-# INLINABLE clearOutputBuffer #-}
+clearOutputBuffer BufferedOutput{..} = writePrimRef bufIndex 0

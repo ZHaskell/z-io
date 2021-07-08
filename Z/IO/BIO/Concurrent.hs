@@ -13,9 +13,9 @@ Portability : non-portable
 This module provides some concurrent 'BIO' node, to ease the implementation of producer-consumer model.
 All sources and sinks return by this module are safe to be used in multiple threads.
 
-  * Use 'newTQueueNode' for common cases.
-  * Use 'newTBQueueNode' if you have a fast producer and you don't want input get piled up in memory.
-  * Use 'newBroadcastTChanNode' if you want messages get broadcasted, i.e. every message written by
+  * Use 'newTQueuePair' for common cases.
+  * Use 'newTBQueuePair' if you have a fast producer and you don't want input get piled up in memory.
+  * Use 'newBroadcastTChanPair' if you want messages get broadcasted, i.e. every message written by
     producers will be received by every consumers.
 
 It's important to correctly set the numebr of producers, internally it keeps a counter on how many producers
@@ -23,7 +23,7 @@ reached their ends, and send EOF to all consumers when last producer ends. So it
 exceptions and pull the sink(which indicate EOF) on producer side.
 
 @
-(sink, src) <- newTQueueNode 2  -- it's important to correctly set the numebr of producers
+(sink, src) <- newTQueuePair 2  -- it's important to correctly set the numebr of producers
 
 --------------------------------------------------------------------------------
 -- producers
@@ -63,7 +63,7 @@ import Control.Concurrent.STM
 import qualified Data.Sequence as Seq
 import Data.Sequence (Seq((:<|),(:|>)))
 import GHC.Natural
-import Z.IO.BIO
+import Z.IO.BIO.Base
 import Z.Data.PrimRef
 import Z.IO.Exception
 
@@ -74,8 +74,9 @@ import Z.IO.Exception
 --   * Two node should output same numebr of results.
 --   * If the number differs, one node maybe
 --
-zipBIO :: BIO a b -> BIO a c -> BIO a (b,c)
-zipBIO b1 b2 = \ k mx -> do
+zip :: BIO a b -> BIO a c -> BIO a (b,c)
+{-# INLINABLE zip #-}
+zip b1 b2 = \ k mx -> do
     bEOF <- newTVarIO False
     cEOF <- newTVarIO False
     bBuf <- newTVarIO Seq.empty
@@ -104,9 +105,10 @@ zipBIO b1 b2 = \ k mx -> do
             _ -> if beof then return (k EOF) else retry
 
 -- | Make an unbounded queue and a pair of sink and souce connected to it.
-newTQueueNode :: Int -- ^ number of producers
+newTQueuePair :: Int -- ^ number of producers
               -> IO (Sink a, Source a)
-newTQueueNode n = do
+{-# INLINABLE newTQueuePair #-}
+newTQueuePair n = do
     q <- newTQueueIO
     ec <- newCounter 0
     return
@@ -127,10 +129,11 @@ newTQueueNode n = do
             in loop)
 
 -- | Make an bounded queue and a pair of sink and souce connected to it.
-newTBQueueNode :: Int       -- ^ number of producers
+newTBQueuePair :: Int       -- ^ number of producers
                -> Natural   -- ^ queue buffer bound
                -> IO (Sink a, Source a)
-newTBQueueNode n bound = do
+{-# INLINABLE newTBQueuePair #-}
+newTBQueuePair n bound = do
     q <- newTBQueueIO bound
     ec <- newCounter 0
     return
@@ -151,9 +154,10 @@ newTBQueueNode n bound = do
             in loop)
 
 -- | Make a broadcast chan and a sink connected to it, and a function return sources to receive broadcast message.
-newBroadcastTChanNode :: Int                        -- ^ number of producers
+newBroadcastTChanPair :: Int                        -- ^ number of producers
                       -> IO (Sink a, IO (Source a)) -- ^ (Sink, IO Source)
-newBroadcastTChanNode n = do
+{-# INLINABLE newBroadcastTChanPair #-}
+newBroadcastTChanPair n = do
     b <- newBroadcastTChanIO
     ec <- newCounter 0
     let dupSrc = do

@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               Z-IO
-version:            0.8.1.1
+version:            1.0.0.0
 synopsis:           Simple and high performance IO toolkit for Haskell
 description:
   Simple and high performance IO toolkit for Haskell, including
@@ -85,6 +85,7 @@ library
   exposed-modules:
     Z.IO
     Z.IO.BIO
+    Z.IO.BIO.Base
     Z.IO.BIO.Concurrent
     Z.IO.BIO.Zlib
     Z.IO.Buffered
@@ -119,12 +120,13 @@ library
     , base                  >=4.12  && <5.0
     , containers            ^>=0.6
     , exceptions            ^>=0.10
+    , foldl                 >= 1.3  && <2.0
     , primitive             >=0.7.1 && <0.7.2
     , stm                   ^>=2.5
     , time                  >=1.9   && <2.0
     , unix-time             >=0.4.7 && <0.5
     , unordered-containers  ^>=0.2
-    , Z-Data                >=0.8.1 && <0.9
+    , Z-Data                >=1.0   && <1.1
 
   default-language:   Haskell2010
   default-extensions:

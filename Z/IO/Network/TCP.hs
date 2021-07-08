@@ -64,11 +64,13 @@ data TCPClientConfig = TCPClientConfig
 -- | Default config, connect to @localhost:8888@.
 --
 defaultTCPClientConfig :: TCPClientConfig
+{-# INLINABLE defaultTCPClientConfig #-}
 defaultTCPClientConfig = TCPClientConfig Nothing (SocketAddrIPv4 ipv4Loopback 8888) True 30
 
 -- | init a TCP client 'Resource', which open a new connect when used.
 --
 initTCPClient :: HasCallStack => TCPClientConfig -> Resource UVStream
+{-# INLINABLE initTCPClient #-}
 initTCPClient TCPClientConfig{..} = do
     uvm <- liftIO getUVManager
     client <- initTCPStream uvm
@@ -104,6 +106,7 @@ data TCPServerConfig = TCPServerConfig
 -- @main = startTCPServer defaultTCPServerConfig echoWorker@, now try @nc -v 127.0.0.1 8888@
 --
 defaultTCPServerConfig :: TCPServerConfig
+{-# INLINABLE defaultTCPServerConfig #-}
 defaultTCPServerConfig = TCPServerConfig
     (SocketAddrIPv4 ipv4Any 8888)
     256
@@ -120,6 +123,7 @@ startTCPServer :: HasCallStack
                                         -- run in a seperated haskell thread,
                                         -- will be closed upon exception or worker finishes.
                -> IO ()
+{-# INLINABLE startTCPServer #-}
 startTCPServer TCPServerConfig{..} = startServerLoop
     (max tcpListenBacklog 128)
     initTCPStream
@@ -224,10 +228,12 @@ startServerLoop backLog initStream bind spawn worker = do
 --------------------------------------------------------------------------------
 
 initTCPStream :: UVManager -> Resource UVStream
+{-# INLINABLE initTCPStream #-}
 initTCPStream = initUVStream (\ loop hdl -> throwUVIfMinus_ (uv_tcp_init loop hdl))
 
 -- | Enable or disable @TCP_NODELAY@, which enable or disable Nagle’s algorithm.
 setTCPNoDelay :: HasCallStack => UVStream -> Bool -> IO ()
+{-# INLINABLE setTCPNoDelay #-}
 setTCPNoDelay uvs nodelay =
     throwUVIfMinus_ (uv_tcp_nodelay (uvsHandle uvs) (if nodelay then 1 else 0))
 
@@ -237,12 +243,14 @@ setTCPNoDelay uvs nodelay =
 -- will still happen. If the connection is still lost at the end of this procedure,
 -- then the connection is closed, pending io thread will throw 'TimeExpired' exception.
 setTCPKeepAlive :: HasCallStack => UVStream -> CUInt -> IO ()
+{-# INLINABLE setTCPKeepAlive #-}
 setTCPKeepAlive uvs delay
     | delay > 0 = throwUVIfMinus_ (uv_tcp_keepalive (uvsHandle uvs) 1 delay)
     | otherwise = throwUVIfMinus_ (uv_tcp_keepalive (uvsHandle uvs) 0 0)
 
 -- | Get the current address to which the handle is bound.
 getTCPSockName :: HasCallStack => UVStream -> IO SocketAddr
+{-# INLINABLE getTCPSockName #-}
 getTCPSockName uvs = do
     withSocketAddrStorageUnsafe $ \ paddr ->
         void $ withPrimUnsafe (fromIntegral sizeOfSocketAddrStorage :: CInt) $ \ plen ->
@@ -250,6 +258,7 @@ getTCPSockName uvs = do
 
 -- | Get the address of the peer connected to the handle.
 getTCPPeerName :: HasCallStack => UVStream -> IO SocketAddr
+{-# INLINABLE getTCPPeerName #-}
 getTCPPeerName uvs = do
     withSocketAddrStorageUnsafe $ \ paddr ->
         void $ withPrimUnsafe (fromIntegral sizeOfSocketAddrStorage :: CInt) $ \ plen ->

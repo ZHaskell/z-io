@@ -75,10 +75,12 @@ data PathStyle = WindowsStyle   -- ^ Use backslashes as a separator and volume f
     deriving anyclass (T.Print, JSON)
 
 enumToPathStyle_ :: CInt -> PathStyle
+{-# INLINABLE enumToPathStyle_ #-}
 enumToPathStyle_ (#const CWK_STYLE_WINDOWS) = WindowsStyle
 enumToPathStyle_ _ = UnixStyle
 
 pathStyleToEnum_ :: PathStyle -> CInt
+{-# INLINABLE pathStyleToEnum_ #-}
 pathStyleToEnum_ WindowsStyle = (#const CWK_STYLE_WINDOWS)
 pathStyleToEnum_ _ = (#const CWK_STYLE_UNIX)
 
@@ -96,10 +98,12 @@ pathStyleToEnum_ _ = (#const CWK_STYLE_UNIX)
 -- * If nothing was found to determine the style -> UNIX
 --
 pathStyle :: CBytes -> IO PathStyle
+{-# INLINABLE pathStyle #-}
 pathStyle p = enumToPathStyle_ <$> withCBytesUnsafe p cwk_path_guess_style
 
 -- | Gets the path style currently using.
 getPathStyle :: IO PathStyle
+{-# INLINABLE getPathStyle #-}
 getPathStyle = enumToPathStyle_ <$> cwk_path_get_style
 
 -- | Configures which path style is used afterwards.
@@ -108,10 +112,12 @@ getPathStyle = enumToPathStyle_ <$> cwk_path_get_style
 -- call to this function is only required if a non-native behaviour is required.
 -- The style defaults to 'WindowsStyle' on windows builds and to 'UnixStyle' otherwise.
 setPathStyle :: PathStyle -> IO ()
+{-# INLINABLE setPathStyle #-}
 setPathStyle = cwk_path_set_style . pathStyleToEnum_
 
 -- | Get the default character that separates directories.
 pathSeparator :: IO Word8
+{-# INLINABLE pathSeparator #-}
 pathSeparator = do
     s <- getPathStyle
     case s of UnixStyle -> return (#const SLASH)
@@ -119,6 +125,7 @@ pathSeparator = do
 
 -- | Get characters that separates directories.
 pathSeparators :: IO [Word8]
+{-# INLINABLE pathSeparators #-}
 pathSeparators = do
     s <- getPathStyle
     case s of UnixStyle -> return [(#const SLASH)]
@@ -126,6 +133,7 @@ pathSeparators = do
 
 -- | Test if a character is a path separator.
 isPathSeparator :: Word8 -> IO Bool
+{-# INLINABLE isPathSeparator #-}
 isPathSeparator w = do
     s <- getPathStyle
     case s of UnixStyle -> return (w == #const SLASH)
@@ -137,6 +145,7 @@ isPathSeparator w = do
 -- * Unix:    searchPathSeparator is ASCII @:@
 --
 searchPathSeparator :: IO Word8
+{-# INLINABLE searchPathSeparator #-}
 searchPathSeparator = do
     s <- getPathStyle
     case s of UnixStyle -> return (#const COLON)
@@ -144,6 +153,7 @@ searchPathSeparator = do
 
 -- | Test if a character is a file separator.
 isSearchPathSeparator :: Word8 -> IO Bool
+{-# INLINABLE isSearchPathSeparator #-}
 isSearchPathSeparator w = do
     w' <- searchPathSeparator
     return (w == w')
@@ -152,10 +162,12 @@ isSearchPathSeparator w = do
 --
 -- ExtSeparator is ASCII @.@
 extensionSeparator :: Word8
+{-# INLINABLE extensionSeparator #-}
 extensionSeparator = #const DOT
 
 -- | Test if a character is a file extension separator.
 isExtensionSeparator :: Word8 -> Bool
+{-# INLINABLE isExtensionSeparator #-}
 isExtensionSeparator = (== #const DOT)
 
 -- | Get the basename of a file path.
@@ -205,6 +217,7 @@ splitBaseName p = do
 changeBaseName :: CBytes
                -> CBytes   -- ^ new base name
                -> IO CBytes
+{-# INLINABLE changeBaseName #-}
 changeBaseName p b = do
     let l = CB.length p + CB.length b + (#const BUF_EXT_SIZ)
     (p', _) <- withCBytesUnsafe p $ \ pp ->
@@ -268,6 +281,7 @@ splitRoot p = do
 changeRoot :: CBytes
            -> CBytes   -- ^ new base name
            -> IO CBytes
+{-# INLINABLE changeRoot #-}
 changeRoot p r = do
     let l = CB.length p + CB.length r + (#const BUF_EXT_SIZ)
     (p', _) <- withCBytesUnsafe p $ \ pp ->
@@ -329,6 +343,7 @@ splitSegments p = do
 -- +---------+--------------------------+-----------+
 --
 isAbsolute :: CBytes -> IO Bool
+{-# INLINABLE isAbsolute #-}
 isAbsolute p = (/=0) <$> withCBytesUnsafe p cwk_path_is_absolute
 
 -- | Determine whether the path is relative or not.
@@ -365,6 +380,7 @@ isAbsolute p = (/=0) <$> withCBytesUnsafe p cwk_path_is_absolute
 -- +---------+--------------------------+-----------+
 --
 isRelative :: CBytes -> IO Bool
+{-# INLINABLE isRelative #-}
 isRelative p = (/=0) <$> withCBytesUnsafe p cwk_path_is_relative
 
 -- | Joins two paths together.
@@ -392,6 +408,7 @@ isRelative p = (/=0) <$> withCBytesUnsafe p cwk_path_is_relative
 -- +---------+-----------------------+---------------------------+--------------------------------------+
 --
 join :: CBytes -> CBytes -> IO CBytes
+{-# INLINABLE join #-}
 join p p2 = do
     let l = CB.length p + CB.length p2 + (#const BUF_EXT_SIZ)
     (p', _) <- withCBytesUnsafe p $ \ pp ->
@@ -406,6 +423,7 @@ join p p2 = do
 -- It will remove double separators, and unlike 'absolute',
 -- it permits the use of multiple relative paths to combine.
 concat :: [CBytes] -> IO CBytes
+{-# INLINABLE concat #-}
 concat ps = do
     (p', _) <- withCBytesListUnsafe ps $ \ pp l -> do
         let l' = sum (List.map (\ p -> CB.length p + (#const BUF_EXT_SIZ)) ps)
@@ -440,6 +458,7 @@ concat ps = do
 -- +--------------------------------------------------+-------------------+
 --
 normalize :: CBytes -> IO CBytes
+{-# INLINABLE normalize #-}
 normalize p = do
     let l = CB.length p + (#const BUF_EXT_SIZ)
     (p', _) <- withCBytesUnsafe p $ \ pp ->
@@ -478,6 +497,7 @@ normalize p = do
 intersection :: CBytes      -- ^ The base path which will be compared with the other path.
              -> CBytes      -- ^ The other path which will compared with the base path.
              -> IO CBytes
+{-# INLINABLE intersection #-}
 intersection p1 p2 = do
     len <- withCBytesUnsafe p1 $ \ pp1 ->
         withCBytesUnsafe p2 $ \ pp2 ->
@@ -511,6 +531,7 @@ intersection p1 p2 = do
 absolute :: CBytes  -- ^ The absolute base path on which the relative path will be applied.
          -> CBytes  -- ^ The relative path which will be applied on the base path.
          -> IO CBytes
+{-# INLINABLE absolute #-}
 absolute p p2 = do
     let l = CB.length p + CB.length p2 + (#const BUF_EXT_SIZ)
     (p', _) <- withCBytesUnsafe p $ \ pp ->
@@ -557,6 +578,7 @@ relative :: HasCallStack
          => CBytes  -- ^ The base path from which the relative path will start.
          -> CBytes  -- ^ The target path where the relative path will point to.
          -> IO CBytes
+{-# INLINABLE relative #-}
 relative p p2 = do
     let l = (CB.length p `unsafeShiftL` 1) + CB.length p2 + (#const BUF_EXT_SIZ)
     (p', r) <- withCBytesUnsafe p $ \ pp ->
@@ -615,7 +637,7 @@ splitExtension p = do
 --
 dropExtension :: CBytes -- ^ file path
               -> IO CBytes
-{-# INLINE dropExtension #-}
+{-# INLINABLE dropExtension #-}
 dropExtension p = fst <$> splitExtension p
 
 -- | Get the extension of a file from a file path, returns @\"\"@ for no
@@ -637,12 +659,13 @@ dropExtension p = fst <$> splitExtension p
 --
 takeExtension :: CBytes -- ^ file path
               -> IO CBytes
-{-# INLINE takeExtension #-}
+{-# INLINABLE takeExtension #-}
 takeExtension p = snd <$> splitExtension p
 
 -- | Test if a file from a file path has an extension.
 hasExtension :: CBytes -- ^ file path
              -> IO Bool
+{-# INLINABLE hasExtension #-}
 hasExtension p = do
     withCBytesUnsafe p $ \ p' ->
         cwk_path_has_extension p'
@@ -667,6 +690,7 @@ hasExtension p = do
 changeExtension :: CBytes  -- ^ The path which will be used to make the change.
                 -> CBytes  -- ^ The extension which will be placed within the new path.
                 -> IO CBytes
+{-# INLINABLE changeExtension #-}
 changeExtension p p2 = do
     let l = CB.length p + CB.length p2 + (#const BUF_EXT_SIZ)
     (p', _) <- withCBytesUnsafe p $ \ pp ->
@@ -679,6 +703,7 @@ changeExtension p p2 = do
 
 -- | Get a list of paths in the @$PATH@ variable.
 getSearchPath :: IO [CBytes]
+{-# INLINABLE getSearchPath #-}
 getSearchPath = do
     s <- getEnv' "PATH"
     sp <- searchPathSeparator

@@ -1,5 +1,13 @@
 # Revision history for Z-IO
 
+## 1.0.0.0  -- 2020-07-08
+
+* Clean function names in `Z.IO.BIO` module, now no `BIO` or `Node` suffix anymore.
+* `Z.IO.BIO` is not re-exported from `Z.IO` anymore, user are recommended to import it with qualified name, e.g. `import qualified Z.IO.BIO as BIO`.
+* Add `foldl'` and `foldIO'` to `Z.IO.BIO` to use with `Fold` and `FoldM` from `foldl` package.
+* Add `INLINABLE` pragmas to many functions.
+* Add `printStdLnP` to `Z.IO.StdStream`, a `Parser` debug tool.
+
 ## 0.8.1.0  -- 2020-06-12
 
 * Remove `-march=native` flag to improve binary portability.

@@ -118,6 +118,7 @@ addrInfoFlagMapping =
 
 -- | Indicate whether the given 'AddrInfoFlag' will have any effect on this system.
 addrInfoFlagImplemented :: AddrInfoFlag -> Bool
+{-# INLINABLE addrInfoFlagImplemented #-}
 addrInfoFlagImplemented f = packBits addrInfoFlagMapping [f] /= 0
 
 -- | Address info
@@ -133,9 +134,12 @@ data AddrInfo = AddrInfo {
 
 
 instance Storable AddrInfo where
+    {-# INLINABLE sizeOf #-}
     sizeOf    _ = #const sizeof(struct addrinfo)
+    {-# INLINABLE alignment #-}
     alignment _ = alignment (0 :: CInt)
 
+    {-# INLINABLE peek #-}
     peek p = do
         ai_flags <- (#peek struct addrinfo, ai_flags) p
         ai_family <- (#peek struct addrinfo, ai_family) p
@@ -154,6 +158,7 @@ instance Storable AddrInfo where
           , addrCanonName = ai_canonname
           }
 
+    {-# INLINABLE poke #-}
     poke p (AddrInfo flags family sockType protocol _ _) = do
         (#poke struct addrinfo, ai_flags) p (packBits addrInfoFlagMapping flags)
         (#poke struct addrinfo, ai_family) p family
@@ -190,7 +195,7 @@ data NameInfoFlag =
     deriving (Eq, Read, Show)
 
 nameInfoFlagMapping :: [(NameInfoFlag, CInt)]
-
+{-# INLINABLE nameInfoFlagMapping #-}
 nameInfoFlagMapping = [(NI_DGRAM, #const NI_DGRAM),
                  (NI_NAMEREQD, #const NI_NAMEREQD),
                  (NI_NOFQDN, #const NI_NOFQDN),
@@ -209,6 +214,7 @@ nameInfoFlagMapping = [(NI_DGRAM, #const NI_DGRAM),
 -- 0
 
 defaultHints :: AddrInfo
+{-# INLINABLE defaultHints #-}
 defaultHints = AddrInfo {
     addrFlags      = []
   , addrFamily     = AF_UNSPEC
@@ -263,6 +269,7 @@ getAddrInfo
     -> HostName -- ^ host name to look up
     -> ServiceName -- ^ service name to look up
     -> IO [AddrInfo] -- ^ resolved addresses, with "best" first
+{-# INLINABLE getAddrInfo #-}
 getAddrInfo hints host service = withUVInitDo $
     bracket
         (do withCBytes host $ \ ptr_h ->
@@ -286,6 +293,7 @@ getAddrInfo hints host service = withUVInitDo $
 -- | Peek @addrinfo@ linked list.
 --
 followAddrInfo :: Ptr AddrInfo -> IO [AddrInfo]
+{-# INLINABLE followAddrInfo #-}
 followAddrInfo ptr_ai
     | ptr_ai == nullPtr = return []
     | otherwise = do
@@ -318,6 +326,7 @@ getNameInfo
     -> Bool -- ^ whether to look up a service name
     -> SocketAddr -- ^ the address to look up
     -> IO (HostName, ServiceName)
+{-# INLINABLE getNameInfo #-}
 getNameInfo flags doHost doService addr = withUVInitDo $ do
     (host, (service, _)) <- allocCBytes (fromIntegral h_len) $ \ ptr_h ->
         allocCBytes (fromIntegral s_len) $ \ ptr_s ->
@@ -338,7 +347,7 @@ getNameInfo flags doHost doService addr = withUVInitDo $ do
 -- break if this property is not true.
 --
 packBits :: (Eq a, Num b, Bits b) => [(a, b)] -> [a] -> b
-{-# INLINE packBits #-}
+{-# INLINABLE packBits #-}
 packBits mapping xs = List.foldl' go 0 mapping
   where
     go acc (k, v) | k `elem` xs = acc .|. v
@@ -346,7 +355,7 @@ packBits mapping xs = List.foldl' go 0 mapping
 
 -- | Unpack a bitmask into a list of values.
 unpackBits :: (Num b, Bits b) => [(a, b)] -> b -> [a]
-{-# INLINE unpackBits #-}
+{-# INLINABLE unpackBits #-}
 -- Be permissive and ignore unknown bit values. At least on OS X,
 -- getaddrinfo returns an ai_flags field with bits set that have no
 -- entry in <netdb.h>.

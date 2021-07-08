@@ -39,7 +39,7 @@ import           Control.Monad
 import qualified Control.Monad.Catch        as MonadCatch
 import           Control.Monad.IO.Class
 import qualified Data.Map.Strict            as M
-import           Z.Data.PrimRef.PrimIORef
+import           Z.Data.PrimRef
 import           Z.Data.Array
 import qualified Z.Data.Vector              as  V
 import           Data.IORef
@@ -81,7 +81,7 @@ newtype Resource a = Resource { acquire :: IO (a, IO ()) }
 -- 'with' \/ 'with''.
 --
 initResource :: IO a -> (a -> IO ()) -> Resource a
-{-# INLINE initResource #-}
+{-# INLINABLE initResource #-}
 initResource create release = Resource $ do
     r <- create
     return $ (r, release r)
@@ -92,7 +92,7 @@ initResource create release = Resource $ do
 -- inside 'Resource' monad.
 --
 initResource_ :: IO a -> IO () -> Resource a
-{-# INLINE initResource_ #-}
+{-# INLINABLE initResource_ #-}
 initResource_ create release = Resource $ do
     r <- create
     return $ (r, release)
@@ -188,7 +188,8 @@ data Pool key res = Pool
 
 -- | Dump the status of pool.
 statPool :: Pool key res -> IO (SmallArray (M.Map key Int))
-statPool (Pool _ _ _ arr) = (`V.traverseVec` arr) $ \ resMapRef -> do
+{-# INLINABLE statPool #-}
+statPool (Pool _ _ _ arr) = (`V.traverse` arr) $ \ resMapRef -> do
     mResMap <- readIORef resMapRef
     case mResMap of
         Just resMap -> return $ (`fmap` resMap) ( \ es ->
@@ -203,6 +204,7 @@ initPool :: (key -> Resource res)
          -> Int     -- ^ maximum number of resources per local pool per key to be maintained.
          -> Int     -- ^ amount of time after which an unused resource can be released (in seconds).
          -> Resource (Pool key res)
+{-# INLINABLE initPool #-}
 initPool resf limit itime = initResource createPool closePool
   where
     createPool = do
@@ -215,7 +217,7 @@ initPool resf limit itime = initResource createPool closePool
 
     closePool (Pool _ _ _ localPoolArr) = do
         -- close all existed resource
-        (`V.traverseVec_` localPoolArr) $ \ resMapRef ->
+        (`V.traverse_` localPoolArr) $ \ resMapRef ->
             atomicModifyIORef resMapRef $ \ mResMap ->
                 case mResMap of
                     Just resMap -> (Nothing, mapM_ closeEntry resMap)
@@ -231,6 +233,7 @@ initPool resf limit itime = initResource createPool closePool
 -- resource will be closed(not return to pool).
 withPool :: (MonadCatch.MonadMask m, MonadIO m, Ord key, HasCallStack)
                    => Pool key res -> key -> (res -> m a) -> m a
+{-# INLINABLE withPool #-}
 withPool (Pool resf limitPerKey itime arr) key f = do
     !resMapRef <- indexArr arr . fst <$> liftIO (threadCapability =<< myThreadId)
     fst <$> MonadCatch.generalBracket
@@ -300,10 +303,12 @@ initSimplePool :: Resource res
                -> Int     -- ^ maximum number of resources per local pool to be maintained.
                -> Int     -- ^ amount of time after which an unused resource can be released (in seconds).
                -> Resource (SimplePool res)
+{-# INLINABLE initSimplePool #-}
 initSimplePool f = initPool (const f)
 
 -- | Open resource with 'SimplePool', see 'withPool'
 --
 withSimplePool :: (MonadCatch.MonadMask m, MonadIO m, HasCallStack)
                => SimplePool res -> (res -> m a) -> m a
+{-# INLINABLE withSimplePool #-}
 withSimplePool pool = withPool pool ()

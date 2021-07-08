@@ -65,7 +65,7 @@ import           Z.Data.Text.Print  (Print)
 import           Z.Data.Vector.Base as V
 import           Z.Foreign
 import           Z.Foreign.CPtr
-import           Z.IO.BIO
+import           Z.IO.BIO.Base
 import           Z.IO.Exception
 
 #include "zlib.h"
@@ -120,6 +120,7 @@ data CompressConfig = CompressConfig
         deriving anyclass (Print, JSON)
 
 defaultCompressConfig :: CompressConfig
+{-# INLINABLE defaultCompressConfig #-}
 defaultCompressConfig =
     CompressConfig Z_DEFAULT_COMPRESSION  defaultWindowBits
         defaultMemLevel V.empty Z_DEFAULT_STRATEGY V.defaultChunkSize
@@ -134,6 +135,7 @@ newtype ZStream = ZStream (CPtr ZStream) deriving (Eq, Ord, Show)
 newCompress :: HasCallStack
             => CompressConfig
             -> IO (ZStream, BIO V.Bytes V.Bytes)
+{-# INLINABLE newCompress #-}
 newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
     zs <- newCPtr'
         (do ps <- throwOOMIfNull create_z_stream
@@ -189,15 +191,18 @@ newCompress (CompressConfig level windowBits memLevel dict strategy bufSiz) = do
 
 -- | Reset compressor's state so that related 'BIO' can be reused.
 compressReset :: ZStream -> IO ()
+{-# INLINABLE compressReset #-}
 compressReset (ZStream fp) = do
     throwZlibIfMinus_ (withCPtr fp deflateReset)
 
 -- | Compress some bytes.
 compress :: HasCallStack => CompressConfig -> V.Bytes -> V.Bytes
+{-# INLINABLE compress #-}
 compress conf = V.concat . unsafeRunBlock (snd <$> newCompress conf)
 
 -- | Compress some bytes in blocks.
 compressBlocks :: HasCallStack => CompressConfig -> [V.Bytes] -> [V.Bytes]
+{-# INLINABLE compressBlocks #-}
 compressBlocks conf = unsafeRunBlocks (snd <$> newCompress conf)
 
 data DecompressConfig = DecompressConfig
@@ -208,12 +213,14 @@ data DecompressConfig = DecompressConfig
         deriving anyclass (Print, JSON)
 
 defaultDecompressConfig :: DecompressConfig
+{-# INLINABLE defaultDecompressConfig #-}
 defaultDecompressConfig = DecompressConfig defaultWindowBits V.empty V.defaultChunkSize
 
 -- | Make a new decompress node.
 --
 -- The returned 'BIO' node can be reused only if you call 'decompressReset' on the 'ZStream'.
 newDecompress :: DecompressConfig -> IO (ZStream, BIO V.Bytes V.Bytes)
+{-# INLINABLE newDecompress #-}
 newDecompress (DecompressConfig windowBits dict bufSiz) = do
     zs <- newCPtr'
         (do ps <- throwOOMIfNull create_z_stream
@@ -283,20 +290,24 @@ newDecompress (DecompressConfig windowBits dict bufSiz) = do
 
 -- | Reset decompressor's state so that related 'BIO' can be reused.
 decompressReset :: ZStream -> IO ()
+{-# INLINABLE decompressReset #-}
 decompressReset (ZStream fp) = do
     throwZlibIfMinus_ (withCPtr fp inflateReset)
 
 -- | Decompress some bytes.
 decompress :: HasCallStack => DecompressConfig -> V.Bytes -> V.Bytes
+{-# INLINABLE decompress #-}
 decompress conf = V.concat . unsafeRunBlock (snd <$> newDecompress conf)
 
 -- | Decompress some bytes in blocks.
 decompressBlocks :: HasCallStack => DecompressConfig -> [V.Bytes] -> [V.Bytes]
+{-# INLINABLE decompressBlocks #-}
 decompressBlocks conf = unsafeRunBlocks (snd <$> newDecompress conf)
 
 --------------------------------------------------------------------------------
 
 toZErrorMsg :: CInt -> CBytes
+{-# INLINABLE toZErrorMsg #-}
 toZErrorMsg (#const Z_OK           ) =  "Z_OK"
 toZErrorMsg (#const Z_STREAM_END   ) =  "Z_STREAM_END"
 toZErrorMsg (#const Z_NEED_DICT    ) =  "Z_NEED_DICT"
@@ -315,6 +326,7 @@ instance Exception ZlibException where
     fromException = ioExceptionFromException
 
 throwZlibIfMinus :: HasCallStack => IO CInt -> IO CInt
+{-# INLINABLE throwZlibIfMinus #-}
 throwZlibIfMinus f = do
     r <- f
     if r < 0 && r /= (#const Z_BUF_ERROR)
@@ -322,6 +334,7 @@ throwZlibIfMinus f = do
     else return r
 
 throwZlibIfMinus_ :: HasCallStack => IO CInt -> IO ()
+{-# INLINABLE throwZlibIfMinus_ #-}
 throwZlibIfMinus_ = void . throwZlibIfMinus
 
 foreign import ccall unsafe
@@ -358,6 +371,7 @@ foreign import ccall unsafe
     inflateReset :: Ptr ZStream -> IO CInt
 
 set_avail_in :: CPtr ZStream -> V.Bytes -> Int -> IO ()
+{-# INLINABLE set_avail_in #-}
 set_avail_in zs buf buflen = do
     withPrimVectorSafe buf $ \ pbuf _ ->
         withCPtr zs $ \ ps -> do
@@ -365,6 +379,7 @@ set_avail_in zs buf buflen = do
             (#poke struct z_stream_s, avail_in) ps (fromIntegral buflen :: CUInt)
 
 set_avail_out :: CPtr ZStream -> MutablePrimArray RealWorld Word8 -> Int -> IO ()
+{-# INLINABLE set_avail_out #-}
 set_avail_out zs buf bufSiz = do
     withMutablePrimArrayContents buf $ \ pbuf ->
         withCPtr zs $ \ ps -> do

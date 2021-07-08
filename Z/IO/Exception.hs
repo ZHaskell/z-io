@@ -103,9 +103,11 @@ instance Show SomeIOException where
 instance Exception SomeIOException
 
 ioExceptionToException :: Exception e => e -> SomeException
+{-# INLINABLE ioExceptionToException #-}
 ioExceptionToException = toException . SomeIOException
 
 ioExceptionFromException :: Exception e => SomeException -> Maybe e
+{-# INLINABLE ioExceptionFromException #-}
 ioExceptionFromException x = do
     SomeIOException a <- fromException x
     cast a
@@ -211,6 +213,7 @@ unwrap' n d Nothing  = throwOtherError n d
 -- | Check if the given exception is synchronous
 --
 isSyncException :: Exception e => e -> Bool
+{-# INLINABLE isSyncException #-}
 isSyncException e =
     case fromException (toException e) of
         Just (SomeAsyncException _) -> False
@@ -219,12 +222,14 @@ isSyncException e =
 -- | Same as upstream 'C.catch', but will not catch asynchronous exceptions
 --
 catchSync :: Exception e => IO a -> (e -> IO a) -> IO a
+{-# INLINABLE catchSync #-}
 catchSync f g = f `catch` \ e ->
     if isSyncException e then g e else throwIO e
 
 -- | Ingore all synchronous exceptions.
 --
 ignoreSync :: IO a -> IO ()
+{-# INLINABLE ignoreSync #-}
 ignoreSync f = catchSync (void f) (\ (_ :: SomeException) -> return ())
 
 --------------------------------------------------------------------------------
@@ -240,6 +245,7 @@ data IOEInfo = IOEInfo
 instance Show IOEInfo where show = T.toString
 
 instance T.Print IOEInfo where
+    {-# INLINE toUTF8BuilderP #-}
     toUTF8BuilderP _ (IOEInfo errno desc cstack) = do
          "{name:"
          T.text errno

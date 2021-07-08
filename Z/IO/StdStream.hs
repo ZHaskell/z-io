@@ -46,7 +46,7 @@ module Z.IO.StdStream
   , stdin, stdout, stderr
   , stdinBuf, stdoutBuf, stderrBuf
     -- * utils
-  , readStd, printStd, putStd, printStdLn, putStdLn
+  , readStd, printStd, putStd, printStdLn, printStdLnP, putStdLn
     -- * re-export
   , withMVar
   -- * Constant
@@ -57,10 +57,12 @@ module Z.IO.StdStream
   ) where
 
 import Control.Monad
+import Control.Monad.Primitive
 import Control.Concurrent.MVar
 import Foreign.Ptr
 import System.IO.Unsafe
 import qualified Z.Data.Builder             as B
+import qualified Z.Data.Parser.Base         as P
 import qualified Z.Data.Text.Print          as T
 import qualified Z.Data.Vector              as V
 import Z.IO.UV.FFI
@@ -252,13 +254,13 @@ withRawStdin = bracket_ (setStdinTTYMode TTY_MODE_RAW) (setStdinTTYMode TTY_MODE
 
 -- | Get terminal's output window size in (width, height) format,
 -- return (-1, -1) if stdout is not connected to TTY.
-getStdoutWinSize :: HasCallStack => IO (CInt, CInt)
+getStdoutWinSize :: HasCallStack => IO (Int, Int)
 getStdoutWinSize = case stdout of
     StdStream True hdl _ uvm ->
         withUVManager' uvm $ do
-            (w, (h, ())) <- allocPrimUnsafe $ \ w ->
-                allocPrimUnsafe $ \ h -> throwUVIfMinus_ $ uv_tty_get_winsize hdl w h
-            return (w, h)
+            (w, (h, ())) <- allocPrimUnsafe @CInt $ \ w ->
+                allocPrimUnsafe @CInt $ \ h -> throwUVIfMinus_ $ uv_tty_get_winsize hdl w h
+            return (fromIntegral w, fromIntegral h)
     _ -> return (-1, -1)
 
 --------------------------------------------------------------------------------
@@ -276,6 +278,10 @@ putStd b = withMVar stdoutBuf $ \ o -> do
 -- | Print a 'Print' and flush to stdout, with a linefeed.
 printStdLn :: (HasCallStack, T.Print a) => a -> IO ()
 printStdLn s = putStdLn (T.toUTF8Builder s)
+
+-- | Similar to 'printStdLn', 'P.Parser' debug tool.
+printStdLnP :: (HasCallStack, T.Print a) => a -> P.Parser ()
+printStdLnP s = unsafeIOToPrim $ putStdLn (T.toUTF8Builder s)
 
 -- | Print a 'Builder' and flush to stdout, with a linefeed.
 putStdLn :: HasCallStack => B.Builder a -> IO ()

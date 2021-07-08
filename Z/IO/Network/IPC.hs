@@ -59,11 +59,13 @@ data IPCClientConfig = IPCClientConfig
 -- | Default config, connect to ".\/ipc".
 --
 defaultIPCClientConfig :: IPCClientConfig
+{-# INLINABLE defaultIPCClientConfig #-}
 defaultIPCClientConfig = IPCClientConfig Nothing "./ipc"
 
 -- | init a IPC client 'Resource', which open a new connect when used.
 --
 initIPCClient :: IPCClientConfig -> Resource UVStream
+{-# INLINABLE initIPCClient #-}
 initIPCClient (IPCClientConfig cname tname) = do
     uvm <- liftIO getUVManager
     client <- initIPCStream uvm
@@ -92,6 +94,7 @@ data IPCServerConfig = IPCServerConfig
 -- Test it with @main = startIPCServer defaultIPCServerConfig@
 --
 defaultIPCServerConfig :: IPCServerConfig
+{-# INLINABLE defaultIPCServerConfig #-}
 defaultIPCServerConfig = IPCServerConfig
     "./ipc"
     256
@@ -106,6 +109,7 @@ startIPCServer :: HasCallStack
                                         -- run in a seperated haskell thread,
                                        --  will be closed upon exception or worker finishes.
                -> IO ()
+{-# INLINABLE startIPCServer #-}
 startIPCServer IPCServerConfig{..} = startServerLoop
     (max ipcListenBacklog 128)
     initIPCStream
@@ -122,5 +126,6 @@ startIPCServer IPCServerConfig{..} = startServerLoop
 --------------------------------------------------------------------------------
 
 initIPCStream :: HasCallStack => UVManager -> Resource UVStream
+{-# INLINABLE initIPCStream #-}
 initIPCStream = initUVStream (\ loop hdl ->
     throwUVIfMinus_ (uv_pipe_init loop hdl 0))

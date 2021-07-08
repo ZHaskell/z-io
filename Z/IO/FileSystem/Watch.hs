@@ -16,7 +16,7 @@ withResource (initWatchDirs ["fold_to_be_watch"] True) $ \ srcf -> do
     -- dup a file event source
     src <- srcf
     -- print event to stdout
-    runBIO_ $ src . sinkToIO printStd
+    BIO.run_ $ src . sinkToIO printStd
 @
 -}
 
@@ -37,7 +37,6 @@ import qualified Data.List                as List
 import           Data.Primitive.PrimArray
 import           Data.Word
 import           GHC.Generics
-import           Z.Data.Array
 import           Z.Data.Array.Unaligned
 import           Z.Data.CBytes            (CBytes)
 import qualified Z.Data.CBytes            as CBytes
@@ -45,8 +44,7 @@ import           Z.Data.JSON              (JSON)
 import           Z.Data.Text.Print        (Print)
 import           Z.Data.Vector            (defaultChunkSize)
 import           Z.Foreign
-import           Z.IO.BIO
-import           Z.IO.BIO.Concurrent
+import           Z.IO.BIO                 as BIO
 import           Z.IO.Exception
 import           Z.IO.FileSystem.Base
 import qualified Z.IO.FileSystem.FilePath as P
@@ -65,15 +63,17 @@ watchDirs :: [CBytes]     -- ^ Directories to be watched
           -> Bool         -- ^ recursively watch?
           -> (FileEvent -> IO ())  -- ^ Callback function to handle 'FileEvent'
           -> IO ()
+{-# INLINABLE watchDirs #-}
 watchDirs dirs rec callback = do
     withResource (initWatchDirs dirs rec) $ \ srcf -> do
         src <- srcf
-        runBIO_ $ src . sinkToIO callback
+        run_ $ src . sinkToIO callback
 
 -- | Start watching a list of given directories, stream version.
 initWatchDirs :: [CBytes]       -- ^ watching list
               -> Bool           -- ^ recursively watch?
               -> Resource (IO (Source FileEvent))
+{-# INLINABLE initWatchDirs #-}
 initWatchDirs dirs False = do
     liftIO . forM_ dirs $ \ dir -> do
         b <- isDir dir
@@ -91,11 +91,12 @@ initWatchDirs dirs _ = do
 
 -- Internal function to start watching
 watch_ :: CUInt -> [CBytes] -> Resource (IO (Source FileEvent))
+{-# INLINABLE watch_ #-}
 watch_ flag dirs = fst <$> initResource (do
     -- HashMap to store all watchers
     mRef <- newMVar HM.empty
     -- there's only one place to pull the sink, that is cleanUpWatcher
-    (sink, srcf) <- newBroadcastTChanNode 1
+    (sink, srcf) <- newBroadcastTChanPair 1
     -- lock UVManager first
     (forM_ dirs $ \ dir -> do
         dir' <- P.normalize dir
@@ -207,7 +208,7 @@ watch_ flag dirs = fst <$> initResource (do
                 case me of
                     Just e -> (Nothing, Just e)
                     _      -> (Nothing, Nothing)
-            forM_ me' (stepBIO_ sink)
+            forM_ me' (BIO.step_ sink)
 
         me' <- atomicModifyIORef' eRef $ \ me ->
             case me of
@@ -215,4 +216,4 @@ watch_ flag dirs = fst <$> initResource (do
                     then (me, Nothing)
                     else (Just event, Just e)
                 _ -> (Just event, Nothing)
-        forM_ me' (stepBIO_ sink)
+        forM_ me' (BIO.step_ sink)

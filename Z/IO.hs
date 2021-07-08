@@ -13,19 +13,20 @@ such as resource management, buffered IO and std streams.
 -}
 
 module Z.IO
-  ( module Z.IO.BIO
-  , module Z.IO.Buffered
+  ( module Z.IO.Buffered
   , module Z.IO.Environment
   , module Z.IO.Exception
   , module Z.IO.Logger
   , module Z.IO.Resource
   , module Z.IO.StdStream
+  , forkBa
   ) where
 
-import Z.IO.BIO
 import Z.IO.Buffered
 import Z.IO.Environment
 import Z.IO.Exception
 import Z.IO.Logger
 import Z.IO.Resource
 import Z.IO.StdStream
+import Z.IO.UV.Manager (forkBa)
+
