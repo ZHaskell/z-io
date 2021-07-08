@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Z.IO.BIOSpec where
+module Z.IO.BIO.BaseSpec where
 
 import           Control.Concurrent
 import           Control.Monad
@@ -8,6 +8,7 @@ import qualified Codec.Compression.Zlib as TheZlib
 import           Data.IORef
 import qualified Z.Data.Vector         as V
 import           Z.IO.BIO.Zlib
+import           Z.IO.BIO.Base
 import           Z.IO
 import           Test.QuickCheck
 import           Test.QuickCheck.Function
@@ -28,7 +29,7 @@ spec = describe "BIO" . modifyMaxSize (*10) $ do
                     (rRef, sink) <- sinkToList
                     enc <- newBase64Encoder
                     dec <- newBase64Decoder
-                    runBIO $ src . enc . dec . sink
+                    run_ $ src . enc . dec . sink
                     takeMVar rRef
             in V.concat r === V.concat xs
 
@@ -37,9 +38,8 @@ spec = describe "BIO" . modifyMaxSize (*10) $ do
             let r = unsafePerformIO $ do
                     let src = sourceFromList xs
                     (rRef, sink) <- sinkToList
-                    let enc = hexEncoder upper
                     dec <- newHexDecoder
-                    runBIO $ src . enc . dec . sink
+                    run_ $ src . hexEncode upper . dec . sink
                     takeMVar rRef
             in V.concat r === V.concat xs
 

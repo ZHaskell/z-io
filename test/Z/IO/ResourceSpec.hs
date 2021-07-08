@@ -5,7 +5,7 @@ module Z.IO.ResourceSpec where
 import           Control.Concurrent
 import           Control.Exception
 import           Control.Monad
-import           Z.Data.PrimRef.PrimIORef
+import           Z.Data.PrimRef
 import           Z.IO.Resource          as R
 import           Test.Hspec
 import           Test.HUnit
@@ -30,20 +30,20 @@ spec = describe "resource tests" $ do
 
             threadDelay 1000000
 
-            r <- readPrimIORef resCounter
+            r <- readPrimRef resCounter
             assertEqual "pool should keep returned resources alive" 100 r
 
             threadDelay 5000000  -- after 5s, 200 thread should release all resources
 
-            w <- readPrimIORef workerCounter
+            w <- readPrimRef workerCounter
             assertEqual "worker should be able to get resource" 200 w
 
-            r <- readPrimIORef resCounter
+            r <- readPrimRef resCounter
             assertEqual "pool should reap unused resources" 0 r
 
             -- Let's test again
 
-            writePrimIORef workerCounter 0
+            writePrimRef workerCounter 0
 
             forM_ [1..200] $ \ k -> forkIO. R.withSimplePool pool $ \ i -> do
                 atomicAddCounter_ workerCounter 1
@@ -51,15 +51,15 @@ spec = describe "resource tests" $ do
 
             threadDelay 1000000
 
-            r <- readPrimIORef resCounter
+            r <- readPrimRef resCounter
             assertEqual "pool should keep returned resources alive" 100 r
 
             threadDelay 5000000
 
-            w <- readPrimIORef workerCounter
+            w <- readPrimRef workerCounter
             assertEqual "worker should be able to get resource" 200 w
 
-            r <- readPrimIORef resCounter
+            r <- readPrimRef resCounter
             assertEqual "pool should reap unused resources" 0 r
 
     it "resource pool under exceptions" $ do
@@ -77,5 +77,5 @@ spec = describe "resource tests" $ do
 
             threadDelay 5000000
 
-            r <- readPrimIORef resCounter
+            r <- readPrimRef resCounter
             assertEqual "pool should reap unused resources" 0 r

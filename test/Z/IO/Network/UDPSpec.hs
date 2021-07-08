@@ -6,8 +6,8 @@ import           Control.Concurrent
 import           Control.Monad
 import           Data.Bits
 import           Data.IORef
-import           Z.Data.Vector         as V
-import           Z.Data.Vector.Base    as V
+import qualified Z.Data.Vector         as V
+import qualified Z.Data.Vector.Base    as V
 import           Data.List               as List
 import           Foreign.Marshal.Array
 import           Foreign.Ptr

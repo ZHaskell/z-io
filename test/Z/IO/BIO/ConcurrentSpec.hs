@@ -7,8 +7,7 @@ import           Control.Concurrent
 import           Control.Monad
 import           Control.Monad.IO.Class
 import           Data.IORef
-import           Z.IO.BIO.Concurrent
-import           Z.IO.BIO
+import qualified Z.IO.BIO               as BIO
 import           Test.QuickCheck
 import           Test.QuickCheck.Function
 import           Test.QuickCheck.Property
@@ -22,23 +21,23 @@ import           System.IO.Unsafe
 spec :: Spec
 spec = describe "BIO.Concurrent" $ do
 
-    prop "zipBIO works like zip on Sources" $ \ xs ys -> monadicIO $ do
-        (zs :: [(Int, Int)]) <- liftIO . runBIO $ zipBIO  (sourceFromList xs) (sourceFromList ys)
+    prop "zip works like zip on Sources" $ \ xs ys -> monadicIO $ do
+        (zs :: [(Int, Int)]) <- liftIO . BIO.run $ BIO.zip  (BIO.sourceFromList xs) (BIO.sourceFromList ys)
         QM.assert (zs == zip xs ys)
 
     it "TQueueNode works as expected" $ do
         let content = [1..1000]
 
-        (sink, src) <- newTQueueNode 2
+        (sink, src) <- BIO.newTQueuePair 2
         sumRef <- newIORef 0
 
         let producter = do
                 src' <- sourceListWithDelay content
-                runBIO_ (src' . sink)
+                BIO.run_ (src' . sink)
 
         let consumer =  do
-                (rRef, sink') <- sinkToList
-                runBIO_ (src . sink')
+                (rRef, sink') <- BIO.sinkToList
+                BIO.run_ (src . sink')
                 r <- takeMVar rRef
                 atomicModifyIORef' sumRef $ \ x -> (x + sum r, ())
 
@@ -56,16 +55,16 @@ spec = describe "BIO.Concurrent" $ do
     it "TBQueueNode works as expected" $ do
         let content = [1..1000]
 
-        (sink, src) <- newTBQueueNode 2 10
+        (sink, src) <- BIO.newTBQueuePair 2 10
         sumRef <- newIORef 0
 
         let producter = do
                 src' <- sourceListWithDelay content
-                runBIO_ (src' . sink)
+                BIO.run_ (src' . sink)
 
         let consumer =  do
-                (rRef, sink') <- sinkToList
-                runBIO_ (src . sink')
+                (rRef, sink') <- BIO.sinkToList
+                BIO.run_ (src . sink')
                 r <- takeMVar rRef
                 atomicModifyIORef' sumRef $ \ x -> (x + sum r, ())
 
@@ -83,17 +82,17 @@ spec = describe "BIO.Concurrent" $ do
     it "TChanNode works as expected" $ do
         let content = [1..1000]
 
-        (sink, srcf) <- newBroadcastTChanNode 2
+        (sink, srcf) <- BIO.newBroadcastTChanPair 2
         sumRef <- newIORef 0
 
         let producter = do
                 src' <- sourceListWithDelay content
-                runBIO_ (src' . sink)
+                BIO.run_ (src' . sink)
 
         let consumer =  do
-                (rRef, sink') <- sinkToList
+                (rRef, sink') <- BIO.sinkToList
                 src <- srcf
-                runBIO_ (src . sink')
+                BIO.run_ (src . sink')
                 r <- takeMVar rRef
                 atomicModifyIORef' sumRef $ \ x -> (x + sum r, ())
 
@@ -109,7 +108,7 @@ spec = describe "BIO.Concurrent" $ do
         s @?= (sum content * 2 * 3)
 
 
-sourceListWithDelay :: [Int] -> IO (Source Int)
+sourceListWithDelay :: [Int] -> IO (BIO.Source Int)
 sourceListWithDelay xs = do
     return $ \ k _ -> do
         forM_ xs $ \ x -> do

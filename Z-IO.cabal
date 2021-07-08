@@ -378,7 +378,7 @@ test-suite Z-IO-Test
   other-modules:
     Z.IO.BIO.ConcurrentSpec
     Z.IO.BIO.ZlibSpec
-    Z.IO.BIOSpec
+    Z.IO.BIO.BaseSpec
     Z.IO.FileSystem.ThreadedSpec
     Z.IO.FileSystemSpec
     Z.IO.LowResTimerSpec

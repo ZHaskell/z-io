@@ -97,6 +97,16 @@ module Z.IO.BIO (
   , consumed
   -- * Concurrent helpers
   , zip, newTQueuePair, newTBQueuePair, newBroadcastTChanPair
+  -- * Zlib BIO
+  , newCompress, compressReset
+  , CompressConfig(..)
+  , defaultCompressConfig
+  , newDecompress, decompressReset
+  , DecompressConfig(..)
+  , defaultDecompressConfig
+  , MemLevel
+  , defaultMemLevel
+  , ZStream
   ) where
 
 import Z.IO.BIO.Base

@@ -9,6 +9,7 @@ import           Data.ByteString       as B
 import           Data.ByteString.Lazy  as BL
 import           Z.Data.Vector         as V
 import           Z.IO.BIO.Zlib
+import           Z.IO.BIO
 import           Z.IO
 import           Test.QuickCheck
 import           Test.QuickCheck.Function

@@ -3,7 +3,7 @@ module Z.IO.LowResTimerSpec where
 import           Control.Concurrent
 import           Control.Monad
 import           Control.Monad.IO.Class
-import           Z.Data.PrimRef.PrimIORef
+import           Z.Data.PrimRef
 import           Z.IO.LowResTimer
 import           Test.Hspec
 import           Test.HUnit
@@ -22,7 +22,7 @@ spec = describe "low resolution timers" $ do
         assertEqual "timer manager should start" True running
 
         threadDelay 2000000 -- make sure all timers are fired
-        c' <- readPrimIORef c
+        c' <- readPrimRef c
         assertEqual "timers registration counter" 100000 c'
 
         threadDelay 100000  -- another 0.1s
@@ -38,7 +38,7 @@ spec = describe "low resolution timers" $ do
             throttledAdd
             threadDelay 100000
         threadDelay 10000000  -- wait 10s here
-        c' <- readPrimIORef c
+        c' <- readPrimRef c
         assertBool ("throttled add " ++ show c') (5  <= c' && c' <= 8)    -- on osx CI threadDelay drift too much
 
     it "throttleTrailing" $ do
@@ -48,5 +48,5 @@ spec = describe "low resolution timers" $ do
             throttledAdd
             threadDelay 100000
         threadDelay 10000000  -- wait 10s here
-        c' <- readPrimIORef c
+        c' <- readPrimRef c
         assertBool ("throttled add " ++ show c') (5  <= c' && c' <= 8)    -- on osx CI threadDelay drift too muc
