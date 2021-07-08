@@ -13,6 +13,14 @@ jobs:
             cabal: 3.2
     name: Haskell GHC ${{ matrix.ghc }} sample
     steps:
+      - name: CPU info
+        run: |
+            sysctl -n machdep.cpu.features
+            sysctl -n machdep.cpu.leaf7_features
+
+      - name: remove xcode devtools
+        run: sudo rm -rf /Library/Developer/CommandLineTools/SDKs
+
       - uses: actions/checkout@v2
         with:
           submodules: 'recursive'
@@ -38,7 +46,7 @@ jobs:
             ${{ runner.os }}-${{ matrix.ghc }}-
 
       - run: |
-          cabal configure --enable-tests --enable-benchmarks --constraint="Z-Data +no_avx"
+          cabal configure --enable-tests --enable-benchmarks
           cabal build
 
       - run: |

@@ -7,7 +7,7 @@ jobs:
       matrix:
         ghc: ['8.8', '8.10', '9.0']
         cabal: ['3.2', '3.4']
-        avx_flag: ['', '--constraint="Z-Data -no_avx"']
+        avx_flag: ['', '--constraint="Z-Data +use-avx2"']
         exclude:
           # GHC 9+ only works with cabal v3.4+
           - ghc: 9.0
