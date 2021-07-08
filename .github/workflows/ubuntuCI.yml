@@ -35,7 +35,7 @@ jobs:
 
       - run: |
           cabal update
-          cabal freeze 
+          cabal freeze ${{ matrix.avx_flag }}
 
       - uses: actions/cache@v2
         with:
