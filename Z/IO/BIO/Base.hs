@@ -103,7 +103,7 @@ import           Z.IO.Resource
 --  * @type Sink inp = BIO inp Void@ described an IO sink, which takes input and perform some IO effects,
 --    such as writing to terminal or files.
 --
--- You can connect these 'BIO' nodes with '>|>', which connect left node's output to right node's input,
+-- You can connect these 'BIO' nodes with '.' which connect left node's output to right node's input,
 -- and return a new 'BIO' node with left node's input type and right node's output type.
 --
 -- You can run a 'BIO' node in different ways:
