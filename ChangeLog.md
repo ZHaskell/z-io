@@ -1,5 +1,11 @@
 # Revision history for Z-IO
 
+## 1.0.1.0  -- 2020-07-24
+
+Maintenance release:
+
+* Update libuv to v1.42.0, rewrite `UV_Stream`'s `Output` instance to perform a `uv_try_write` first since now `uv_try_write` is sensible.
+
 ## 1.0.0.0  -- 2020-07-08
 
 * Clean function names in `Z.IO.BIO` module, now no `BIO` or `Node` suffix anymore.

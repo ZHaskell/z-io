@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               Z-IO
-version:            1.0.0.0
+version:            1.0.1.0
 synopsis:           Simple and high performance IO toolkit for Haskell
 description:
   Simple and high performance IO toolkit for Haskell, including
@@ -126,7 +126,7 @@ library
     , time                  >=1.9   && <2.0
     , unix-time             >=0.4.7 && <0.5
     , unordered-containers  ^>=0.2
-    , Z-Data                >=1.0   && <1.1
+    , Z-Data                >=1.0   && <1.2
 
   default-language:   Haskell2010
   default-extensions:
@@ -273,6 +273,7 @@ library
         third_party/libuv/src/unix/async.c
         third_party/libuv/src/unix/core.c
         third_party/libuv/src/unix/dl.c
+        third_party/libuv/src/unix/epoll.c
         third_party/libuv/src/unix/fs.c
         third_party/libuv/src/unix/getaddrinfo.c
         third_party/libuv/src/unix/getnameinfo.c

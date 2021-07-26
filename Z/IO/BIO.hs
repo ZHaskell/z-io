@@ -21,7 +21,7 @@ Some examples of such nodes are:
   * Packet parsers.
 
 We use @BIO inp out@ type to represent all the objects above, @BIO Void out@ to represent an 'IO' source,
-and @BIO inp Void@ to represent an 'IO' sink, which can all be connected with '>|>' to build a larger 'BIO' node.
+and @BIO inp Void@ to represent an 'IO' sink, which can all be connected with '.' to build a larger 'BIO' node.
 
 @
 import Z.Data.CBytes    (CBytes)
