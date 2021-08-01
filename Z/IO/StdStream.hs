@@ -37,7 +37,7 @@ main = do
 -}
 module Z.IO.StdStream
   ( -- * Standard input & output streams
-    StdStream
+    StdStream(..)
   , getStdStreamFD
   , isStdStreamTTY
   , setStdinTTYMode

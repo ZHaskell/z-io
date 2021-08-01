@@ -150,6 +150,15 @@ foreign import ccall unsafe hs_uv_shutdown :: Ptr UVHandle -> IO UVSlotUnsafe
 foreign import ccall unsafe hs_uv_accept_check_start :: Ptr UVHandle -> IO CInt
 
 --------------------------------------------------------------------------------
+-- stdin raw mode
+
+
+foreign import ccall unsafe hs_stdin_raw_tty_signal_init :: Ptr UVHandle    -- ^ stdin handler to be attached to
+                                                         -> IO CInt
+
+foreign import ccall unsafe hs_uv_read_start_stdin_raw_tty :: Ptr UVHandle -> IO CInt
+
+--------------------------------------------------------------------------------
 -- tcp & pipe
 foreign import ccall unsafe uv_tcp_open :: Ptr UVHandle -> FD -> IO CInt
 foreign import ccall unsafe uv_tcp_init :: Ptr UVLoop -> Ptr UVHandle -> IO CInt

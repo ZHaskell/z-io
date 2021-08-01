@@ -126,6 +126,53 @@ HsInt hs_uv_shutdown(uv_stream_t* handle){
 
 ////////////////////////////////////////////////////////////////////////////////
 //
+// raw tty
+
+// to correctly handle SIGWINCH event, we mix window change into normal read result.
+static uv_signal_t stdin_raw_tty_signal;
+
+// We only do single read per uv_run with uv_read_stop
+void hs_read_stdin_raw_tty_cb (uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf){
+    HsInt slot = (HsInt)stream->data;
+    hs_loop_data* loop_data = stream->loop->data;
+    // stop signal handler, ignore error
+    uv_signal_stop(&stdin_raw_tty_signal);
+    if (nread != 0) {
+        loop_data->buffer_size_table[slot] = nread;
+        loop_data->event_queue[loop_data->event_counter] = slot; // push the slot to event queue
+        loop_data->event_counter += 1;
+        uv_read_stop(stream);
+    }
+}
+
+void hs_stdin_raw_tty_signal_cb(uv_signal_t* sig, int signum){
+    uv_stream_t* stream = (uv_stream_t*)sig->data;
+    HsInt slot = (HsInt)stream->data;
+    // stop reading the stdin
+    uv_read_stop(stream);
+    hs_loop_data* loop_data = stream->loop->data;
+    loop_data->buffer_size_table[slot] = 0; // raw mode never return 0 size result, we use 0 to indicate window change.
+    loop_data->event_queue[loop_data->event_counter] = slot; // push the slot to event queue
+    loop_data->event_counter += 1;
+}
+
+// initialize the global signal handler and attach stdin as data
+int hs_stdin_raw_tty_signal_init(uv_stream_t* stdin){
+    uv_loop_t* loop = stdin->loop;
+    int r = uv_signal_init(loop, &stdin_raw_tty_signal);
+    stdin_raw_tty_signal.data = stdin;
+    return r;
+}
+
+int hs_uv_read_start_stdin_raw_tty(uv_stream_t* stream){
+    int r = uv_signal_start_oneshot(&stdin_raw_tty_signal, hs_stdin_raw_tty_signal_cb, SIGWINCH);
+    if (r < 0) return r;
+    else return uv_read_start(stream, hs_alloc_cb, hs_read_stdin_raw_tty_cb);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
 // tcp
 
 void hs_connect_cb(uv_connect_t* req, int status){
