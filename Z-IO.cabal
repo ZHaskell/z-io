@@ -117,16 +117,16 @@ library
 
   other-modules:      Z.IO.UV.Win
   build-depends:
-    , base                  >=4.12  && <5.0
+    , base                  >=4.16  && <5.0
     , containers            ^>=0.6
     , exceptions            ^>=0.10
     , foldl                 >= 1.3  && <2.0
-    , primitive             >=0.7.1 && <0.7.2
+    , primitive             >=0.7.3 && <0.8
     , stm                   ^>=2.5
     , time                  >=1.9   && <2.0
     , unix-time             >=0.4.7 && <0.5
     , unordered-containers  ^>=0.2
-    , Z-Data                >=1.0   && <1.2
+    , Z-Data                >=2.0   && <3.0
 
   default-language:   Haskell2010
   default-extensions:
