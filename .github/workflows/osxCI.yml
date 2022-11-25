@@ -5,13 +5,9 @@ jobs:
     runs-on: macOS-latest
     strategy:
       matrix:
-        ghc: ['8.8', '8.10', '9.0']
-        cabal: ['3.2', '3.4']
-        exclude:
-          # GHC 9+ only works with cabal v3.4+
-          - ghc: 9.0
-            cabal: 3.2
-    name: Haskell GHC ${{ matrix.ghc }} sample
+        ghc: ['9.2']
+        cabal: ['3.6']
+    name: Haskell GHC ${{ matrix.ghc }}
     steps:
       - name: CPU info
         run: |
@@ -34,7 +30,7 @@ jobs:
 
       - run: |
           cabal update
-          cabal freeze 
+          cabal freeze
 
       - uses: actions/cache@v2
         with:
