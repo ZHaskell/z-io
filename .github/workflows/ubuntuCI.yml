@@ -5,14 +5,10 @@ jobs:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
-        ghc: ['8.8', '8.10', '9.0']
-        cabal: ['3.2', '3.4']
+        ghc: ['9.2']
+        cabal: ['3.6']
         avx_flag: ['', '--constraint="Z-Data +use-avx2"']
-        exclude:
-          # GHC 9+ only works with cabal v3.4+
-          - ghc: 9.0
-            cabal: 3.2
-    name: Haskell GHC ${{ matrix.ghc }} sample
+    name: Haskell GHC ${{ matrix.ghc }}
     env:
         CONFIG: "--enable-tests --enable-benchmarks"
     steps:
@@ -47,7 +43,7 @@ jobs:
             ${{ runner.os }}-${{ matrix.ghc }}-
 
       - run: |
-          cabal configure ${{ matrix.avx_flag }} $CONFIG  
+          cabal configure ${{ matrix.avx_flag }} $CONFIG
           cabal build $CONFIG
       - run: |
           cabal test --test-show-details=direct
