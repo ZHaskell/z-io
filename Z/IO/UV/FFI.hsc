@@ -15,20 +15,21 @@ module Z.IO.UV.FFI where
 
 import           Data.Bits
 import           Data.Int
+import           Data.Primitive.Types    (Prim)
 import           Data.Word
-import           Data.Primitive.Types   (Prim)
 import           Foreign.C.String
 import           Foreign.C.Types
 import           Foreign.Ptr
 import           Foreign.Storable
-import           Z.Data.Array.Unaligned
-import           Z.Data.Text.Print   (Print(..))
-import           Z.Data.JSON         (JSON)
-import           Z.Data.CBytes as CBytes
-import           Z.Foreign
-import           Z.IO.Network.SocketAddr    (SocketAddr)
-import           System.Posix.Types (CSsize (..))
+import           GHC.Exts
 import           GHC.Generics
+import           System.Posix.Types      (CSsize (..))
+import           Z.Data.Array.Unaligned
+import           Z.Data.CBytes           as CBytes
+import           Z.Data.JSON             (JSON)
+import           Z.Data.Text.Print       (Print (..))
+import           Z.Foreign
+import           Z.IO.Network.SocketAddr (SocketAddr)
 
 #include "hs_uv.h"
 #if HAVE_UNISTD_H

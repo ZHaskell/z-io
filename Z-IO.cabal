@@ -389,9 +389,6 @@ test-suite Z-IO-Test
     Z.IO.ProcessSpec
     Z.IO.ResourceSpec
 
-  if os(linux)
-    other-modules: Z.IO.Network.IPCSpec
-
   ghc-options:        -threaded
   default-language:   Haskell2010
   build-tool-depends: hspec-discover:hspec-discover ==2.*

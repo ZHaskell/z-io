@@ -38,20 +38,22 @@ module Z.IO.FileSystem.FilePath
  ) where
 
 import           Control.Monad      hiding (join)
-import           Data.Word
 import           Data.Bits
-import qualified Data.List as List
+import qualified Data.List          as List
+import           Data.Word
+import           GHC.Exts
 import           GHC.Generics
+import           Prelude            hiding (concat)
 import qualified Z.Data.CBytes      as CB
-import           Z.Data.CBytes      (CBytes(CB), allocCBytesUnsafe, withCBytesUnsafe, withCBytesListUnsafe)
+import           Z.Data.CBytes      (CBytes (CB), allocCBytesUnsafe,
+                                     withCBytesListUnsafe, withCBytesUnsafe)
 import           Z.Data.JSON        (JSON)
 import qualified Z.Data.Text        as T
-import qualified Z.Data.Vector.Base as V
 import qualified Z.Data.Vector      as V
+import qualified Z.Data.Vector.Base as V
 import           Z.Foreign
 import           Z.IO.Environment   (getEnv')
 import           Z.IO.Exception
-import Prelude hiding (concat)
 
 #include "hs_cwalk.h"
 -- \

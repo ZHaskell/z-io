@@ -1,0 +1,88 @@
+on: [push, pull_request]
+name: ci
+
+jobs:
+  build:
+    name: GHC ${{ matrix.ghc-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+        ghc-version: ["9.2", "9.4"]
+        cabal: ["3.8"]
+        avx_flag: ["", '--constraint="Z-Data +use-avx2"']
+    env:
+      CONFIG: "--enable-tests --enable-benchmarks"
+
+    steps:
+      - name: CPU info
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            sudo apt-get install cpuid
+            cpuid
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            brew install cpuid
+            cpuid
+          fi
+        shell: bash
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+
+      - name: Set up GHC ${{ matrix.ghc-version }}
+        uses: haskell-actions/setup@v2
+        id: setup
+        with:
+          ghc-version: ${{ matrix.ghc-version }}
+          cabal-version: ${{ matrix.cabal }}
+          cabal-update: true
+
+      - name: Configure the build
+        run: |
+          cabal configure ${{ matrix.avx_flag }} $CONFIG
+          cabal build all --dry-run
+
+      - name: Restore cached dependencies
+        uses: actions/cache/restore@v3
+        id: cache
+        env:
+          key: ${{ runner.os }}-ghc-${{ steps.setup.outputs.ghc-version }}-cabal-${{ steps.setup.outputs.cabal-version }}
+        with:
+          path: ${{ steps.setup.outputs.cabal-store }}
+          key: ${{ env.key }}-plan-${{ hashFiles('**/plan.json') }}
+          restore-keys: ${{ env.key }}-
+
+      - name: Install dependencies
+        # If we had an exact cache hit, the dependencies will be up to date.
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: cabal build all --only-dependencies
+
+      # Cache dependencies already here, so that we do not have to rebuild them should the subsequent steps fail.
+      - name: Save cached dependencies
+        uses: actions/cache/save@v3
+        # If we had an exact cache hit, trying to save the cache would error because of key clash.
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.setup.outputs.cabal-store }}
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+      - name: Build
+        run: cabal build $CONFIG
+
+      - name: Run tests
+        # https://github.com/haskell/cabal/issues/7883
+        run: |
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            # windows need permission to open pipes
+            cabal test --enable-tests --test-show-details=direct --test-options='--skip=IPC --skip=Process'
+          else
+            cabal test --enable-tests --test-show-details=direct
+          fi
+        shell: bash
+
+      - run: |
+          cabal haddock
+          cabal check
+          cabal sdist
